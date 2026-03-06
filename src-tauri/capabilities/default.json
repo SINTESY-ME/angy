@@ -42,7 +42,11 @@
     "fs:allow-read-dir",
     {
       "identifier": "fs:scope",
-      "allow": [{ "path": "**" }]
+      "allow": [
+        { "path": "**" },
+        { "path": "$HOME/.claude/**" },
+        { "path": "$HOME/.claude/plans/**" }
+      ]
     },
     "dialog:default",
     "core:window:allow-set-title"

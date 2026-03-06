@@ -29,6 +29,7 @@
           ref="chatPanelRef"
           class="h-full"
           @file-edited="onFileEdited"
+          @file-clicked="onFileClicked"
           @orchestrate-requested="onOrchestratorStart"
           @orchestrate-started="onOrchestrateStarted"
         />

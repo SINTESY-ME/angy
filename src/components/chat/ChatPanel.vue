@@ -36,6 +36,7 @@
             v-else-if="item.type === 'tool-group'"
             :calls="item.calls"
             :expanded-by-default="item.expandedByDefault"
+            @file-clicked="(fp: string) => emit('file-clicked', fp)"
           />
           <!-- User / assistant message -->
           <ChatMessage
@@ -166,6 +167,7 @@ const emit = defineEmits<{
   'session-list-changed': [];
   'agent-activity-changed': [sessionId: string, activity: string];
   'file-edited': [sessionId: string, filePath: string, toolName: string, toolInput?: Record<string, any>];
+  'file-clicked': [filePath: string];
   'orchestrate-requested': [goal: string];
   'orchestrate-started': [sessionId: string];
 }>();
@@ -340,6 +342,7 @@ function getOrCreateState(sessionId: string): SessionState {
 function selectSession(sessionId: string) {
   sessionsStore.selectSession(sessionId);
   getOrCreateState(sessionId);
+  fleetStore.markViewed(sessionId);
   emit('active-session-changed', sessionId);
   scrollToBottom();
   nextTick(() => inputBar.value?.focus());
@@ -587,7 +590,7 @@ function onStop() {
 }
 
 function onNavigate(payload: { filePath: string; line?: number }) {
-  console.log('Navigate to:', payload.filePath, 'line:', payload.line);
+  emit('file-clicked', payload.filePath);
 }
 
 async function onRevert(turnId: number) {
@@ -781,6 +784,8 @@ function markDone(sessionId: string) {
 
   if (sessionId === activeSessionId.value) {
     inputBar.value?.focus();
+  } else {
+    fleetStore.markUnviewed(sessionId);
   }
 }
 

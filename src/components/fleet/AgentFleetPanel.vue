@@ -28,6 +28,7 @@
           :selected="agent.sessionId === fleetStore.selectedAgentId"
           :collapsed="panelCollapsed"
           :children-collapsed="fleetStore.isCollapsed(agent.sessionId)"
+          :unviewed="fleetStore.isUnviewed(agent.sessionId)"
           @select="onAgentSelect"
           @delete="sid => $emit('delete-requested', sid)"
           @rename="(sid, title) => $emit('rename-requested', sid, title)"

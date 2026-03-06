@@ -96,6 +96,13 @@
           {{ agent.title || 'New Agent' }}
         </span>
 
+        <!-- Unviewed dot -->
+        <div
+          v-if="unviewed"
+          class="shrink-0 w-2 h-2 rounded-full"
+          style="background: var(--accent-mauve)"
+        />
+
         <!-- Delete button (on hover) -->
         <button
           v-show="hovered"
@@ -173,6 +180,7 @@ const props = defineProps<{
   selected: boolean;
   collapsed?: boolean;
   childrenCollapsed?: boolean;
+  unviewed?: boolean;
 }>();
 
 const emit = defineEmits<{

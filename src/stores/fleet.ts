@@ -10,6 +10,7 @@ export const useFleetStore = defineStore('fleet', () => {
   const agents = ref<AgentSummary[]>([]);
   const selectedAgentId = ref<string | null>(null);
   const collapsedRoots = ref<Set<string>>(new Set());
+  const unviewedSessions = ref<Set<string>>(new Set());
 
   // ── Getters ────────────────────────────────────────────────────────
 
@@ -90,6 +91,20 @@ export const useFleetStore = defineStore('fleet', () => {
     return collapsedRoots.value.has(rootId);
   }
 
+  // ── Unviewed session tracking ─────────────────────────────────────
+
+  function markUnviewed(sessionId: string) {
+    unviewedSessions.value.add(sessionId);
+  }
+
+  function markViewed(sessionId: string) {
+    unviewedSessions.value.delete(sessionId);
+  }
+
+  function isUnviewed(sessionId: string): boolean {
+    return unviewedSessions.value.has(sessionId);
+  }
+
   // ── Hierarchy helpers ──────────────────────────────────────────────
 
   function isDescendantOf(sessionId: string, ancestorId: string): boolean {
@@ -108,6 +123,7 @@ export const useFleetStore = defineStore('fleet', () => {
     agents,
     selectedAgentId,
     collapsedRoots,
+    unviewedSessions,
     // Getters
     hierarchicalAgents,
     rootAgents,
@@ -119,6 +135,9 @@ export const useFleetStore = defineStore('fleet', () => {
     toggleCollapsed,
     isCollapsed,
     isDescendantOf,
+    markUnviewed,
+    markViewed,
+    isUnviewed,
   };
 });
 

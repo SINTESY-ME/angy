@@ -38,9 +38,16 @@
     </div>
 
     <!-- Input container -->
-    <div class="px-4 py-4">
+    <div
+      class="px-4 py-4"
+      @dragenter.prevent="isDraggingOver = true"
+      @dragover.prevent
+      @dragleave.self="isDraggingOver = false"
+      @drop.prevent="isDraggingOver = false"
+    >
       <div
-        class="relative bg-[var(--bg-raised)] rounded-xl border border-transparent ring-0 outline-none"
+        class="relative bg-[var(--bg-raised)] rounded-xl border-2 ring-0 outline-none transition-border-color"
+        :style="{ borderColor: isDraggingOver ? 'var(--accent-teal)' : 'transparent' }"
       >
         <textarea
           ref="inputEl"
@@ -55,7 +62,7 @@
           :placeholder="placeholder || 'Message Claude...'"
           rows="1"
           class="textarea-field w-full bg-transparent text-[var(--text-primary)] px-4 py-3 resize-none outline-none ring-0"
-          :style="{ height: textareaHeight + 'px', maxHeight: '150px' }"
+          :style="{ height: textareaHeight + 'px', maxHeight: '300px' }"
           :disabled="processing"
         />
 
@@ -153,6 +160,7 @@ const emit = defineEmits<{
 
 const text = ref('');
 const focused = ref(false);
+const isDraggingOver = ref(false);
 const inputEl = ref<HTMLTextAreaElement | null>(null);
 const textareaHeight = ref(40);
 const contexts = ref<AttachedContext[]>([]);
@@ -170,7 +178,7 @@ const slashPopupRef = ref<InstanceType<typeof SlashCommandPopup> | null>(null);
 const atStartPos = ref(-1);
 
 const MIN_HEIGHT = 40;
-const MAX_HEIGHT = 150;
+const MAX_HEIGHT = 300;
 
 // ── Computed ──────────────────────────────────────────────────────────────
 
@@ -346,6 +354,7 @@ function onDrop(e: DragEvent) {
   // Only handles in-browser drags (e.g. dragging an <img> element).
   // OS file drops from Finder are handled via Tauri's onDragDropEvent below.
   e.preventDefault();
+  isDraggingOver.value = false;
   const files = e.dataTransfer?.files;
   if (!files) return;
   for (const file of files) {
@@ -433,11 +442,17 @@ onMounted(async () => {
   focus();
 
   unlistenDrop = await getCurrentWebview().onDragDropEvent(async (event) => {
-    if (event.payload.type !== 'drop') return;
-    for (const filePath of event.payload.paths) {
-      const ext = filePath.split('.').pop()?.toLowerCase() ?? '';
-      if (IMAGE_EXTENSIONS.includes(ext)) {
-        await loadImageFromPath(filePath);
+    if (event.payload.type === 'enter' || event.payload.type === 'over') {
+      isDraggingOver.value = true;
+    } else if (event.payload.type === 'leave') {
+      isDraggingOver.value = false;
+    } else if (event.payload.type === 'drop') {
+      isDraggingOver.value = false;
+      for (const filePath of event.payload.paths) {
+        const ext = filePath.split('.').pop()?.toLowerCase() ?? '';
+        if (IMAGE_EXTENSIONS.includes(ext)) {
+          await loadImageFromPath(filePath);
+        }
       }
     }
   });
@@ -458,5 +473,8 @@ defineExpose({ focus });
 }
 .textarea-field::placeholder {
   color: var(--text-faint);
+}
+.transition-border-color {
+  transition: border-color 0.15s ease;
 }
 </style>

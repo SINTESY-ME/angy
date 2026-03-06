@@ -16,10 +16,28 @@
     </div>
 
     <!-- Breadcrumb bar -->
-    <BreadcrumbBar v-if="activeFile" :filePath="activeFile" :rootPath="rootPath" />
+    <div v-if="activeFile" class="flex items-center border-b border-[var(--border-subtle)]">
+      <BreadcrumbBar :filePath="activeFile" :rootPath="rootPath" class="flex-1" />
+      <button
+        v-if="isMarkdownFile"
+        @click="markdownPreview = !markdownPreview"
+        class="px-2 py-1 mr-2 text-xs rounded transition-colors"
+        :class="markdownPreview
+          ? 'bg-[var(--accent-mauve)] text-[var(--bg-base)]'
+          : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-raised)]'"
+        :title="markdownPreview ? 'Show code' : 'Preview markdown'"
+      >
+        {{ markdownPreview ? 'Code' : 'Preview' }}
+      </button>
+    </div>
+
+    <!-- Markdown preview -->
+    <div v-show="markdownPreview && isMarkdownFile" class="markdown-preview flex-1 overflow-y-auto">
+      <div class="message-content" v-html="markdownHtml"></div>
+    </div>
 
     <!-- Editor container -->
-    <div ref="editorContainer" class="flex-1 relative">
+    <div v-show="!(markdownPreview && isMarkdownFile)" ref="editorContainer" class="flex-1 relative">
       <!-- Empty state when no files -->
       <div v-if="tabs.length === 0"
            class="flex flex-col items-center justify-center h-full">
@@ -41,13 +59,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, onUnmounted, nextTick, shallowRef, markRaw } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount, onUnmounted, nextTick, shallowRef, markRaw } from 'vue';
 import * as monaco from 'monaco-editor';
+import MarkdownIt from 'markdown-it';
 import type { FileDiff } from '../../engine/types';
 import BreadcrumbBar from './BreadcrumbBar.vue';
 import InlineEditBar from './InlineEditBar.vue';
 import { getMonacoTheme, detectLanguage } from './monacoSetup';
 import { useEditorStore } from '../../stores/editor';
+
+const md = new MarkdownIt({ html: true, linkify: true, breaks: false });
 
 // ── Emits ─────────────────────────────────────────────────────────────────
 
@@ -81,6 +102,21 @@ const editorContainer = ref<HTMLDivElement | null>(null);
 const inlineEditBar = ref<InstanceType<typeof InlineEditBar> | null>(null);
 
 const editorStore = useEditorStore();
+
+// Markdown preview state
+const markdownPreview = ref(false);
+const isMarkdownFile = computed(() => {
+  const f = activeFile.value;
+  return f.endsWith('.md') || f.endsWith('.mdx') || f.endsWith('.markdown');
+});
+const fileContent = computed(() => {
+  const tab = findTab(activeFile.value);
+  return tab?.model?.getValue() ?? '';
+});
+const markdownHtml = computed(() => {
+  if (!isMarkdownFile.value || !markdownPreview.value) return '';
+  return md.render(fileContent.value);
+});
 
 let editor: monaco.editor.IStandaloneCodeEditor | null = null;
 let mounted = true;
@@ -526,5 +562,96 @@ defineExpose({
 }
 .diff-removed-gutter {
   border-left: 3px solid rgba(243, 139, 168, 0.6);
+}
+
+/* Markdown preview */
+.markdown-preview {
+  padding: 16px 24px;
+  color: var(--text-primary);
+}
+.markdown-preview .message-content {
+  font-size: 13px;
+  line-height: 1.65;
+  max-width: 800px;
+}
+.markdown-preview .message-content p { margin-bottom: 0.65em; }
+.markdown-preview .message-content p:last-child { margin-bottom: 0; }
+.markdown-preview .message-content h1,
+.markdown-preview .message-content h2,
+.markdown-preview .message-content h3,
+.markdown-preview .message-content h4,
+.markdown-preview .message-content h5,
+.markdown-preview .message-content h6 {
+  font-weight: 600;
+  line-height: 1.3;
+  margin-top: 1em;
+  margin-bottom: 0.35em;
+}
+.markdown-preview .message-content h1 { font-size: 1.3em; color: var(--text-primary); }
+.markdown-preview .message-content h2 { font-size: 1.15em; color: var(--accent-mauve); }
+.markdown-preview .message-content h3 { font-size: 1.05em; color: var(--text-primary); }
+.markdown-preview .message-content strong { font-weight: 600; color: var(--text-primary); }
+.markdown-preview .message-content em { font-style: italic; color: var(--text-secondary); }
+.markdown-preview .message-content :not(pre) > code {
+  font-family: var(--font-mono);
+  font-size: 0.87em;
+  background: var(--bg-raised);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+.markdown-preview .message-content pre {
+  background: var(--bg-base);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 12px 16px;
+  overflow-x: auto;
+  margin: 8px 0;
+  line-height: 1.55;
+}
+.markdown-preview .message-content pre code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.markdown-preview .message-content ul,
+.markdown-preview .message-content ol {
+  padding-left: 1.5em;
+  margin: 0.4em 0 0.65em;
+}
+.markdown-preview .message-content li { margin: 0.25em 0; line-height: 1.55; }
+.markdown-preview .message-content ul > li { list-style-type: disc; }
+.markdown-preview .message-content ol > li { list-style-type: decimal; }
+.markdown-preview .message-content blockquote {
+  border-left: 3px solid var(--accent-mauve);
+  padding: 4px 12px;
+  margin: 8px 0;
+  color: var(--text-secondary);
+}
+.markdown-preview .message-content hr {
+  border: none;
+  border-top: 1px solid var(--border-subtle);
+  margin: 12px 0;
+}
+.markdown-preview .message-content table {
+  border-collapse: collapse;
+  margin: 10px 0;
+  width: 100%;
+  font-size: 12px;
+}
+.markdown-preview .message-content th,
+.markdown-preview .message-content td {
+  border: 1px solid var(--border-standard);
+  padding: 5px 10px;
+  text-align: left;
+}
+.markdown-preview .message-content th {
+  background: var(--bg-raised);
+  font-weight: 600;
+}
+.markdown-preview .message-content a {
+  color: var(--accent-blue);
+  text-decoration: none;
+}
+.markdown-preview .message-content a:hover {
+  text-decoration: underline;
 }
 </style>
