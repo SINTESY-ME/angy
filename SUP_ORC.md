@@ -107,6 +107,205 @@ d2-implementer-3     (specialist at depth 2)
 
 ---
 
+## Feature: Strict JSON Handoffs
+
+All `done()` calls — from specialists and sub-orchestrators alike — must return a
+structured artifact instead of a plain string. This prevents context dilution as
+summaries bubble up the tree and makes outputs machine-readable.
+
+### Schema
+
+```typescript
+export interface AgentHandoff {
+  status: 'success' | 'partial' | 'failed';
+  summary: string;                  // human-readable, ≤ 300 chars
+  artifacts: string[];              // file paths written/modified
+  unresolved_dependencies: string[]; // blockers the parent must handle
+  metadata?: Record<string, string>; // e.g. { testsPassed: "12", coverage: "87%" }
+}
+```
+
+### Enforcement
+
+- The MCP `done(summary)` tool is replaced by `done(result: AgentHandoff)`.
+- The orchestrator's system prompt instructs: *"Your final `done()` call must be a
+  valid JSON object matching the AgentHandoff schema. Do not return plain prose."*
+- `checkAllChildrenDone()` parses each child's output with `JSON.parse()`. If parsing
+  fails, it feeds back an error: *"Your done() output was not valid JSON. Re-call done()
+  with the correct schema."*
+- The root orchestrator's `completed` event payload changes from `{ summary: string }`
+  to `{ handoff: AgentHandoff }`.
+
+### Aggregation Up the Tree
+
+A sub-orchestrator that receives three `AgentHandoff` objects from its children merges
+them before calling its own `done()`:
+
+```typescript
+// Pseudo-logic inside sub-orchestrator's checkAllChildrenDone()
+const merged: AgentHandoff = {
+  status: children.every(c => c.status === 'success') ? 'success' : 'partial',
+  summary: children.map(c => c.summary).join('; '),
+  artifacts: children.flatMap(c => c.artifacts),
+  unresolved_dependencies: children.flatMap(c => c.unresolved_dependencies),
+};
+```
+
+---
+
+## Feature: Session Resumability
+
+Long-running orchestrations (CI pipelines, multi-hour codegen) must survive process
+restarts, app quits, and webhook-triggered wake-ups.
+
+### Persistent Checkpoint File
+
+On every phase transition and after every delegation batch, the orchestrator serializes
+its full state to disk:
+
+```typescript
+export interface OrchestratorSnapshot {
+  version: 1;
+  snapshotId: string;         // UUID
+  savedAt: string;            // ISO timestamp
+  goal: string;
+  depth: number;
+  maxDepth: number;
+  teamId: string;
+  sessionId: string;
+  currentPhase: string;
+  totalDelegations: number;
+  autoCommit: boolean;
+  pendingChildren: PendingChildSnapshot[];
+  completedHandoffs: AgentHandoff[];
+}
+
+export interface PendingChildSnapshot {
+  sessionId: string;
+  role: string;
+  agentName: string;
+  completed: boolean;
+  handoff?: AgentHandoff;
+}
+```
+
+File path: `~/.angy/snapshots/<teamId>.json`
+
+### Resume Flow
+
+```typescript
+// New static method
+static async resume(snapshotId: string, chatPanel: OrchestratorChatPanelAPI): Promise<Orchestrator>
+```
+
+1. Load snapshot from `~/.angy/snapshots/<snapshotId>.json`.
+2. Re-instantiate `Orchestrator` with saved `depth`, `maxDepth`, `teamId`.
+3. Restore `pendingChildren` map.
+4. For each child that was `completed: false`, check if the Claude session produced
+   output while the app was closed (`sessionFinalOutput()`). If yes, call
+   `onDelegateFinished()` to replay the result.
+5. If the session is gone (app was force-quit mid-run), re-issue the delegation with
+   the original task — `resumeSessionId` is passed to the new Claude CLI invocation.
+
+### UI
+
+- The "New Orchestration" dialog shows a list of resumable snapshots with timestamp,
+  goal preview, and current phase.
+- A "Resume" button re-attaches the orchestrator to the existing fleet without
+  creating a new root session.
+
+---
+
+## Feature: Multiverse Execution
+
+For high-stakes decisions (architecture choices, algorithm selection), the orchestrator
+spawns N isolated branches in parallel, evaluates them against a rubric, and merges
+the winner.
+
+### New MCP Tool — `branch(n, goal, evaluator)`
+
+Only available at Depth 0 (no branching inside branches to avoid exponential blowup).
+
+```typescript
+// Tool signature exposed to root orchestrator
+branch(
+  n: number,          // number of parallel branches (2–4)
+  goal: string,       // what each branch should produce
+  evaluator: string,  // shell command that scores a branch, e.g. "npm test -- --json"
+): void
+```
+
+### Execution
+
+1. For each branch `i` in `[0..n)`:
+   - Create a git worktree at `~/.angy/branches/<teamId>/branch-<i>`.
+   - Spawn a child `Orchestrator` (or specialist) scoped to that worktree.
+2. Wait for all branches to return `AgentHandoff` objects.
+3. Run `evaluator` command in each worktree. Capture exit code + stdout score.
+4. Pick the branch with the best score.
+5. `git merge --squash` the winning worktree into the main workspace.
+6. Clean up losing worktrees.
+7. Feed result back to root orchestrator as a standard delegation result.
+
+### Guardrails
+
+- Max `n = 4` (hardcoded).
+- Branching is forbidden when `depth > 0`.
+- Each branch inherits the root's `MAX_TOTAL_DELEGATIONS` budget divided by `n`.
+
+---
+
+## Feature: MCP Standardization
+
+The `spawn_orchestrator` and `delegate` tools are designed so a child agent can be
+hosted locally **or** be a remote MCP endpoint — the orchestrator does not need to
+know which.
+
+### Abstract Agent Endpoint
+
+```typescript
+export interface AgentEndpoint {
+  type: 'local' | 'remote';
+  // local: spawns a new Orchestrator/specialist in-process
+  profileId?: string;
+  // remote: calls an external MCP-compliant agent service
+  url?: string;
+  apiKey?: string;
+  schema?: object; // JSON Schema for validating the remote agent's handoff
+}
+```
+
+### Remote Delegation Flow
+
+When `endpoint.type === 'remote'`:
+1. POST `{ task, context, schema: AgentHandoff }` to `endpoint.url`.
+2. Poll or subscribe (SSE/webhook) for the result.
+3. Validate the response against `AgentHandoff` schema.
+4. Feed the handoff back into `onDelegateFinished()` exactly like a local child.
+
+### Registry
+
+A future `~/.angy/agent-registry.json` maps role names to endpoints:
+
+```json
+{
+  "auth-specialist": {
+    "type": "remote",
+    "url": "https://agents.example.com/auth",
+    "apiKey": "..."
+  },
+  "implementer": {
+    "type": "local",
+    "profileId": "specialist-implementer"
+  }
+}
+```
+
+The orchestrator's `executeDelegation` resolves the role against the registry before
+deciding whether to call `delegateToChild()` locally or issue an HTTP request.
+
+---
+
 ## Traps to Avoid
 
 ### "Middle Management" Problem
@@ -129,14 +328,21 @@ counter passed down through options.
 
 ## Rollout Phases
 
-| Phase | Scope |
-|-------|-------|
-| 1 | Add `depth`/`maxDepth` to `Orchestrator` constructor. No behavior change yet. |
-| 2 | Add `spawn_orchestrator` to MCP server. Gate it behind `depth < maxDepth`. |
-| 3 | Wire `executeDelegation` to detect `role === 'orchestrator'` and spin up child `Orchestrator`. |
-| 4 | Implement depth-aware system prompt (tool gating + "when to spawn" constraint). |
-| 5 | Add depth labels to agent names and UI fleet view. |
-| 6 | (Optional) Artifact store for context-loss mitigation. |
+| Phase | Feature | Scope |
+|-------|---------|-------|
+| 1 | Recursive core | Add `depth`/`maxDepth` to `Orchestrator` constructor. No behavior change yet. |
+| 2 | Recursive core | Add `spawn_orchestrator` to MCP server. Gate it behind `depth < maxDepth`. |
+| 3 | Recursive core | Wire `executeDelegation` to detect `role === 'orchestrator'` and spin up child `Orchestrator`. |
+| 4 | Recursive core | Implement depth-aware system prompt (tool gating + "when to spawn" constraint). |
+| 5 | Recursive core | Add depth labels to agent names and fleet view. |
+| 6 | Strict JSON | Replace `done(summary: string)` with `done(result: AgentHandoff)` in MCP + parsing. |
+| 7 | Strict JSON | Update `checkAllChildrenDone()` to parse, validate, and merge `AgentHandoff` objects. |
+| 8 | Resumability | Implement `OrchestratorSnapshot` serialization on every phase transition. |
+| 9 | Resumability | Implement `Orchestrator.resume()` static method + UI resume dialog. |
+| 10 | Multiverse | Add `branch(n, goal, evaluator)` MCP tool + git worktree management. |
+| 11 | Multiverse | Implement branch evaluator runner + winner merge logic. |
+| 12 | MCP Standard | Define `AgentEndpoint` interface + remote delegation HTTP path. |
+| 13 | MCP Standard | Implement `agent-registry.json` resolution in `executeDelegation`. |
 
 ---
 
@@ -145,3 +351,6 @@ counter passed down through options.
 - Should `maxDepth` be user-configurable in the UI (e.g. a slider 1–4)?
 - Should sub-orchestrators share the parent's `autoCommit`/`gitAvailable` state?
 - Should the fleet view visually indent by depth to show the tree structure?
+- Should `AgentHandoff` be versioned so remote agents from different versions stay compatible?
+- Should the branch evaluator support a scoring LLM (judge model) in addition to shell commands?
+- Should resumable snapshots have a TTL (e.g. auto-delete after 7 days)?
