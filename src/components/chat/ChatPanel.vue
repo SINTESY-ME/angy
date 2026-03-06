@@ -1,0 +1,743 @@
+<template>
+  <div class="flex flex-col h-full bg-[var(--bg-base)]">
+    <!-- Loading spinner (shown while loading history from DB) -->
+    <div
+      v-if="isLoadingHistory"
+      class="flex-1 flex items-center justify-center"
+    >
+      <div class="flex flex-col items-center gap-3">
+        <div class="w-6 h-6 border-2 border-[var(--accent-teal)] border-t-transparent rounded-full animate-spin" />
+        <span class="text-[11px] text-[var(--text-muted)]">Loading conversation...</span>
+      </div>
+    </div>
+
+    <!-- Welcome screen (shown when no messages for active session) -->
+    <WelcomeScreen v-if="!isLoadingHistory && activeMessages.length === 0 && !isProcessing" />
+
+    <!-- Messages area -->
+    <div
+      ref="messagesContainer"
+      class="flex-1 overflow-y-auto"
+      v-show="activeMessages.length > 0 || isProcessing"
+    >
+      <div class="max-w-[860px] mx-auto py-8 px-6 space-y-5">
+        <template v-for="item in groupedMessages" :key="item.id">
+          <!-- AskUserQuestion → QuestionWidget -->
+          <QuestionWidget
+            v-if="item.type === 'question'"
+            :question="extractQuestion(item.msg.toolInput!)"
+            :options="extractOptions(item.msg.toolInput!)"
+            :session-id="activeSessionId || ''"
+            :answered="item.msg.questionAnswered ?? false"
+            @answer="(opt: string) => onQuestionAnswer(item.msg, opt)"
+          />
+          <!-- Tool call group → ToolCallGroup card -->
+          <ToolCallGroup
+            v-else-if="item.type === 'tool-group'"
+            :calls="item.calls"
+            :expanded-by-default="item.expandedByDefault"
+          />
+          <!-- User / assistant message -->
+          <ChatMessage
+            v-else
+            :role="item.msg.role"
+            :content="item.msg.content"
+            :turn-id="item.msg.turnId"
+            :tool-name="item.msg.toolName"
+            :timestamp="item.msg.timestamp"
+            :images="item.msg.images"
+            :thinking-content="item.msg.thinkingContent"
+            :thinking-elapsed-ms="item.msg.thinkingElapsedMs"
+            :thinking-streaming="item.msg.thinkingStreaming"
+            @navigate="onNavigate"
+            @revert="onRevert"
+            @apply-code="onApplyCode"
+          />
+        </template>
+        <ThinkingIndicator v-if="isThinking" />
+      </div>
+    </div>
+
+    <!-- Input bar -->
+    <InputBar
+      ref="inputBar"
+      :processing="isProcessing"
+      :workspacePath="ui.workspacePath"
+      @send="onSend"
+      @stop="onStop"
+    >
+      <template #footer-left>
+        <ModeSelector v-model="currentMode" />
+        <ModelSelector v-model="ui.currentModel" />
+        <ProfileSelector v-model="selectedProfiles" />
+        <button
+          @click="orchestrateMode = !orchestrateMode"
+          class="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded border cursor-pointer transition-colors"
+          :class="orchestrateMode
+            ? 'text-[var(--accent-mauve)] bg-[color-mix(in_srgb,var(--accent-mauve)_15%,transparent)] border-[color-mix(in_srgb,var(--accent-mauve)_30%,transparent)]'
+            : 'text-[var(--text-muted)] bg-[var(--bg-surface)] border-[var(--border-subtle)] hover:text-[var(--text-secondary)]'"
+          title="Orchestrate: delegate work to specialist agents"
+        >
+          <span>Orchestrate</span>
+          <span v-if="orchestrateMode" class="text-[8px]">&#x25bc;</span>
+        </button>
+      </template>
+    </InputBar>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, computed, nextTick, watch } from 'vue';
+import ChatMessage from './ChatMessage.vue';
+import ThinkingIndicator from './ThinkingIndicator.vue';
+import QuestionWidget from './QuestionWidget.vue';
+import ToolCallGroup from './ToolCallGroup.vue';
+import type { ToolCallInfo } from './ToolCallGroup.vue';
+import WelcomeScreen from './WelcomeScreen.vue';
+import InputBar from '../input/InputBar.vue';
+import ModeSelector from '../input/ModeSelector.vue';
+import ModelSelector from '../input/ModelSelector.vue';
+import ProfileSelector from '../input/ProfileSelector.vue';
+import { useSessionsStore, getDatabase } from '../../stores/sessions';
+import { useFleetStore } from '../../stores/fleet';
+import { useUiStore } from '../../stores/ui';
+import { sendMessageToEngine, sendToolResultToEngine, cancelProcess, type ChatPanelHandle } from '../../composables/useEngine';
+import { ORCHESTRATOR_SYSTEM_PROMPT } from '../../engine/Orchestrator';
+import type { AgentStatus, AttachedContext, AttachedImage, MessageRecord } from '../../engine/types';
+
+// ── Message type ──────────────────────────────────────────────────────────
+
+interface ChatMsg {
+  id: string;
+  role: 'user' | 'assistant' | 'tool';
+  content: string;
+  turnId: number;
+  toolName?: string;
+  toolId?: string;
+  toolInput?: Record<string, any>;
+  timestamp: number;
+  images?: string[];
+  thinkingContent?: string;
+  thinkingElapsedMs?: number;
+  thinkingStreaming?: boolean;
+  questionAnswered?: boolean;
+}
+
+// ── Per-session state ────────────────────────────────────────────────────
+
+interface SessionState {
+  messages: ChatMsg[];
+  turnCounter: number;
+  lastPersistedTurnId: number;
+  currentAssistantMsgId: string | null;
+  isProcessing: boolean;
+  isThinking: boolean;
+  isLoadingHistory: boolean;
+  editCount: number;
+  lastActivity: string;
+  costUsd: number;
+  realClaudeSessionId: string | null;
+  // Thinking accumulation
+  pendingThinkingContent: string;
+  thinkingStartTime: number;
+}
+
+// ── Emits ────────────────────────────────────────────────────────────────
+
+const emit = defineEmits<{
+  'active-session-changed': [sessionId: string];
+  'session-list-changed': [];
+  'agent-activity-changed': [sessionId: string, activity: string];
+  'file-edited': [sessionId: string, filePath: string, toolName: string, toolInput?: Record<string, any>];
+  'orchestrate-requested': [goal: string];
+  'orchestrate-started': [sessionId: string];
+}>();
+
+// ── Stores ───────────────────────────────────────────────────────────────
+
+const sessionsStore = useSessionsStore();
+const fleetStore = useFleetStore();
+const ui = useUiStore();
+
+// ── Selector state ──────────────────────────────────────────────────────
+const currentMode = ref('agent');
+const selectedProfiles = ref<string[]>([]);
+const orchestrateMode = ref(false);
+
+// ── State ────────────────────────────────────────────────────────────────
+
+const sessionStates = ref<Map<string, SessionState>>(new Map());
+const messagesContainer = ref<HTMLElement | null>(null);
+const inputBar = ref<InstanceType<typeof InputBar> | null>(null);
+
+// ── Computed: active session's messages ──────────────────────────────────
+
+const activeSessionId = computed(() => sessionsStore.activeSessionId);
+
+const activeState = computed((): SessionState | null => {
+  if (!activeSessionId.value) return null;
+  return sessionStates.value.get(activeSessionId.value) ?? null;
+});
+
+const activeMessages = computed((): ChatMsg[] => {
+  return activeState.value?.messages ?? [];
+});
+
+const isProcessing = computed((): boolean => {
+  return activeState.value?.isProcessing ?? false;
+});
+
+const isThinking = computed((): boolean => {
+  return activeState.value?.isThinking ?? false;
+});
+
+const isLoadingHistory = computed((): boolean => {
+  return activeState.value?.isLoadingHistory ?? false;
+});
+
+function setLoadingHistory(sessionId: string, loading: boolean) {
+  const state = getOrCreateState(sessionId);
+  state.isLoadingHistory = loading;
+}
+
+// ── Grouped messages (groups consecutive non-edit tool calls) ─────────────
+
+const EDIT_TOOLS = new Set(['Edit', 'Write', 'StrReplace', 'MultiEdit', 'NotebookEdit']);
+
+type GroupedItem =
+  | { type: 'message'; msg: ChatMsg; id: string }
+  | { type: 'question'; msg: ChatMsg; id: string }
+  | { type: 'tool-group'; calls: ToolCallInfo[]; expandedByDefault: boolean; id: string };
+
+const groupedMessages = computed((): GroupedItem[] => {
+  const result: GroupedItem[] = [];
+  let pendingGroup: ToolCallInfo[] = [];
+  let pendingGroupId = '';
+
+  const flushGroup = () => {
+    if (pendingGroup.length > 0) {
+      result.push({
+        type: 'tool-group',
+        calls: [...pendingGroup],
+        expandedByDefault: false,
+        id: `tg-${pendingGroupId}`,
+      });
+      pendingGroup = [];
+      pendingGroupId = '';
+    }
+  };
+
+  for (const msg of activeMessages.value) {
+    if (msg.role === 'tool') {
+      if (msg.toolName === 'AskUserQuestion') {
+        flushGroup();
+        result.push({ type: 'question', msg, id: msg.id });
+        continue;
+      }
+
+      const isEdit = EDIT_TOOLS.has(msg.toolName ?? '');
+      const input = msg.toolInput ?? {};
+      const filePath = String(input.file_path ?? input.path ?? '') || undefined;
+      let newString: string | undefined;
+      if (isEdit) {
+        newString = String(input.new_string ?? input.content ?? input.contents ?? '') || undefined;
+        // Truncate large Write tool content to first 20 lines
+        if (newString && msg.toolName === 'Write' && newString.split('\n').length > 30) {
+          const lines = newString.split('\n');
+          newString = lines.slice(0, 20).join('\n') + `\n... (${lines.length - 20} more lines)`;
+        }
+      }
+
+      const call: ToolCallInfo = {
+        toolName: msg.toolName ?? 'Tool',
+        filePath,
+        summary: msg.content,
+        isEdit,
+        oldString: isEdit ? String(input.old_string ?? '') || undefined : undefined,
+        newString,
+      };
+
+      if (isEdit) {
+        flushGroup();
+        result.push({
+          type: 'tool-group',
+          calls: [call],
+          expandedByDefault: true,
+          id: `tg-${msg.id}`,
+        });
+      } else {
+        if (pendingGroup.length === 0) pendingGroupId = msg.id;
+        pendingGroup.push(call);
+      }
+    } else {
+      flushGroup();
+      result.push({ type: 'message', msg, id: msg.id });
+    }
+  }
+
+  flushGroup();
+  return result;
+});
+
+// ── Auto-scroll ──────────────────────────────────────────────────────────
+
+function scrollToBottom() {
+  nextTick(() => {
+    const el = messagesContainer.value;
+    if (el) {
+      el.scrollTop = el.scrollHeight;
+    }
+  });
+}
+
+watch(
+  () => activeMessages.value.length,
+  () => scrollToBottom(),
+);
+
+// ── Session management ───────────────────────────────────────────────────
+
+function getOrCreateState(sessionId: string): SessionState {
+  let state = sessionStates.value.get(sessionId);
+  if (!state) {
+    state = {
+      messages: [],
+      turnCounter: 0,
+      lastPersistedTurnId: 0,
+      currentAssistantMsgId: null,
+      isProcessing: false,
+      isThinking: false,
+      isLoadingHistory: false,
+      editCount: 0,
+      lastActivity: '',
+      costUsd: 0,
+      realClaudeSessionId: null,
+      pendingThinkingContent: '',
+      thinkingStartTime: 0,
+    };
+    sessionStates.value.set(sessionId, state);
+  }
+  return state;
+}
+
+function selectSession(sessionId: string) {
+  sessionsStore.selectSession(sessionId);
+  getOrCreateState(sessionId);
+  emit('active-session-changed', sessionId);
+  scrollToBottom();
+  nextTick(() => inputBar.value?.focus());
+}
+
+function newChat(workspace = ''): string {
+  const sessionId = sessionsStore.createSession(workspace || ui.workspacePath || '.');
+  getOrCreateState(sessionId);
+  sessionsStore.selectSession(sessionId);
+  fleetStore.rebuildFromSessions();
+  emit('session-list-changed');
+  emit('active-session-changed', sessionId);
+  nextTick(() => inputBar.value?.focus());
+  return sessionId;
+}
+
+// ── Actions ──────────────────────────────────────────────────────────────
+
+// ── ChatPanel handle for engine bridge ──────────────────────────────────
+const chatPanelHandle: ChatPanelHandle = {
+  appendTextDelta,
+  appendThinkingDelta,
+  addToolUse,
+  markDone,
+  showError,
+  setThinking,
+  setRealSessionId,
+  onFileEdited,
+};
+
+function onFileEdited(sessionId: string, filePath: string, toolName: string, toolInput?: Record<string, any>) {
+  emit('file-edited', sessionId, filePath, toolName, toolInput);
+}
+
+function setRealSessionId(sessionId: string, realId: string) {
+  const state = sessionStates.value.get(sessionId);
+  if (state) {
+    state.realClaudeSessionId = realId;
+  }
+}
+
+/**
+ * Build the structured orchestrator prompt that wraps the user's goal.
+ * This matches the C++ version's Orchestrator::start() initial message format.
+ * Claude sees this as the user message and is forced to use MCP tools.
+ */
+function buildOrchestratorPrompt(goal: string): string {
+  return (
+    `# Goal\n\n${goal}\n\n` +
+    `# Instructions\n\n` +
+    `You are an autonomous orchestrator. Analyze this goal and begin working toward it.\n\n` +
+    `You MUST use the provided tools to act. Available tools:\n` +
+    `- \`delegate(role, task)\` — assign work to architect/implementer/reviewer/tester\n` +
+    `- \`validate(command, description)\` — run a shell command to verify the work\n` +
+    `- \`done(summary)\` — report the goal is fully achieved\n` +
+    `- \`fail(reason)\` — report unrecoverable failure\n\n` +
+    `You may call MULTIPLE delegate tools in a single turn to run agents in parallel.\n` +
+    `For example, after the architect finishes, delegate to both a backend implementer ` +
+    `and a frontend implementer simultaneously.\n\n` +
+    `For validate, done, and fail — call exactly ONE tool per turn.\n\n` +
+    `Start by delegating to an architect to design the solution.`
+  );
+}
+
+function onSend(text: string, _contexts?: AttachedContext[], _images?: AttachedImage[]) {
+  // Orchestrate mode: send normally but with 'orchestrator' mode (one-shot toggle)
+  const isOrchestrate = orchestrateMode.value;
+  const effectiveMode = isOrchestrate ? 'orchestrator' : currentMode.value;
+  if (isOrchestrate) {
+    orchestrateMode.value = false;
+  }
+
+  let sid = activeSessionId.value;
+  if (!sid) {
+    sid = newChat();
+  }
+
+  // Emit orchestrate-started BEFORE sending so App.vue can register interceptors
+  if (isOrchestrate) {
+    emit('orchestrate-started', sid);
+  }
+
+  const state = getOrCreateState(sid);
+  state.turnCounter++;
+  state.isProcessing = true;
+  state.isThinking = true;
+  state.currentAssistantMsgId = null;
+
+  // Build image payload for engine
+  const imagePayload = _images && _images.length > 0
+    ? _images.map(img => ({
+        data: img.data,
+        mediaType: `image/${img.format.toLowerCase() === 'jpg' ? 'jpeg' : img.format.toLowerCase()}`,
+      }))
+    : undefined;
+
+  const now = Date.now();
+  state.messages.push({
+    id: `msg-${now}-user`,
+    role: 'user',
+    content: text,
+    turnId: state.turnCounter,
+    timestamp: now,
+    images: _images?.length
+      ? _images.map(img => `data:image/${img.format};base64,${img.data}`)
+      : undefined,
+  });
+
+  // Persist user message to DB
+  const db = getDatabase();
+  db.saveMessage({
+    sessionId: sid,
+    role: 'user',
+    content: text,
+    turnId: state.turnCounter,
+    timestamp: Math.floor(now / 1000),
+  });
+  // Persist session if new
+  sessionsStore.persistSession(sid);
+
+  scrollToBottom();
+
+  // Update fleet status
+  updateFleetStatus(sid, 'working', isOrchestrate ? 'Orchestrating...' : 'Sending message...');
+
+  // For orchestrate mode, wrap the user's goal in the structured orchestrator prompt.
+  // The UI shows the original text, but Claude receives the full prompt with instructions.
+  const engineMessage = isOrchestrate ? buildOrchestratorPrompt(text) : text;
+
+  // Actually spawn ClaudeProcess and wire events
+  sendMessageToEngine(sid, engineMessage, chatPanelHandle, {
+    workingDir: ui.workspacePath || '.',
+    mode: effectiveMode,
+    model: ui.currentModel,
+    systemPrompt: isOrchestrate ? ORCHESTRATOR_SYSTEM_PROMPT : undefined,
+    resumeSessionId: state.realClaudeSessionId || undefined,
+    images: imagePayload,
+  });
+}
+
+function onStop() {
+  const sid = activeSessionId.value;
+  if (!sid) return;
+
+  cancelProcess(sid);
+
+  const state = sessionStates.value.get(sid);
+  if (state) {
+    state.isProcessing = false;
+    state.isThinking = false;
+  }
+
+  updateFleetStatus(sid, 'idle', '');
+}
+
+function onNavigate(payload: { filePath: string; line?: number }) {
+  console.log('Navigate to:', payload.filePath, 'line:', payload.line);
+}
+
+function onRevert(turnId: number) {
+  console.log('Revert to turn:', turnId);
+}
+
+function onApplyCode(payload: { code: string; language: string }) {
+  console.log('Apply code:', payload.language);
+}
+
+// ── Engine event handlers (called by parent/engine) ──────────────────────
+
+function appendThinkingDelta(sessionId: string, text: string) {
+  const state = getOrCreateState(sessionId);
+  state.pendingThinkingContent += text;
+}
+
+function appendTextDelta(sessionId: string, text: string) {
+  const state = getOrCreateState(sessionId);
+  state.isThinking = false;
+
+  if (!state.currentAssistantMsgId) {
+    state.turnCounter++;
+    state.currentAssistantMsgId = `msg-${Date.now()}-assistant`;
+
+    // Attach accumulated thinking content to this assistant message
+    const thinkingContent = state.pendingThinkingContent || undefined;
+    const thinkingElapsedMs = state.thinkingStartTime > 0
+      ? Date.now() - state.thinkingStartTime
+      : undefined;
+
+    state.messages.push({
+      id: state.currentAssistantMsgId,
+      role: 'assistant',
+      content: text,
+      turnId: state.turnCounter,
+      timestamp: Date.now(),
+      thinkingContent,
+      thinkingElapsedMs,
+    });
+
+    // Reset thinking accumulation
+    state.pendingThinkingContent = '';
+    state.thinkingStartTime = 0;
+  } else {
+    const msg = state.messages.find((m) => m.id === state.currentAssistantMsgId);
+    if (msg) {
+      msg.content += text;
+    }
+  }
+
+  if (sessionId === activeSessionId.value) scrollToBottom();
+}
+
+function addToolUse(sessionId: string, toolName: string, summary: string, toolInput?: Record<string, any>, toolId?: string) {
+  const state = getOrCreateState(sessionId);
+  state.isThinking = false;
+  state.currentAssistantMsgId = null;
+
+  state.turnCounter++;
+  state.messages.push({
+    id: `msg-${Date.now()}-tool-${toolName}`,
+    role: 'tool',
+    content: summary,
+    turnId: state.turnCounter,
+    toolName,
+    toolId,
+    toolInput,
+    timestamp: Date.now(),
+  });
+
+  // Track edit count
+  if (toolName === 'Edit' || toolName === 'Write' || toolName === 'StrReplace' || toolName === 'MultiEdit') {
+    state.editCount++;
+  }
+  state.lastActivity = `${toolName}: ${summary.substring(0, 50)}`;
+
+  // Update fleet
+  updateFleetStatus(sessionId, 'working', state.lastActivity);
+
+  if (sessionId === activeSessionId.value) scrollToBottom();
+}
+
+function markDone(sessionId: string) {
+  const state = sessionStates.value.get(sessionId);
+  if (state) {
+    // Persist any unsaved assistant/tool messages from this turn batch
+    const db = getDatabase();
+    for (const msg of state.messages) {
+      if (msg.id.startsWith('db-')) continue; // Already from DB
+      if (msg.role !== 'user' && msg.turnId > state.lastPersistedTurnId) {
+        db.saveMessage({
+          sessionId,
+          role: msg.role,
+          content: msg.content,
+          toolName: msg.toolName,
+          toolInput: msg.toolInput ? JSON.stringify(msg.toolInput) : undefined,
+          turnId: msg.turnId,
+          timestamp: Math.floor(msg.timestamp / 1000),
+        });
+      }
+    }
+    state.lastPersistedTurnId = state.turnCounter;
+    sessionsStore.persistSession(sessionId);
+
+    state.isProcessing = false;
+    state.isThinking = false;
+    state.currentAssistantMsgId = null;
+  }
+
+  updateFleetStatus(sessionId, 'idle', '');
+
+  if (sessionId === activeSessionId.value) {
+    inputBar.value?.focus();
+  }
+}
+
+function showError(sessionId: string, errorText: string) {
+  const state = getOrCreateState(sessionId);
+  // Strip any HTML tags from error text to avoid rendering issues
+  const cleanError = errorText.replace(/<[^>]*>/g, '');
+  state.messages.push({
+    id: `msg-${Date.now()}-error`,
+    role: 'assistant',
+    content: `**Error:** ${cleanError}`,
+    turnId: state.turnCounter,
+    timestamp: Date.now(),
+  });
+  markDone(sessionId);
+}
+
+function setThinking(sessionId: string, thinking: boolean) {
+  const state = getOrCreateState(sessionId);
+  state.isThinking = thinking;
+  if (thinking) {
+    // Start tracking thinking time
+    if (state.thinkingStartTime === 0) {
+      state.thinkingStartTime = Date.now();
+      state.pendingThinkingContent = '';
+    }
+  }
+  if (thinking && sessionId === activeSessionId.value) scrollToBottom();
+}
+
+function updateCost(sessionId: string, costUsd: number) {
+  const state = getOrCreateState(sessionId);
+  state.costUsd = costUsd;
+  fleetStore.updateAgent({ sessionId, costUsd });
+}
+
+// ── Fleet status helper ──────────────────────────────────────────────────
+
+function updateFleetStatus(sessionId: string, status: AgentStatus, activity: string) {
+  fleetStore.updateAgent({ sessionId, status, activity });
+  emit('agent-activity-changed', sessionId, activity);
+}
+
+// ── QuestionWidget helpers ───────────────────────────────────────────────
+
+function extractQuestion(toolInput: Record<string, any>): string {
+  // AskUserQuestion input has a `questions` array with `question` fields
+  if (toolInput.questions && Array.isArray(toolInput.questions) && toolInput.questions.length > 0) {
+    return toolInput.questions[0].question || '';
+  }
+  // Fallback: direct question field
+  return toolInput.question || '';
+}
+
+function extractOptions(toolInput: Record<string, any>): string[] {
+  if (toolInput.questions && Array.isArray(toolInput.questions) && toolInput.questions.length > 0) {
+    const q = toolInput.questions[0];
+    if (q.options && Array.isArray(q.options)) {
+      return q.options.map((o: any) => o.label || o.value || String(o));
+    }
+  }
+  // Fallback: direct options
+  if (toolInput.options && Array.isArray(toolInput.options)) {
+    return toolInput.options.map((o: any) => o.label || o.value || String(o));
+  }
+  return [];
+}
+
+function onQuestionAnswer(msg: ChatMsg, answer: string) {
+  msg.questionAnswered = true;
+  const sid = activeSessionId.value;
+  if (!sid) return;
+
+  const state = sessionStates.value.get(sid);
+  if (!state) return;
+
+  updateFleetStatus(sid, 'working', `Answered: ${answer.substring(0, 40)}`);
+  state.isProcessing = true;
+  state.isThinking = true;
+
+  // Send the answer as a tool result back to the Claude process
+  const toolUseId = msg.toolId;
+  const resumeId = state.realClaudeSessionId;
+  if (!toolUseId || !resumeId) {
+    console.warn('Cannot send tool result: missing toolUseId or resumeSessionId');
+    return;
+  }
+
+  sendToolResultToEngine(sid, toolUseId, answer, chatPanelHandle, {
+    workingDir: ui.workspacePath || '.',
+    mode: currentMode.value,
+    model: ui.currentModel,
+    resumeSessionId: resumeId,
+  });
+}
+
+// Load a message from the database into a session's state
+function appendDbMessage(sessionId: string, msg: MessageRecord) {
+  const state = getOrCreateState(sessionId);
+  const role = (msg.role === 'user' || msg.role === 'assistant' || msg.role === 'tool')
+    ? msg.role : 'assistant';
+  // Parse toolInput from JSON string stored in DB
+  let toolInput: Record<string, any> | undefined;
+  if (msg.toolInput) {
+    try {
+      toolInput = JSON.parse(msg.toolInput);
+    } catch {
+      toolInput = undefined;
+    }
+  }
+
+  state.messages.push({
+    id: `db-${msg.id ?? Date.now()}-${state.messages.length}`,
+    role,
+    content: msg.content,
+    turnId: msg.turnId,
+    toolName: msg.toolName || undefined,
+    toolInput,
+    timestamp: msg.timestamp * 1000, // DB stores seconds, UI uses milliseconds
+  });
+  if (msg.turnId > state.turnCounter) {
+    state.turnCounter = msg.turnId;
+  }
+}
+
+// Expose methods for parent / engine integration
+defineExpose({
+  // Multi-session API
+  selectSession,
+  newChat,
+  // Per-session event handlers (sessionId-aware)
+  appendTextDelta,
+  addToolUse,
+  markDone,
+  showError,
+  setThinking,
+  updateCost,
+  // Database message loading
+  appendDbMessage,
+  setLoadingHistory,
+  // State access
+  activeMessages,
+  activeSessionId,
+  sessionStates,
+  setRealSessionId,
+});
+</script>

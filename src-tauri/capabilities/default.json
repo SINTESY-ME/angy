@@ -1,0 +1,50 @@
+{
+  "identifier": "default",
+  "description": "Default capabilities for CCCPP",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:event:default",
+    "shell:allow-open",
+    "shell:allow-stdin-write",
+    "shell:allow-kill",
+    {
+      "identifier": "shell:allow-spawn",
+      "allow": [
+        { "name": "claude", "cmd": "claude", "args": true },
+        { "name": "git", "cmd": "git", "args": true },
+        { "name": "python3", "cmd": "python3", "args": true },
+        { "name": "stdbuf", "cmd": "stdbuf", "args": true },
+        { "name": "rg", "cmd": "rg", "args": true },
+        { "name": "grep", "cmd": "grep", "args": true },
+        { "name": "exec-sh", "cmd": "/bin/sh", "args": true }
+      ]
+    },
+    {
+      "identifier": "shell:allow-execute",
+      "allow": [
+        { "name": "claude", "cmd": "claude", "args": true },
+        { "name": "git", "cmd": "git", "args": true },
+        { "name": "python3", "cmd": "python3", "args": true },
+        { "name": "exec-sh", "cmd": "/bin/sh", "args": true }
+      ]
+    },
+    "sql:default",
+    "sql:allow-load",
+    "sql:allow-select",
+    "sql:allow-execute",
+    "sql:allow-close",
+    "fs:default",
+    "fs:allow-read-file",
+    "fs:allow-read-text-file",
+    "fs:allow-write-text-file",
+    "fs:allow-exists",
+    "fs:allow-read-dir",
+    {
+      "identifier": "fs:scope",
+      "allow": [{ "path": "**" }]
+    },
+    "dialog:default",
+    "core:window:allow-set-title"
+  ]
+}

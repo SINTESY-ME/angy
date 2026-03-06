@@ -1,0 +1,462 @@
+<template>
+  <div class="input-bar bg-[var(--bg-base)]">
+    <!-- Context pills (@ mentions) -->
+    <div v-if="contexts.length > 0" class="flex flex-wrap gap-1 px-4 pt-2">
+      <div
+        v-for="(ctx, i) in contexts"
+        :key="i"
+        class="flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--bg-raised)] text-xs text-[var(--text-secondary)]"
+      >
+        <span class="truncate max-w-[200px]">{{ ctx.displayName }}</span>
+        <button
+          @click="removeContext(i)"
+          class="text-[var(--text-faint)] hover:text-[var(--accent-red)] transition-colors"
+        >
+          ×
+        </button>
+      </div>
+    </div>
+
+    <!-- Image thumbnails -->
+    <div v-if="images.length > 0" class="flex gap-2 px-4 pt-2">
+      <div
+        v-for="(img, i) in images"
+        :key="i"
+        class="relative w-16 h-16 rounded overflow-hidden border border-[var(--border-standard)]"
+      >
+        <img
+          :src="'data:image/' + img.format + ';base64,' + img.data"
+          class="w-full h-full object-cover"
+        />
+        <button
+          @click="removeImage(i)"
+          class="absolute top-0 right-0 bg-black/50 text-white text-xs px-1 hover:bg-black/70"
+        >
+          ×
+        </button>
+      </div>
+    </div>
+
+    <!-- Input container -->
+    <div class="px-4 py-4">
+      <div
+        class="relative bg-[var(--bg-raised)] rounded-xl border border-transparent ring-0 outline-none"
+      >
+        <textarea
+          ref="inputEl"
+          v-model="text"
+          @keydown="onKeydown"
+          @input="onInput"
+          @paste="onPaste"
+          @focus="focused = true"
+          @blur="focused = false"
+          @dragover.prevent
+          @drop="onDrop"
+          :placeholder="placeholder || 'Message Claude...'"
+          rows="1"
+          class="textarea-field w-full bg-transparent text-[var(--text-primary)] px-4 py-3 resize-none outline-none ring-0"
+          :style="{ height: textareaHeight + 'px', maxHeight: '150px' }"
+          :disabled="processing"
+        />
+
+        <!-- Footer with controls -->
+        <div class="flex items-center justify-between px-3 pb-3">
+          <div class="flex items-center gap-1">
+            <slot name="footer-left" />
+            <button
+              @click="openImagePicker"
+              :disabled="processing"
+              class="p-1.5 rounded-md text-[var(--text-faint)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-surface)] transition-colors cursor-pointer"
+              title="Attach images"
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="2" width="12" height="12" rx="2" />
+                <circle cx="5.5" cy="5.5" r="1" />
+                <path d="M14 10l-3-3-5 5" />
+                <path d="M14 14H4l6-6 4 4" />
+              </svg>
+            </button>
+          </div>
+          <div class="flex items-center gap-2">
+            <span v-if="text.length > 0" class="text-[10px] text-[var(--text-faint)]">
+              {{ text.length }}
+            </span>
+            <slot name="footer-right" />
+            <button
+              v-if="!processing"
+              @click="send"
+              :disabled="!canSend"
+              class="px-4 py-1.5 rounded-lg text-xs font-semibold transition-all"
+              :class="
+                canSend
+                  ? 'bg-[var(--accent-mauve)] text-[var(--bg-base)] hover:brightness-110 cursor-pointer'
+                  : 'bg-[var(--bg-surface)] text-[var(--text-faint)] cursor-not-allowed border border-[var(--border-subtle)]'
+              "
+            >
+              Send
+            </button>
+            <button
+              v-else
+              @click="$emit('stop')"
+              class="px-4 py-1.5 rounded-lg text-xs font-semibold bg-[color-mix(in_srgb,var(--accent-red)_15%,transparent)] text-[var(--accent-red)] border border-[color-mix(in_srgb,var(--accent-red)_30%,transparent)] hover:bg-[color-mix(in_srgb,var(--accent-red)_25%,transparent)] cursor-pointer transition-all"
+            >
+              Stop
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Context popup (@) -->
+    <ContextPopup
+      v-if="showContextPopup"
+      ref="contextPopupRef"
+      :query="contextQuery"
+      :workspacePath="workspacePath || ''"
+      @select="onContextSelect"
+      @close="showContextPopup = false"
+    />
+
+    <!-- Slash command popup -->
+    <SlashCommandPopup
+      v-if="showSlashPopup"
+      ref="slashPopupRef"
+      :query="slashQuery"
+      @select="onSlashSelect"
+      @close="showSlashPopup = false"
+    />
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue';
+import { open } from '@tauri-apps/plugin-dialog';
+import { readFile } from '@tauri-apps/plugin-fs';
+import { getCurrentWebview } from '@tauri-apps/api/webview';
+import ContextPopup from './ContextPopup.vue';
+import SlashCommandPopup from './SlashCommandPopup.vue';
+import type { AttachedContext, AttachedImage } from '../../engine/types';
+
+defineProps<{
+  processing: boolean;
+  placeholder?: string;
+  workspacePath?: string;
+}>();
+
+const emit = defineEmits<{
+  send: [text: string, contexts: AttachedContext[], images: AttachedImage[]];
+  stop: [];
+  'slash-command': [command: string];
+}>();
+
+// ── State ─────────────────────────────────────────────────────────────────
+
+const text = ref('');
+const focused = ref(false);
+const inputEl = ref<HTMLTextAreaElement | null>(null);
+const textareaHeight = ref(40);
+const contexts = ref<AttachedContext[]>([]);
+const images = ref<AttachedImage[]>([]);
+
+// Popup state
+const showContextPopup = ref(false);
+const contextQuery = ref('');
+const showSlashPopup = ref(false);
+const slashQuery = ref('');
+const contextPopupRef = ref<InstanceType<typeof ContextPopup> | null>(null);
+const slashPopupRef = ref<InstanceType<typeof SlashCommandPopup> | null>(null);
+
+// Track @ position for replacement
+const atStartPos = ref(-1);
+
+const MIN_HEIGHT = 40;
+const MAX_HEIGHT = 150;
+
+// ── Computed ──────────────────────────────────────────────────────────────
+
+const canSend = computed(() => {
+  return text.value.trim().length > 0 || contexts.value.length > 0 || images.value.length > 0;
+});
+
+// ── Auto-height ──────────────────────────────────────────────────────────
+
+function autoGrow() {
+  nextTick(() => {
+    const el = inputEl.value;
+    if (!el) return;
+    el.style.height = 'auto';
+    const newHeight = Math.min(Math.max(el.scrollHeight, MIN_HEIGHT), MAX_HEIGHT);
+    textareaHeight.value = newHeight;
+  });
+}
+
+watch(text, () => autoGrow());
+
+// ── Send ──────────────────────────────────────────────────────────────────
+
+function send() {
+  const trimmed = text.value.trim();
+  if (!trimmed && contexts.value.length === 0 && images.value.length === 0) return;
+  emit('send', trimmed, [...contexts.value], [...images.value]);
+  text.value = '';
+  contexts.value = [];
+  images.value = [];
+  textareaHeight.value = MIN_HEIGHT;
+  nextTick(() => autoGrow());
+}
+
+// ── Keydown ───────────────────────────────────────────────────────────────
+
+function onKeydown(e: KeyboardEvent) {
+  // Forward to popup if open
+  if (showContextPopup.value) {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter') {
+      e.preventDefault();
+      contextPopupRef.value?.onKeydown(e);
+      return;
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      showContextPopup.value = false;
+      return;
+    }
+  }
+
+  if (showSlashPopup.value) {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter') {
+      e.preventDefault();
+      slashPopupRef.value?.onKeydown(e);
+      return;
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      showSlashPopup.value = false;
+      return;
+    }
+  }
+
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    send();
+  }
+}
+
+// ── Input (detect @ and /) ─────────────────────────────────────────────
+
+function onInput() {
+  const el = inputEl.value;
+  if (!el) return;
+
+  const val = text.value;
+  const cursorPos = el.selectionStart;
+
+  // Detect @ context trigger
+  detectAtSymbol(val, cursorPos);
+
+  // Detect / slash command trigger
+  detectSlashCommand(val);
+}
+
+function detectAtSymbol(val: string, cursorPos: number) {
+  // Search backwards from cursor for @
+  const beforeCursor = val.substring(0, cursorPos);
+  const lastAt = beforeCursor.lastIndexOf('@');
+
+  if (lastAt >= 0) {
+    // Check no space between @ and cursor (allow dots, slashes for paths)
+    const afterAt = beforeCursor.substring(lastAt + 1);
+    if (!/\s/.test(afterAt) || afterAt.length === 0) {
+      showContextPopup.value = true;
+      contextQuery.value = afterAt;
+      atStartPos.value = lastAt;
+      return;
+    }
+  }
+
+  showContextPopup.value = false;
+  atStartPos.value = -1;
+}
+
+function detectSlashCommand(val: string) {
+  if (val.startsWith('/')) {
+    showSlashPopup.value = true;
+    slashQuery.value = val.substring(1).split(/\s/)[0];
+  } else {
+    showSlashPopup.value = false;
+  }
+}
+
+// ── Context selection ──────────────────────────────────────────────────
+
+function onContextSelect(filePath: string) {
+  showContextPopup.value = false;
+
+  // Remove the @query from text
+  if (atStartPos.value >= 0) {
+    const el = inputEl.value;
+    if (el) {
+      const cursorPos = el.selectionStart;
+      text.value = text.value.substring(0, atStartPos.value) + text.value.substring(cursorPos);
+    }
+  }
+  atStartPos.value = -1;
+
+  // Add context pill
+  const displayName = filePath.split('/').pop() || filePath;
+  contexts.value.push({
+    displayName,
+    fullPath: filePath,
+  });
+
+  nextTick(() => inputEl.value?.focus());
+}
+
+function removeContext(index: number) {
+  contexts.value.splice(index, 1);
+}
+
+// ── Slash command selection ────────────────────────────────────────────
+
+function onSlashSelect(commandName: string) {
+  showSlashPopup.value = false;
+  text.value = '';
+  emit('slash-command', commandName);
+  nextTick(() => inputEl.value?.focus());
+}
+
+// ── Image handling ────────────────────────────────────────────────────
+
+function onPaste(e: ClipboardEvent) {
+  const items = e.clipboardData?.items;
+  if (!items) return;
+
+  for (const item of items) {
+    if (item.type.startsWith('image/')) {
+      e.preventDefault();
+      const file = item.getAsFile();
+      if (file) {
+        readImageFile(file);
+      }
+      return;
+    }
+  }
+}
+
+function onDrop(e: DragEvent) {
+  // Only handles in-browser drags (e.g. dragging an <img> element).
+  // OS file drops from Finder are handled via Tauri's onDragDropEvent below.
+  e.preventDefault();
+  const files = e.dataTransfer?.files;
+  if (!files) return;
+  for (const file of files) {
+    if (file.type.startsWith('image/')) readImageFile(file);
+  }
+}
+
+async function loadImageFromPath(filePath: string, fileName?: string) {
+  const ext = filePath.split('.').pop()?.toLowerCase() || 'png';
+  const format = ext === 'jpg' ? 'jpeg' : ext;
+  const name = fileName || filePath.split('/').pop() || filePath.split('\\').pop() || 'image';
+  try {
+    const bytes = await readFile(filePath);
+    const base64 = uint8ArrayToBase64(bytes);
+    images.value.push({ data: base64, format, displayName: name });
+  } catch (err) {
+    console.error('Failed to read dropped image:', filePath, err);
+  }
+}
+
+function readImageFile(file: File) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    const result = reader.result as string;
+    // data:image/png;base64,xxxx
+    const match = result.match(/^data:image\/(\w+);base64,(.+)$/);
+    if (match) {
+      images.value.push({
+        data: match[2],
+        format: match[1],
+        displayName: file.name || 'pasted-image',
+      });
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+function removeImage(index: number) {
+  images.value.splice(index, 1);
+}
+
+const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp'];
+
+async function openImagePicker() {
+  const selected = await open({
+    multiple: true,
+    title: 'Select Images',
+    filters: [{ name: 'Images', extensions: IMAGE_EXTENSIONS }],
+  });
+  if (!selected) return;
+  const paths = Array.isArray(selected) ? selected : [selected];
+  for (const filePath of paths) {
+    const ext = filePath.split('.').pop()?.toLowerCase() || 'png';
+    const format = ext === 'jpg' ? 'jpeg' : ext;
+    try {
+      const bytes = await readFile(filePath);
+      const base64 = uint8ArrayToBase64(bytes);
+      const fileName = filePath.split('/').pop() || filePath.split('\\').pop() || 'image';
+      images.value.push({ data: base64, format, displayName: fileName });
+    } catch (e) {
+      console.error('Failed to read image:', filePath, e);
+    }
+  }
+}
+
+function uint8ArrayToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
+// ── Focus ─────────────────────────────────────────────────────────────
+
+function focus() {
+  inputEl.value?.focus();
+}
+
+// ── Tauri OS file drop (Finder → window) ─────────────────────────────
+
+let unlistenDrop: (() => void) | null = null;
+
+onMounted(async () => {
+  focus();
+
+  unlistenDrop = await getCurrentWebview().onDragDropEvent(async (event) => {
+    if (event.payload.type !== 'drop') return;
+    for (const filePath of event.payload.paths) {
+      const ext = filePath.split('.').pop()?.toLowerCase() ?? '';
+      if (IMAGE_EXTENSIONS.includes(ext)) {
+        await loadImageFromPath(filePath);
+      }
+    }
+  });
+});
+
+onUnmounted(() => {
+  unlistenDrop?.();
+});
+
+defineExpose({ focus });
+</script>
+
+<style scoped>
+.textarea-field {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.textarea-field::placeholder {
+  color: var(--text-faint);
+}
+</style>

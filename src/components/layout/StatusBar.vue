@@ -1,0 +1,118 @@
+<template>
+  <div class="flex items-center justify-between h-7 px-4 bg-[var(--bg-surface)] border-t border-[var(--border-subtle)] text-[10px]">
+    <!-- Left: workspace + file info -->
+    <div class="flex items-center gap-3">
+      <button
+        @click="openFolder"
+        class="text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors truncate max-w-[200px]"
+        :title="ui.workspacePath || 'Open workspace'"
+      >
+        📁 {{ workspaceLabel }}
+      </button>
+      <span v-if="ui.currentFile" class="text-[var(--text-muted)] truncate max-w-[200px]">{{ ui.currentFile }}</span>
+      <span v-if="ui.currentBranch" class="text-[var(--text-muted)]">
+        <span class="text-[var(--accent-green)]">⎇</span> {{ ui.currentBranch }}
+      </span>
+    </div>
+
+    <!-- Center: processing indicator -->
+    <div v-if="ui.isProcessing" class="flex items-center gap-1">
+      <div class="w-1.5 h-1.5 rounded-full bg-[var(--accent-green)] animate-pulse"></div>
+      <span class="text-[var(--text-muted)]">Processing</span>
+    </div>
+
+    <!-- Right: settings + view mode toggle + model -->
+    <div class="flex items-center gap-3">
+      <span class="text-[var(--text-faint)]">{{ ui.currentModel }}</span>
+      <button
+        @click="openSettings"
+        class="text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
+        title="Settings (⌘,)"
+      >
+        ⚙
+      </button>
+      <!-- Context-dependent panel toggle -->
+      <button
+        v-if="ui.viewMode === 'manager'"
+        @click="ui.toggleEffectsPanel()"
+        class="flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-medium transition-colors"
+        :class="ui.effectsPanelVisible
+          ? 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+          : 'text-[var(--text-faint)] hover:text-[var(--text-secondary)]'"
+        :title="ui.effectsPanelVisible ? 'Hide Effects' : 'Show Effects'"
+      >
+        <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3">
+          <rect x="1" y="1" width="10" height="10" rx="1.5" />
+          <path d="M8 1V11" />
+        </svg>
+        Effects
+      </button>
+      <button
+        v-else
+        @click="ui.toggleEditorChat()"
+        class="flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-medium transition-colors"
+        :class="ui.editorChatVisible
+          ? 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+          : 'text-[var(--text-faint)] hover:text-[var(--text-secondary)]'"
+        :title="ui.editorChatVisible ? 'Hide Chat' : 'Show Chat'"
+      >
+        <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3">
+          <rect x="1" y="2" width="10" height="8" rx="1.5" />
+          <path d="M3 5H9M3 7.5H6.5" />
+        </svg>
+        Chat
+      </button>
+
+      <button
+        @click="ui.toggleViewMode()"
+        class="flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[10px] font-medium transition-colors"
+        :class="ui.viewMode === 'manager'
+          ? 'bg-[color-mix(in_srgb,var(--accent-mauve)_15%,transparent)] text-[var(--accent-mauve)] hover:bg-[color-mix(in_srgb,var(--accent-mauve)_25%,transparent)]'
+          : 'bg-[color-mix(in_srgb,var(--accent-teal)_15%,transparent)] text-[var(--accent-teal)] hover:bg-[color-mix(in_srgb,var(--accent-teal)_25%,transparent)]'"
+        :title="ui.viewMode === 'manager' ? 'Switch to Editor (⌘E)' : 'Switch to Manager (⌘E)'"
+      >
+        <svg v-if="ui.viewMode === 'manager'" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3">
+          <rect x="1" y="1" width="10" height="10" rx="1.5" />
+          <path d="M4 1V11" />
+          <path d="M4 4H11" />
+        </svg>
+        <svg v-else width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3">
+          <rect x="1" y="1" width="10" height="10" rx="1.5" />
+          <path d="M4 1V11" />
+          <path d="M8 1V11" />
+        </svg>
+        {{ ui.viewMode === 'manager' ? 'Editor' : 'Manager' }}
+        <span class="text-[9px] opacity-60">⌘E</span>
+      </button>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { computed } from 'vue';
+import { open } from '@tauri-apps/plugin-dialog';
+import { useUiStore } from '../../stores/ui';
+
+const ui = useUiStore();
+
+const workspaceLabel = computed(() => {
+  if (!ui.workspacePath) return 'Open folder…';
+  const parts = ui.workspacePath.replace(/\/$/, '').split('/');
+  return parts[parts.length - 1] || ui.workspacePath;
+});
+
+async function openFolder() {
+  const selected = await open({
+    directory: true,
+    multiple: false,
+    title: 'Select Workspace Folder',
+  });
+  if (selected && typeof selected === 'string') {
+    ui.workspacePath = selected;
+  }
+}
+
+function openSettings() {
+  window.dispatchEvent(new CustomEvent('cccpp:open-settings'));
+}
+</script>

@@ -1,0 +1,37 @@
+{
+  "$schema": "https://raw.githubusercontent.com/nicoh-at/tauri-schema/main/tauri.conf.json",
+  "productName": "cccpp",
+  "version": "0.1.0",
+  "identifier": "com.cccpp.app",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:1420",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "CCCPP",
+        "width": 1400,
+        "height": 900,
+        "minWidth": 800,
+        "minHeight": 600,
+        "decorations": true,
+        "resizable": true,
+        "titleBarStyle": "Transparent",
+        "backgroundColor": "#141414"
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "plugins": {
+    "shell": {
+      "open": true
+    },
+    "sql": {},
+    "fs": {}
+  }
+}
