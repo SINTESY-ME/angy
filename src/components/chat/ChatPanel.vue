@@ -83,13 +83,12 @@
           <span v-if="orchestrateMode" class="text-[8px]">&#x25bc;</span>
         </button>
         <button
-          v-if="orchestrateMode"
           @click="ui.toggleAutoCommit()"
           class="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded border cursor-pointer transition-colors"
           :class="ui.autoCommitEnabled
             ? 'text-[var(--accent-green)] bg-[color-mix(in_srgb,var(--accent-green)_15%,transparent)] border-[color-mix(in_srgb,var(--accent-green)_30%,transparent)]'
             : 'text-[var(--text-muted)] bg-[var(--bg-surface)] border-[var(--border-subtle)] hover:text-[var(--text-secondary)]'"
-          title="Auto-Commit: automatically commit changes after each orchestrated task"
+          title="Auto-Commit: automatically commit changes after each agent turn"
         >
           <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="8" cy="8" r="3" />
@@ -506,7 +505,7 @@ function onSend(text: string, _contexts?: AttachedContext[], _images?: AttachedI
     systemPrompt: isOrchestrate ? ORCHESTRATOR_SYSTEM_PROMPT : undefined,
     resumeSessionId: state.realClaudeSessionId || undefined,
     images: imagePayload,
-    autoCommit: isOrchestrate ? ui.autoCommitEnabled : undefined,
+    autoCommit: ui.autoCommitEnabled,
   });
 }
 

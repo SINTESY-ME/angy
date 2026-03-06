@@ -5,6 +5,7 @@
  * Wires StreamParser events back to ChatPanel methods.
  */
 
+import { Command } from '@tauri-apps/plugin-shell';
 import { ClaudeProcess } from '../engine/ClaudeProcess';
 
 /**
@@ -33,6 +34,18 @@ function extractRmPaths(cmd: string): string[] {
 
 // Active processes keyed by sessionId
 const processes = new Map<string, ClaudeProcess>();
+
+async function runAutoCommit(workingDir: string): Promise<void> {
+  try {
+    const addCmd = Command.create('exec-sh', ['-c', 'git add -A'], { cwd: workingDir || undefined });
+    await addCmd.execute();
+    const commitCmd = Command.create('exec-sh', ['-c', "git commit -m 'autocommit'"], { cwd: workingDir || undefined });
+    await commitCmd.execute();
+    console.log('[AutoCommit] Committed successfully');
+  } catch (e) {
+    console.warn('[AutoCommit] Failed:', e);
+  }
+}
 
 // ── Global interceptors for orchestrator MCP tools ──────────────────────────
 
@@ -173,6 +186,11 @@ export function sendMessageToEngine(
     // Notify orchestrator of session turn completion
     if (sessionFinishedInterceptor) {
       sessionFinishedInterceptor(sessionId);
+    }
+
+    // Auto-commit for simple agent modes (orchestrator handles its own commits)
+    if (options.autoCommit && options.mode !== 'orchestrator') {
+      runAutoCommit(options.workingDir);
     }
   });
 
