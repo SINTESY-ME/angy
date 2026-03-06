@@ -594,9 +594,9 @@ function onGlobalOpenProfileEditor() {
 }
 
 onMounted(async () => {
-  window.addEventListener('cccpp:new-chat', onGlobalNewChat);
-  window.addEventListener('cccpp:open-settings', onGlobalOpenSettings);
-  window.addEventListener('cccpp:open-profile-editor', onGlobalOpenProfileEditor);
+  window.addEventListener('angy:new-chat', onGlobalNewChat);
+  window.addEventListener('angy:open-settings', onGlobalOpenSettings);
+  window.addEventListener('angy:open-profile-editor', onGlobalOpenProfileEditor);
   themeStore.loadSavedTheme();
 
   // Initialize database and load saved sessions
@@ -620,8 +620,8 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
-  window.removeEventListener('cccpp:new-chat', onGlobalNewChat);
-  window.removeEventListener('cccpp:open-settings', onGlobalOpenSettings);
-  window.removeEventListener('cccpp:open-profile-editor', onGlobalOpenProfileEditor);
+  window.removeEventListener('angy:new-chat', onGlobalNewChat);
+  window.removeEventListener('angy:open-settings', onGlobalOpenSettings);
+  window.removeEventListener('angy:open-profile-editor', onGlobalOpenProfileEditor);
 });
 </script>

@@ -33,13 +33,13 @@ export function useKeyboard() {
     // Cmd+N: New chat (emit event via custom event)
     if (meta && e.key === 'n') {
       e.preventDefault();
-      window.dispatchEvent(new CustomEvent('cccpp:new-chat'));
+      window.dispatchEvent(new CustomEvent('angy:new-chat'));
     }
 
     // Cmd+,: Open settings
     if (meta && e.key === ',') {
       e.preventDefault();
-      window.dispatchEvent(new CustomEvent('cccpp:open-settings'));
+      window.dispatchEvent(new CustomEvent('angy:open-settings'));
     }
   }
 

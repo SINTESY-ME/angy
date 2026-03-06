@@ -148,15 +148,15 @@ TOOL_ACKS = {
     "fail": "Orchestration marked as failed.",
 }
 
-INBOX_BASE = os.path.expanduser("~/.cccpp/inboxes")
+INBOX_BASE = os.path.expanduser("~/.angy/inboxes")
 
 
 def get_team_id():
-    return os.environ.get("CCCPP_TEAM_ID", "")
+    return os.environ.get("ANGY_TEAM_ID", "")
 
 
 def get_agent_name():
-    return os.environ.get("CCCPP_AGENT_NAME", "")
+    return os.environ.get("ANGY_AGENT_NAME", "")
 
 
 def handle_send_message(args):

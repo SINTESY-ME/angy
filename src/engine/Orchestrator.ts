@@ -130,7 +130,7 @@ export class Orchestrator {
   currentPhase() { return this._currentPhase; }
   totalDelegations() { return this._totalDelegations; }
 
-  // ── Install MCP server to ~/.cccpp/mcp/ and register in ~/.claude.json ───
+  // ── Install MCP server to ~/.angy/mcp/ and register in ~/.claude.json ───
 
   static async ensureMcpServerInstalled(): Promise<boolean> {
     try {
@@ -138,7 +138,7 @@ export class Orchestrator {
       const { homeDir, join, resolveResource } = await import('@tauri-apps/api/path');
 
       const home = await homeDir();
-      const mcpDir = await join(home, '.cccpp', 'mcp');
+      const mcpDir = await join(home, '.angy', 'mcp');
       const targetPath = await join(mcpDir, 'orchestrator_server.py');
       const claudeConfigPath = await join(home, '.claude.json');
 
@@ -228,7 +228,7 @@ export class Orchestrator {
       const { mkdir } = await import('@tauri-apps/plugin-fs');
       const { homeDir, join } = await import('@tauri-apps/api/path');
       const home = await homeDir();
-      await mkdir(await join(home, '.cccpp', 'inboxes', this.teamId), { recursive: true });
+      await mkdir(await join(home, '.angy', 'inboxes', this.teamId), { recursive: true });
     } catch { /* ok */ }
 
     // Create orchestrator session
@@ -289,7 +289,7 @@ export class Orchestrator {
       const { mkdir } = await import('@tauri-apps/plugin-fs');
       const { homeDir, join } = await import('@tauri-apps/api/path');
       const home = await homeDir();
-      await mkdir(await join(home, '.cccpp', 'inboxes', this.teamId), { recursive: true });
+      await mkdir(await join(home, '.angy', 'inboxes', this.teamId), { recursive: true });
     } catch { /* ok */ }
 
     console.log(`[Orchestrator] Attached to session: ${sessionId}, team: ${this.teamId}`);
@@ -688,7 +688,7 @@ export class Orchestrator {
       const { remove } = await import('@tauri-apps/plugin-fs');
       const { homeDir, join } = await import('@tauri-apps/api/path');
       const home = await homeDir();
-      await remove(await join(home, '.cccpp', 'inboxes', this.teamId), { recursive: true });
+      await remove(await join(home, '.angy', 'inboxes', this.teamId), { recursive: true });
     } catch { /* ok */ }
     this.teamId = '';
     this.pendingChildren.clear();

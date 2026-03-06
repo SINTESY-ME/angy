@@ -8,11 +8,11 @@ export const useThemeStore = defineStore('theme', () => {
   function setTheme(variant: ThemeVariant) {
     currentTheme.value = variant;
     applyTheme(variant);
-    localStorage.setItem('cccpp-theme', variant);
+    localStorage.setItem('angy-theme', variant);
   }
 
   function loadSavedTheme() {
-    const saved = localStorage.getItem('cccpp-theme') as ThemeVariant | null;
+    const saved = localStorage.getItem('angy-theme') as ThemeVariant | null;
     if (saved) setTheme(saved);
   }
 

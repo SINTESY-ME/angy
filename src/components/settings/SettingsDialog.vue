@@ -152,7 +152,7 @@ async function save() {
     const { writeTextFile } = await import('@tauri-apps/plugin-fs');
     const { homeDir, join } = await import('@tauri-apps/api/path');
     const home = await homeDir();
-    await writeTextFile(await join(home, '.cccpp', 'settings.json'), JSON.stringify(settings, null, 2));
+    await writeTextFile(await join(home, '.angy', 'settings.json'), JSON.stringify(settings, null, 2));
   } catch {}
   emit('saved', { ...settings });
   emit('close');
@@ -163,7 +163,7 @@ onMounted(async () => {
     const { readTextFile } = await import('@tauri-apps/plugin-fs');
     const { homeDir, join } = await import('@tauri-apps/api/path');
     const home = await homeDir();
-    const content = await readTextFile(await join(home, '.cccpp', 'settings.json'));
+    const content = await readTextFile(await join(home, '.angy', 'settings.json'));
     Object.assign(settings, JSON.parse(content));
   } catch {}
 });

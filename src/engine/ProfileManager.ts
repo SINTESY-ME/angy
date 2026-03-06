@@ -25,7 +25,7 @@ export class ProfileManager {
 
   async init() {
     const home = await homeDir();
-    this.profilesDir = await join(home, '.cccpp', 'profiles');
+    this.profilesDir = await join(home, '.angy', 'profiles');
     try {
       await mkdir(this.profilesDir, { recursive: true });
     } catch {}

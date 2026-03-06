@@ -11,10 +11,10 @@ export class Database {
   async open(path?: string): Promise<boolean> {
     if (!path) {
       const home = await homeDir();
-      const cccppDir = await join(home, '.cccpp');
-      // Ensure ~/.cccpp/ directory exists
-      try { await mkdir(cccppDir, { recursive: true }); } catch { /* exists */ }
-      path = `sqlite:${cccppDir}/history.db`;
+      const angyDir = await join(home, '.angy');
+      // Ensure ~/.angy/ directory exists
+      try { await mkdir(angyDir, { recursive: true }); } catch { /* exists */ }
+      path = `sqlite:${angyDir}/history.db`;
     }
     try {
       this.db = await SqlDatabase.load(path);
@@ -249,6 +249,22 @@ export class Database {
       result.set(r.session_id, r.max_turn);
     }
     return result;
+  }
+
+  async deleteMessagesFromTurn(sessionId: string, fromTurnId: number): Promise<void> {
+    if (!this.db) return;
+    await this.db.execute(
+      'DELETE FROM messages WHERE session_id = $1 AND turn_id >= $2',
+      [sessionId, fromTurnId],
+    );
+    await this.db.execute(
+      'DELETE FROM checkpoints WHERE session_id = $1 AND turn_id >= $2',
+      [sessionId, fromTurnId],
+    );
+    await this.db.execute(
+      'DELETE FROM file_changes WHERE session_id = $1 AND turn_id >= $2',
+      [sessionId, fromTurnId],
+    );
   }
 
   async updateMessageSessionId(oldSessionId: string, newSessionId: string): Promise<void> {

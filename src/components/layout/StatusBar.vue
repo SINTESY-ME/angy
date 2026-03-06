@@ -113,6 +113,6 @@ async function openFolder() {
 }
 
 function openSettings() {
-  window.dispatchEvent(new CustomEvent('cccpp:open-settings'));
+  window.dispatchEvent(new CustomEvent('angy:open-settings'));
 }
 </script>

@@ -1,6 +1,6 @@
 {
   "identifier": "default",
-  "description": "Default capabilities for CCCPP",
+  "description": "Default capabilities for Angy",
   "windows": ["main"],
   "permissions": [
     "core:default",

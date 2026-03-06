@@ -41,7 +41,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, nextTick, shallowRef } from 'vue';
+import { ref, onMounted, onUnmounted, nextTick, shallowRef, markRaw } from 'vue';
 import * as monaco from 'monaco-editor';
 import type { FileDiff } from '../../engine/types';
 import BreadcrumbBar from './BreadcrumbBar.vue';
@@ -81,8 +81,6 @@ const inlineEditBar = ref<InstanceType<typeof InlineEditBar> | null>(null);
 
 let editor: monaco.editor.IStandaloneCodeEditor | null = null;
 const diffDecorationIds = shallowRef<string[]>([]);
-let resizeObserver: ResizeObserver | null = null;
-let resizeTimeout = 0;
 
 // Streaming edit state
 let streamingFile = '';
@@ -91,13 +89,10 @@ let streamingStartLine = 0;
 // ── Monaco Setup ──────────────────────────────────────────────────────────
 
 onMounted(() => {
-  monaco.editor.defineTheme('cccpp-dark', getMonacoTheme());
+  monaco.editor.defineTheme('angy-dark', getMonacoTheme());
 });
 
 onUnmounted(() => {
-  clearTimeout(resizeTimeout);
-  resizeObserver?.disconnect();
-  resizeObserver = null;
   editor?.dispose();
   for (const tab of tabs.value) {
     tab.model?.dispose();
@@ -108,7 +103,7 @@ function createEditor() {
   if (!editorContainer.value || editor) return;
 
   editor = monaco.editor.create(editorContainer.value, {
-    theme: 'cccpp-dark',
+    theme: 'angy-dark',
     fontFamily: '"JetBrains Mono", monospace',
     fontSize: 13,
     minimap: { enabled: false },
@@ -117,7 +112,7 @@ function createEditor() {
     lineNumbers: 'on',
     wordWrap: 'off',
     tabSize: 2,
-    automaticLayout: false,
+    automaticLayout: true,
     padding: { top: 8 },
     smoothScrolling: true,
     cursorBlinking: 'smooth',
@@ -142,24 +137,6 @@ function createEditor() {
       emit('dirty-changed', tab.filePath, true);
     }
   });
-
-  // Manual debounced resize with dimension tracking to break feedback loops.
-  // Only call layout() when container size actually changed — this prevents
-  // the resize → layout → resize cascade that freezes the UI.
-  let lastW = 0;
-  let lastH = 0;
-  resizeObserver = new ResizeObserver((entries) => {
-    const rect = entries[0]?.contentRect;
-    if (!rect) return;
-    if (Math.abs(rect.width - lastW) < 1 && Math.abs(rect.height - lastH) < 1) return;
-    lastW = rect.width;
-    lastH = rect.height;
-    clearTimeout(resizeTimeout);
-    resizeTimeout = window.setTimeout(() => {
-      editor?.layout();
-    }, 50);
-  });
-  resizeObserver.observe(editorContainer.value!);
 }
 
 // ── Tab Management ────────────────────────────────────────────────────────
@@ -201,11 +178,6 @@ function closeTab(filePath?: string) {
   const wasActive = activeFile.value === target;
   const modelToDispose = tab.model;
 
-  // Disconnect ResizeObserver BEFORE any reactive changes to prevent
-  // resize → layout → resize feedback loops during Vue re-render.
-  clearTimeout(resizeTimeout);
-  resizeObserver?.disconnect();
-
   // Switch editor model FIRST — before any reactive changes that trigger
   // Vue re-render.
   if (wasActive && editor) {
@@ -232,15 +204,8 @@ function closeTab(filePath?: string) {
   tabs.value.splice(idx, 1);
 
   if (tabs.value.length === 0) {
-    // Destroy editor entirely when no tabs remain — prevents any further
-    // resize/layout cascades on an empty editor container.
-    resizeObserver = null;
     editor?.dispose();
     editor = null;
-  } else if (editorContainer.value) {
-    // Reconnect observer and trigger one layout on next frame
-    resizeObserver?.observe(editorContainer.value);
-    requestAnimationFrame(() => editor?.layout());
   }
 
   // Dispose old model after the frame settles
@@ -253,7 +218,8 @@ function saveViewState() {
   if (!editor || !activeFile.value) return;
   const tab = findTab(activeFile.value);
   if (tab) {
-    tab.viewState = editor.saveViewState();
+    const vs = editor.saveViewState();
+    tab.viewState = vs ? markRaw(vs) : null;
   }
 }
 
@@ -277,7 +243,7 @@ async function loadFile(filePath: string) {
   }
 
   const lang = detectLanguage(filePath);
-  const model = monaco.editor.createModel(content, lang, monaco.Uri.file(filePath));
+  const model = markRaw(monaco.editor.createModel(content, lang, monaco.Uri.file(filePath)));
 
   const tab: EditorTab = {
     filePath,

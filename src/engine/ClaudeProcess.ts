@@ -167,8 +167,8 @@ export class ClaudeProcess {
       PATH: await this.buildEnhancedPath(),
     };
 
-    if (this.agentName) env.CCCPP_AGENT_NAME = this.agentName;
-    if (this.teamId) env.CCCPP_TEAM_ID = this.teamId;
+    if (this.agentName) env.ANGY_AGENT_NAME = this.agentName;
+    if (this.teamId) env.ANGY_TEAM_ID = this.teamId;
 
     return env;
   }
@@ -214,6 +214,7 @@ export class ClaudeProcess {
     });
 
     command.stderr.on('data', (data: string) => {
+      console.log('[Claude stderr]', data);
       this.stderrBuffer += data;
     });
 
@@ -226,6 +227,7 @@ export class ClaudeProcess {
 
       // Treat signal-killed exit as success if we saw the result event
       const exitCode = this._completedNormally ? 0 : (payload.code ?? 1);
+      console.log('[Claude] Process exited with code', exitCode);
       if (exitCode !== 0 && this.stderrBuffer.trim()) {
         this.events.emit('errorOccurred', this.stderrBuffer.trim());
       }
@@ -276,7 +278,9 @@ export class ClaudeProcess {
       this.events.emit('started', undefined);
 
       // Write JSON envelope to stdin then close
-      await this.child.write(JSON.stringify(envelope) + '\n');
+      const json = JSON.stringify(envelope);
+      console.log('[Claude →]', json);
+      await this.child.write(json + '\n');
       // Note: Tauri shell plugin doesn't have closeWriteChannel equivalent.
       // The stdin is kept open, but the CLI reads the first JSON message and proceeds.
     } catch (err: any) {
@@ -314,6 +318,7 @@ export class ClaudeProcess {
     });
 
     command.stderr.on('data', (data: string) => {
+      console.log('[Claude stderr]', data);
       this.stderrBuffer += data;
     });
 
@@ -323,6 +328,7 @@ export class ClaudeProcess {
         this.stdoutBuffer = '';
       }
       const exitCode = this._completedNormally ? 0 : (payload.code ?? 1);
+      console.log('[Claude] Process exited with code', exitCode);
       if (exitCode !== 0 && this.stderrBuffer.trim()) {
         this.events.emit('errorOccurred', this.stderrBuffer.trim());
       }
@@ -360,7 +366,9 @@ export class ClaudeProcess {
     try {
       this.child = await command.spawn();
       this.events.emit('started', undefined);
-      await this.child.write(JSON.stringify(envelope) + '\n');
+      const json = JSON.stringify(envelope);
+      console.log('[Claude →]', json);
+      await this.child.write(json + '\n');
     } catch (err: any) {
       this.child = null;
       this.events.emit('errorOccurred',
@@ -416,6 +424,7 @@ export class ClaudeProcess {
       const line = this.stdoutBuffer.substring(0, idx);
       this.stdoutBuffer = this.stdoutBuffer.substring(idx + 1);
       if (line.trim()) {
+        console.log('[Claude ←]', line);
         this.streamParser.feed(line);
       }
     }

@@ -1,8 +1,8 @@
 /**
- * Catppuccin theme variants for CCCPP.
+ * Catppuccin theme variants for Angy.
  *
  * Each variant defines CSS custom property values that get applied to :root.
- * The "mocha" variant uses CCCPP's custom darker backgrounds (#0e0e0e base)
+ * The "mocha" variant uses Angy's custom darker backgrounds (#0e0e0e base)
  * rather than standard Catppuccin mocha (#1e1e2e).
  */
 

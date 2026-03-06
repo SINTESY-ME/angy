@@ -28,7 +28,7 @@ export class InboxManager {
     const { homeDir, join } = await import('@tauri-apps/api/path');
 
     const home = await homeDir();
-    const inboxDir = await join(home, '.cccpp', 'inboxes', teamId);
+    const inboxDir = await join(home, '.angy', 'inboxes', teamId);
     const inboxFile = await join(inboxDir, `${toAgent}.jsonl`);
     const tmpFile = await join(inboxDir, `${toAgent}.tmp.${Date.now()}`);
 
@@ -64,8 +64,8 @@ export class InboxManager {
     const { homeDir, join } = await import('@tauri-apps/api/path');
 
     const home = await homeDir();
-    const inboxFile = await join(home, '.cccpp', 'inboxes', teamId, `${agentName}.jsonl`);
-    const readFile = await join(home, '.cccpp', 'inboxes', teamId, `${agentName}.read`);
+    const inboxFile = await join(home, '.angy', 'inboxes', teamId, `${agentName}.jsonl`);
+    const readFile = await join(home, '.angy', 'inboxes', teamId, `${agentName}.read`);
 
     let content = '';
     try { content = await readTextFile(inboxFile); } catch { return []; }
@@ -96,7 +96,7 @@ export class InboxManager {
       const { remove } = await import('@tauri-apps/plugin-fs');
       const { homeDir, join } = await import('@tauri-apps/api/path');
       const home = await homeDir();
-      await remove(await join(home, '.cccpp', 'inboxes', teamId), { recursive: true });
+      await remove(await join(home, '.angy', 'inboxes', teamId), { recursive: true });
     } catch { /* ok */ }
   }
 }

@@ -1,12 +1,12 @@
 [package]
-name = "cccpp"
+name = "angy"
 version = "0.1.0"
-description = "CCCPP - Agent Fleet Manager"
+description = "Angy - Agent Fleet Manager"
 authors = ["you"]
 edition = "2021"
 
 [lib]
-name = "cccpp_lib"
+name = "angy_lib"
 crate-type = ["lib", "cdylib", "staticlib"]
 
 [build-dependencies]

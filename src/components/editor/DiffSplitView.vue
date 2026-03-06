@@ -63,10 +63,10 @@ onMounted(() => {
   if (!diffContainer.value) return;
 
   // Ensure theme is registered
-  monaco.editor.defineTheme('cccpp-dark', getMonacoTheme());
+  monaco.editor.defineTheme('angy-dark', getMonacoTheme());
 
   diffEditor = monaco.editor.createDiffEditor(diffContainer.value, {
-    theme: 'cccpp-dark',
+    theme: 'angy-dark',
     readOnly: true,
     renderSideBySide: true,
     fontFamily: '"JetBrains Mono", monospace',

@@ -1,7 +1,7 @@
 <template>
   <div class="h-screen w-screen flex flex-col bg-[var(--bg-surface)] text-[var(--text-primary)]">
     <!-- Main content area (all 5 panes always in DOM; hidden panes collapse to size 0) -->
-    <Splitpanes class="flex-1 !min-h-0" @resized="onResized">
+    <Splitpanes class="flex-1 !min-h-0">
       <!-- Panel 0: Agent Fleet (Manager only) -->
       <Pane :size="panelSizes[0]" :min-size="inManager ? 15 : 0" :max-size="inManager ? 25 : 0">
         <AgentFleetPanel
@@ -193,17 +193,4 @@ watch(
   },
 );
 
-// ── Event handlers ────────────────────────────────────────────────────────
-
-let resizing = false;
-
-function onResized(panes: { size: number }[]) {
-  if (resizing || panes.length !== 5) return;
-  const newSizes = panes.map(p => p.size);
-  // Skip if sizes haven't meaningfully changed — breaks resize feedback loops
-  if (panelSizes.value.every((s, i) => Math.abs(s - newSizes[i]) < 0.1)) return;
-  resizing = true;
-  panelSizes.value = newSizes;
-  nextTick(() => { resizing = false; });
-}
 </script>

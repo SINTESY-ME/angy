@@ -47,9 +47,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted } from 'vue';
+import { computed, onMounted } from 'vue';
 import MarkdownIt from 'markdown-it';
-import { createHighlighter, type Highlighter } from 'shiki';
+import { highlighter, initShiki } from './shiki';
 import ThinkingBlock from './ThinkingBlock.vue';
 
 const props = defineProps<{
@@ -70,31 +70,7 @@ const emit = defineEmits<{
   'apply-code': [payload: { code: string; language: string }];
 }>();
 
-// ── Shiki (module-level singleton) ────────────────────────────────────────
-
-let highlighter: Highlighter | null = null;
-let highlighterInit: Promise<void> | null = null;
-const highlighterReady = ref(false);
-
-function initHighlighter() {
-  if (highlighterInit) return highlighterInit;
-  highlighterInit = createHighlighter({
-    themes: ['catppuccin-mocha'],
-    langs: [
-      'typescript', 'javascript', 'python', 'rust', 'cpp', 'c', 'bash', 'sh',
-      'json', 'html', 'css', 'sql', 'yaml', 'markdown', 'go',
-      'java', 'ruby', 'php', 'swift', 'kotlin', 'diff', 'cmake',
-    ],
-  }).then(h => {
-    highlighter = h;
-    highlighterReady.value = true;
-  }).catch(e => {
-    console.warn('Shiki init failed:', e);
-  });
-  return highlighterInit;
-}
-
-onMounted(() => initHighlighter());
+onMounted(() => initShiki());
 
 // ── Markdown renderer ─────────────────────────────────────────────────────
 
@@ -109,9 +85,9 @@ md.renderer.rules.fence = (tokens, idx) => {
   const token = tokens[idx];
   const lang = token.info.trim() || 'text';
   const code = token.content;
-  if (highlighter) {
+  if (highlighter.value) {
     try {
-      return highlighter.codeToHtml(code, { lang, theme: 'catppuccin-mocha' });
+      return highlighter.value.codeToHtml(code, { lang, theme: 'catppuccin-mocha' });
     } catch { /* fallthrough */ }
   }
   return `<pre class="shiki"><code>${md.utils.escapeHtml(code)}</code></pre>`;
@@ -123,7 +99,7 @@ function linkifyFilePaths(html: string): string {
     /(?<![="'`])((?:\/[\w.@()\[\]-]+){2,}(?:\.[\w]+)?)(?::(\d+))?(?=[\s<,;)"']|$)/g,
     (match, filePath, line) => {
       const lineParam = line ? `&line=${line}` : '';
-      return `<a href="cccpp://open?file=${encodeURIComponent(filePath)}${lineParam}" class="file-link">${match}</a>`;
+      return `<a href="angy://open?file=${encodeURIComponent(filePath)}${lineParam}" class="file-link">${match}</a>`;
     },
   );
 }
@@ -159,7 +135,7 @@ function handleContentClick(e: MouseEvent) {
   e.preventDefault();
   try {
     const url = new URL(href);
-    if (url.protocol === 'cccpp:' && url.hostname === 'open') {
+    if (url.protocol === 'angy:' && url.hostname === 'open') {
       const filePath = url.searchParams.get('file');
       const line = url.searchParams.get('line');
       if (filePath) emit('navigate', { filePath, line: line ? parseInt(line, 10) : undefined });

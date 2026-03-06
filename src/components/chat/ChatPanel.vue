@@ -483,7 +483,31 @@ function onNavigate(payload: { filePath: string; line?: number }) {
 }
 
 function onRevert(turnId: number) {
-  console.log('Revert to turn:', turnId);
+  const sid = activeSessionId.value;
+  if (!sid) return;
+
+  cancelProcess(sid);
+
+  const state = sessionStates.value.get(sid);
+  if (!state) return;
+
+  // Drop all messages at or after the reverted turn
+  state.messages = state.messages.filter(m => m.turnId < turnId);
+
+  const newTurnCounter = turnId - 1;
+  state.turnCounter = newTurnCounter;
+  state.lastPersistedTurnId = newTurnCounter;
+  state.isProcessing = false;
+  state.isThinking = false;
+  state.currentAssistantMsgId = null;
+  // Cannot resume the old Claude session after truncating history
+  state.realClaudeSessionId = null;
+  state.pendingThinkingContent = '';
+  state.thinkingStartTime = 0;
+
+  getDatabase().deleteMessagesFromTurn(sid, turnId);
+  updateFleetStatus(sid, 'idle', '');
+  nextTick(() => inputBar.value?.focus());
 }
 
 function onApplyCode(payload: { code: string; language: string }) {
