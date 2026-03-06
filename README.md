@@ -19,6 +19,10 @@ Angy gives you a unified interface to spawn, orchestrate, and converse with mult
 - Git-aware diff tracking
 - Everything stored locally (SQLite, no cloud account needed)
 
+<p align="center">
+  <img src="public/angy.png" alt="Angy building itself" width="700">
+</p>
+
 ## Dev
 
 ```bash
