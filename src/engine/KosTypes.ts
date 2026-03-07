@@ -55,6 +55,7 @@ export interface Epic {
   complexity: ComplexityEstimate;
   model: string;
   targetRepoIds: string[];
+  useGitBranch: boolean;
   dependsOn: string[];
   rejectionCount: number;
   rejectionFeedback: string;

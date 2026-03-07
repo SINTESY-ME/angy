@@ -403,6 +403,7 @@ export class AngyEngine {
       complexity: opts?.complexity ?? 'medium',
       model: opts?.model ?? '',
       targetRepoIds: opts?.targetRepoIds ?? [],
+      useGitBranch: true,
       dependsOn: opts?.dependsOn ?? [],
       rejectionCount: 0,
       rejectionFeedback: '',

@@ -14,12 +14,20 @@
     </div>
 
     <!-- Epic cards -->
-    <div class="flex-1 overflow-y-auto p-2 space-y-2 bg-[var(--bg-base)] rounded-b-lg">
+    <div
+      class="flex-1 overflow-y-auto p-2 space-y-2 bg-[var(--bg-base)] rounded-b-lg transition-colors border-2 border-transparent"
+      :class="{ 'border-dashed border-[var(--accent-mauve)]/30': isDragOver }"
+      :style="isDragOver ? { backgroundColor: 'color-mix(in srgb, var(--accent-mauve) 8%, transparent)' } : {}"
+      @dragover.prevent="onDragOver"
+      @dragenter.prevent="isDragOver = true"
+      @dragleave="onDragLeave"
+      @drop="onDrop"
+    >
       <EpicCard
         v-for="epic in epics"
         :key="epic.id"
         :epic="epic"
-        @select="$emit('selectEpic', $event)"
+        @select="emit('selectEpic', $event)"
       />
 
       <!-- Add Epic button (idea column only) -->
@@ -29,7 +37,7 @@
                py-2 rounded-lg border border-dashed border-[var(--border-subtle)]
                hover:text-[var(--text-secondary)] hover:border-[var(--border-standard)]
                transition-colors"
-        @click="$emit('addEpic')"
+        @click="emit('addEpic')"
       >
         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
@@ -48,7 +56,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import type { EpicColumn } from '@/engine/KosTypes';
 import { useEpicStore } from '@/stores/epics';
 import EpicCard from './EpicCard.vue';
@@ -59,10 +67,32 @@ const props = defineProps<{
   filterText?: string;
 }>();
 
-defineEmits<{
+const emit = defineEmits<{
   selectEpic: [id: string];
   addEpic: [];
+  dropEpic: [payload: { epicId: string; column: EpicColumn }];
 }>();
+
+const isDragOver = ref(false);
+
+function onDragOver(e: DragEvent) {
+  e.dataTransfer!.dropEffect = 'move';
+}
+
+function onDragLeave(e: DragEvent) {
+  const target = e.currentTarget as HTMLElement;
+  if (!target.contains(e.relatedTarget as Node)) {
+    isDragOver.value = false;
+  }
+}
+
+function onDrop(e: DragEvent) {
+  isDragOver.value = false;
+  const epicId = e.dataTransfer!.getData('text/plain');
+  if (epicId) {
+    emit('dropEpic', { epicId, column: props.column });
+  }
+}
 
 const epicStore = useEpicStore();
 

@@ -62,11 +62,20 @@
                 </button>
               </div>
 
-              <input
-                v-model="repo.path"
-                placeholder="/path/to/repo"
-                class="w-full text-xs bg-[var(--bg-surface)] text-[var(--text-primary)] border border-[var(--border-standard)] rounded px-2 py-1.5 outline-none focus:border-[var(--accent-mauve)]"
-              />
+              <div class="flex items-center gap-1.5">
+                <input
+                  v-model="repo.path"
+                  placeholder="/path/to/repo"
+                  class="flex-1 text-xs bg-[var(--bg-surface)] text-[var(--text-primary)] border border-[var(--border-standard)] rounded px-2 py-1.5 outline-none focus:border-[var(--accent-mauve)]"
+                />
+                <button
+                  @click="browseRepoPath(repo)"
+                  class="shrink-0 px-2 py-1.5 text-xs bg-[var(--bg-surface)] text-[var(--text-muted)] border border-[var(--border-standard)] rounded hover:text-[var(--text-primary)] hover:border-[var(--accent-mauve)] transition-colors"
+                  title="Browse..."
+                >
+                  Browse
+                </button>
+              </div>
 
               <div class="flex items-center gap-3">
                 <input
@@ -106,6 +115,7 @@
 
 <script setup lang="ts">
 import { ref, reactive } from 'vue';
+import { open } from '@tauri-apps/plugin-dialog';
 import { useProjectsStore } from '@/stores/projects';
 
 const emit = defineEmits<{
@@ -128,6 +138,20 @@ const repos = reactive<RepoEntry[]>([]);
 
 function addRepo() {
   repos.push({ name: '', path: '', defaultBranch: 'main', primary: repos.length === 0 });
+}
+
+async function browseRepoPath(repo: RepoEntry) {
+  const selected = await open({
+    directory: true,
+    multiple: false,
+    title: 'Select Repository Folder',
+  });
+  if (selected && typeof selected === 'string') {
+    repo.path = selected;
+    if (!repo.name) {
+      repo.name = selected.split('/').pop() || '';
+    }
+  }
 }
 
 async function onCreate() {

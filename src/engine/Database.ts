@@ -171,6 +171,11 @@ export class Database {
       await this.db.execute(`ALTER TABLE epics ADD COLUMN model TEXT DEFAULT ''`);
     } catch { /* column already exists */ }
 
+    // Migration: add use_git_branch column to existing databases
+    try {
+      await this.db.execute(`ALTER TABLE epics ADD COLUMN use_git_branch INTEGER DEFAULT 1`);
+    } catch { /* column already exists */ }
+
     await this.db.execute(`
       CREATE TABLE IF NOT EXISTS epic_branches (
         id TEXT PRIMARY KEY,
@@ -625,9 +630,9 @@ export class Database {
     await this.db.execute(
       `INSERT OR REPLACE INTO epics
        (id, project_id, title, description, acceptance_criteria, "column", priority_hint,
-        complexity, model, depends_on, target_repos, rejection_count, rejection_feedback,
+        complexity, model, depends_on, target_repos, use_git_branch, rejection_count, rejection_feedback,
         computed_score, root_session_id, cost_total, created_at, updated_at, started_at, completed_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)`,
       [
         epic.id,
         epic.projectId,
@@ -640,6 +645,7 @@ export class Database {
         epic.model || '',
         JSON.stringify(epic.dependsOn),
         JSON.stringify(epic.targetRepoIds),
+        epic.useGitBranch ? 1 : 0,
         epic.rejectionCount,
         epic.rejectionFeedback,
         epic.computedScore,
@@ -713,6 +719,23 @@ export class Database {
     const rows = await this.db.select<any[]>(
       'SELECT id, epic_id, repo_id, branch_name, base_branch, status FROM epic_branches WHERE epic_id = $1',
       [epicId],
+    );
+
+    return rows.map((r) => ({
+      id: r.id,
+      epicId: r.epic_id,
+      repoId: r.repo_id,
+      branchName: r.branch_name,
+      baseBranch: r.base_branch,
+      status: r.status,
+    }));
+  }
+
+  async loadAllEpicBranches(): Promise<EpicBranch[]> {
+    if (!this.db) return [];
+
+    const rows = await this.db.select<any[]>(
+      'SELECT id, epic_id, repo_id, branch_name, base_branch, status FROM epic_branches',
     );
 
     return rows.map((r) => ({
@@ -860,6 +883,7 @@ export class Database {
       model: r.model || '',
       dependsOn: JSON.parse(r.depends_on || '[]'),
       targetRepoIds: JSON.parse(r.target_repos || '[]'),
+      useGitBranch: Boolean(r.use_git_branch ?? 1),
       rejectionCount: r.rejection_count,
       rejectionFeedback: r.rejection_feedback ?? '',
       computedScore: r.computed_score ?? 0,

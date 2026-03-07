@@ -74,9 +74,10 @@ export class OrchestratorPool {
     }
 
     // Create epic branches via BranchManager
-    if (repos.length > 0) {
+    if (epic.useGitBranch && repos.length > 0) {
       console.log(`[OrchestratorPool] Creating branches for ${repos.length} repos`)
       await this.branchManager.createEpicBranches(epicId, repos)
+      await this.branchManager.checkoutEpicBranches(epicId)
     }
 
     let sessionId: string

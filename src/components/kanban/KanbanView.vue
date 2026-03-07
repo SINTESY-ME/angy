@@ -88,6 +88,7 @@
           :filterText="filterText"
           @selectEpic="selectedEpicId = $event"
           @addEpic="addEpic"
+          @dropEpic="onDropEpic"
         />
       </div>
 
@@ -116,6 +117,7 @@ import type { EpicColumn, SchedulerConfig } from '@/engine/KosTypes';
 import { useUiStore } from '@/stores/ui';
 import { useProjectsStore } from '@/stores/projects';
 import { useEpicStore } from '@/stores/epics';
+import { engineBus } from '@/engine/EventBus';
 import { Scheduler } from '@/engine/Scheduler';
 import KanbanToolbar from './KanbanToolbar.vue';
 import KanbanColumn from './KanbanColumn.vue';
@@ -159,6 +161,16 @@ async function addEpic() {
 
 function onScheduleNow() {
   Scheduler.getInstance().tick();
+}
+
+async function onDropEpic({ epicId, column }: { epicId: string; column: EpicColumn }) {
+  const epic = epicStore.epicById(epicId);
+  if (!epic || epic.column === column) return;
+  if (column === 'in-progress') {
+    engineBus.emit('epic:requestStart', { epicId });
+  } else {
+    await epicStore.moveEpic(epicId, column);
+  }
 }
 
 async function onSchedulerConfigSaved(config: SchedulerConfig) {

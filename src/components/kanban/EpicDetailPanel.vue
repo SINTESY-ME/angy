@@ -127,6 +127,29 @@
         </div>
       </div>
 
+      <!-- Use git branch -->
+      <div class="flex items-center justify-between">
+        <label class="text-[10px] font-medium text-[var(--text-muted)] uppercase tracking-wider">Use git branch</label>
+        <button
+          class="relative w-7 h-4 rounded-full transition-colors"
+          :class="draft.useGitBranch ? 'bg-[var(--accent-green)]' : 'bg-[var(--bg-raised)]'"
+          @click="draft.useGitBranch = !draft.useGitBranch"
+        >
+          <span
+            class="absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform"
+            :class="draft.useGitBranch ? 'left-3.5' : 'left-0.5'"
+          />
+        </button>
+      </div>
+
+      <!-- Active branch -->
+      <div v-if="branchName" class="flex items-center gap-2 mt-2">
+        <label class="text-[10px] font-medium text-[var(--text-muted)] uppercase tracking-wider">Branch</label>
+        <span class="text-xs font-mono text-[var(--accent-green)] bg-[var(--bg-raised)] px-2 py-0.5 rounded select-all" :title="branchName">
+          {{ branchName }}
+        </span>
+      </div>
+
       <!-- Dependencies -->
       <div>
         <label class="text-[10px] font-medium text-[var(--text-muted)] uppercase tracking-wider">Dependencies</label>
@@ -251,6 +274,7 @@ const epicStore = useEpicStore();
 const columns: EpicColumn[] = ['idea', 'backlog', 'todo', 'in-progress', 'review', 'done'];
 
 const epic = computed(() => epicStore.epicById(props.epicId));
+const branchName = computed(() => epicStore.epicBranchName(props.epicId));
 
 const draft = ref({
   title: '',
@@ -261,6 +285,7 @@ const draft = ref({
   complexity: 'medium' as ComplexityEstimate,
   model: '',
   targetRepoIds: [] as string[],
+  useGitBranch: true,
   dependsOn: [] as string[],
 });
 
@@ -278,6 +303,7 @@ function loadDraft() {
     complexity: e.complexity,
     model: e.model || '',
     targetRepoIds: [...e.targetRepoIds],
+    useGitBranch: e.useGitBranch ?? true,
     dependsOn: [...e.dependsOn],
   };
 }
@@ -321,6 +347,7 @@ async function save() {
     complexity: d.complexity,
     model: d.model,
     targetRepoIds: d.targetRepoIds,
+    useGitBranch: d.useGitBranch,
     dependsOn: d.dependsOn,
   });
 }

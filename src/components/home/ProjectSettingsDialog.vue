@@ -75,11 +75,20 @@
                   ✕
                 </button>
               </div>
-              <input
-                v-model="repo.path"
-                placeholder="/path/to/repo"
-                class="w-full text-xs bg-[var(--bg-surface)] text-[var(--text-primary)] border border-[var(--border-standard)] rounded px-2 py-1.5 outline-none focus:border-[var(--accent-mauve)]"
-              />
+              <div class="flex items-center gap-1.5">
+                <input
+                  v-model="repo.path"
+                  placeholder="/path/to/repo"
+                  class="flex-1 text-xs bg-[var(--bg-surface)] text-[var(--text-primary)] border border-[var(--border-standard)] rounded px-2 py-1.5 outline-none focus:border-[var(--accent-mauve)]"
+                />
+                <button
+                  @click="browseRepoPath(repo)"
+                  class="shrink-0 px-2 py-1.5 text-xs bg-[var(--bg-surface)] text-[var(--text-muted)] border border-[var(--border-standard)] rounded hover:text-[var(--text-primary)] hover:border-[var(--accent-mauve)] transition-colors"
+                  title="Browse..."
+                >
+                  Browse
+                </button>
+              </div>
               <input
                 v-model="repo.defaultBranch"
                 placeholder="main"
@@ -137,6 +146,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed } from 'vue';
+import { open } from '@tauri-apps/plugin-dialog';
 import type { Project } from '@/engine/KosTypes';
 import { useProjectsStore } from '@/stores/projects';
 import { useUiStore } from '@/stores/ui';
@@ -171,6 +181,20 @@ const existingRepos = computed(() =>
 
 function addRepo() {
   newRepos.push({ name: '', path: '', defaultBranch: 'main' });
+}
+
+async function browseRepoPath(repo: NewRepoEntry) {
+  const selected = await open({
+    directory: true,
+    multiple: false,
+    title: 'Select Repository Folder',
+  });
+  if (selected && typeof selected === 'string') {
+    repo.path = selected;
+    if (!repo.name) {
+      repo.name = selected.split('/').pop() || '';
+    }
+  }
 }
 
 function removeExistingRepo(repoId: string) {

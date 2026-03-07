@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import type { Epic, EpicColumn, PriorityHint } from '@/engine/KosTypes';
+import type { Epic, EpicBranch, EpicColumn, PriorityHint } from '@/engine/KosTypes';
 import { getDatabase } from './sessions';
 
 // ── Priority weight map for sorting ──────────────────────────────────────
@@ -28,6 +28,7 @@ function nowISO(): string {
 export const useEpicStore = defineStore('epics', () => {
   // ── State ──────────────────────────────────────────────────────────
   const epics = ref<Epic[]>([]);
+  const epicBranches = ref<Map<string, EpicBranch[]>>(new Map());
   const loading = ref<boolean>(false);
 
   // ── Getters ────────────────────────────────────────────────────────
@@ -51,6 +52,12 @@ export const useEpicStore = defineStore('epics', () => {
     };
   });
 
+  function epicBranchName(epicId: string): string | null {
+    const branches = epicBranches.value.get(epicId);
+    if (!branches || branches.length === 0) return null;
+    return branches[0].branchName;
+  }
+
   const activeEpics = computed(() =>
     epics.value.filter((e) => e.column === 'in-progress'),
   );
@@ -73,6 +80,16 @@ export const useEpicStore = defineStore('epics', () => {
       } else {
         epics.value = loaded;
       }
+
+      // Load branches
+      const allBranches = await db.loadAllEpicBranches();
+      const branchMap = new Map<string, EpicBranch[]>();
+      for (const b of allBranches) {
+        const arr = branchMap.get(b.epicId) ?? [];
+        arr.push(b);
+        branchMap.set(b.epicId, arr);
+      }
+      epicBranches.value = branchMap;
     } catch (err) {
       console.error('[EpicStore] Failed to load epics:', err);
     } finally {
@@ -97,6 +114,7 @@ export const useEpicStore = defineStore('epics', () => {
       complexity: opts?.complexity ?? 'medium',
       model: '',
       targetRepoIds: opts?.targetRepoIds ?? [],
+      useGitBranch: true,
       dependsOn: [],
       rejectionCount: 0,
       rejectionFeedback: '',
@@ -155,6 +173,7 @@ export const useEpicStore = defineStore('epics', () => {
     const db = getDatabase();
     await db.deleteEpic(id);
     epics.value = epics.value.filter((e) => e.id !== id);
+    epicBranches.value.delete(id);
   }
 
   function wouldCreateCycle(epicId: string, depId: string): boolean {
@@ -236,6 +255,7 @@ export const useEpicStore = defineStore('epics', () => {
     epicById,
     epicsByProject,
     epicsByColumn,
+    epicBranchName,
     activeEpics,
     reviewEpics,
     // Actions

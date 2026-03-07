@@ -114,6 +114,7 @@ const { buildFromHistory, startLiveGraph } = useGraphBuilder();
 const graphStore = useGraphStore();
 let graphCleanup: (() => void) | null = null;
 let sessionSyncInterval: number | null = null;
+let epicSyncInterval: number | null = null;
 
 // ── Mission Control ──────────────────────────────────────────────────────
 const missionControl = useMissionControl();
@@ -849,6 +850,7 @@ onMounted(async () => {
     }
     try {
       await engine.scheduler.executeStart(epic);
+      await epicStore.loadAll();
     } catch (err) {
       console.error(`[App] Failed to start epic ${epicId}:`, err);
       ui.addNotification('error', 'Failed to start epic', err instanceof Error ? err.message : String(err), epicId);
@@ -864,6 +866,19 @@ onMounted(async () => {
     } catch (err) {
       console.error(`[App] Failed to stop epic ${epicId}:`, err);
     }
+  });
+
+  // Sync Pinia store when engine moves epics through lifecycle.
+  // Small delay ensures the AngyEngine handler (which also listens to these
+  // events and async-updates the DB via Scheduler) has finished writing.
+  engineBus.on('epic:completed', async ({ epicId }) => {
+    console.log(`[App] epic:completed — syncing store for: ${epicId}`);
+    setTimeout(() => epicStore.loadAll(), 200);
+  });
+
+  engineBus.on('epic:failed', async ({ epicId }) => {
+    console.log(`[App] epic:failed — syncing store for: ${epicId}`);
+    setTimeout(() => epicStore.loadAll(), 200);
   });
 
   // Initialize Pinia stores from engine's database
@@ -892,6 +907,9 @@ onMounted(async () => {
       }
     }, 5000);
 
+    // Periodically sync epics from DB so scheduler-driven changes appear
+    epicSyncInterval = window.setInterval(() => epicStore.loadAll(), 3000);
+
     // Auto-select the most recent session
     if (sessionsStore.sessions.size > 0) {
       const mostRecent = sessionsStore.sessionList[0];
@@ -916,6 +934,10 @@ onUnmounted(() => {
   if (sessionSyncInterval !== null) {
     clearInterval(sessionSyncInterval);
     sessionSyncInterval = null;
+  }
+  if (epicSyncInterval !== null) {
+    clearInterval(epicSyncInterval);
+    epicSyncInterval = null;
   }
   missionControl.dispose();
 });
