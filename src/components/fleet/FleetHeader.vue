@@ -1,6 +1,49 @@
 <template>
-  <div class="relative flex items-center justify-between px-3 h-11 bg-[var(--bg-surface)]">
-    <span class="text-[10px] font-semibold tracking-widest text-[var(--text-muted)] uppercase">Agents</span>
+  <div class="relative flex flex-col bg-[var(--bg-surface)]">
+    <!-- Breadcrumb bar (when epic context is active) -->
+    <div
+      v-if="activeEpic"
+      class="flex items-center gap-1 px-3 pt-1.5 pb-0.5 text-[10px] text-[var(--text-muted)] truncate"
+    >
+      <button
+        class="hover:text-[var(--text-primary)] transition-colors"
+        @click="ui.navigateHome()"
+      >Home</button>
+      <span class="opacity-50">&rsaquo;</span>
+      <button
+        class="hover:text-[var(--text-primary)] transition-colors truncate max-w-[80px]"
+        @click="ui.navigateToKanban(ui.activeProjectId!)"
+      >{{ projectName }}</button>
+      <span class="opacity-50">&rsaquo;</span>
+      <span class="text-[var(--text-secondary)] truncate max-w-[100px]">{{ activeEpic.title }}</span>
+    </div>
+
+    <div class="flex items-center justify-between px-3" :class="activeEpic ? 'h-8' : 'h-11'">
+      <!-- Left side: back/home button or title -->
+      <div class="flex items-center gap-1.5">
+        <button
+          v-if="activeEpic"
+          class="w-[22px] h-[22px] flex items-center justify-center rounded text-[var(--text-muted)] hover:bg-[var(--bg-raised)] hover:text-[var(--text-primary)] transition-colors"
+          title="Back to Kanban"
+          @click="ui.navigateToKanban(ui.activeProjectId!)"
+        >
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
+          </svg>
+        </button>
+        <button
+          v-else-if="props.viewMode === 'manager'"
+          class="w-[22px] h-[22px] flex items-center justify-center rounded text-[var(--text-muted)] hover:bg-[var(--bg-raised)] hover:text-[var(--text-primary)] transition-colors"
+          title="Home"
+          @click="ui.navigateHome()"
+        >
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0a1 1 0 01-1-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 01-1 1" />
+          </svg>
+        </button>
+        <span class="text-[10px] font-semibold tracking-widest text-[var(--text-muted)] uppercase">Agents</span>
+      </div>
+
     <div class="flex gap-0.5">
       <button
         @click="toggleView"
@@ -68,6 +111,7 @@
         </svg>
       </button>
     </div>
+    </div>
 
     <!-- Dropdown menu -->
     <Teleport to="body">
@@ -102,10 +146,27 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { useUiStore } from '@/stores/ui';
+import { useProjectsStore } from '@/stores/projects';
+import { useEpicStore } from '@/stores/epics';
+
+const ui = useUiStore();
+const projectsStore = useProjectsStore();
+const epicStore = useEpicStore();
 
 const props = defineProps<{
   viewMode?: string;
 }>();
+
+const activeEpic = computed(() => {
+  if (!ui.activeEpicId) return null;
+  return epicStore.epicById(ui.activeEpicId) ?? null;
+});
+
+const projectName = computed(() => {
+  if (!ui.activeProjectId) return '';
+  return projectsStore.projectById(ui.activeProjectId)?.name ?? 'Project';
+});
 
 const emit = defineEmits<{
   'new-agent': [];

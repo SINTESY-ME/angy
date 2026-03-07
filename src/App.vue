@@ -1,6 +1,10 @@
 <template>
-  <!-- Workspace gate: show selector until a workspace is chosen -->
-  <WorkspaceSelector v-if="!ui.workspacePath" />
+  <!-- Top-level view routing based on viewMode -->
+  <HomeView v-if="ui.viewMode === 'home'" />
+  <KanbanView v-else-if="ui.viewMode === 'kanban'" />
+
+  <!-- Workspace-dependent views: show selector until a workspace is chosen -->
+  <WorkspaceSelector v-else-if="!ui.workspacePath" />
 
   <template v-else>
     <MainSplitter
@@ -56,11 +60,15 @@
     <ProfileEditor :visible="showProfileEditor" @close="showProfileEditor = false" />
     <OrchestratorDialog :visible="showOrchestratorDialog" @close="showOrchestratorDialog = false" @start="onOrchestratorStart" />
   </template>
+
+  <NotificationToast />
 </template>
 
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import WorkspaceSelector from './components/WorkspaceSelector.vue';
+import HomeView from './components/home/HomeView.vue';
+import KanbanView from './components/kanban/KanbanView.vue';
 import MainSplitter from './components/layout/MainSplitter.vue';
 import ChatPanel from './components/chat/ChatPanel.vue';
 import EffectsPanel from './components/effects/EffectsPanel.vue';
@@ -70,21 +78,25 @@ import TerminalPanel from './components/terminal/TerminalPanel.vue';
 import SettingsDialog from './components/settings/SettingsDialog.vue';
 import ProfileEditor from './components/settings/ProfileEditor.vue';
 import OrchestratorDialog from './components/settings/OrchestratorDialog.vue';
+import NotificationToast from './components/home/NotificationToast.vue';
 import { useUiStore } from './stores/ui';
 import { useThemeStore } from './stores/theme';
 import { useSessionsStore, getDatabase, getSessionManager } from './stores/sessions';
 import { useFleetStore } from './stores/fleet';
+import { useProjectsStore } from './stores/projects';
+import { useEpicStore } from './stores/epics';
 import { useGraphStore } from './stores/graph';
 import { useGitStore } from './stores/git';
 import { useKeyboard } from './composables/useKeyboard';
 import { useOrchestrator } from './composables/useOrchestrator';
 import { useGraphBuilder } from './composables/useGraphBuilder';
 import { useMissionControl } from './composables/useMissionControl';
-import { sendMessageToEngine, setMcpToolInterceptor, setSessionFinishedInterceptor } from './composables/useEngine';
+import { sendMessageToEngine, setOrchestratorLookup, setProcessManager } from './composables/useEngine';
 import { ORCHESTRATOR_SYSTEM_PROMPT } from './engine/Orchestrator';
 import { DelegationStatus } from './engine/types';
 import { DiffEngine } from './engine/DiffEngine';
 import { engineBus } from './engine/EventBus';
+import { AngyEngine } from './engine/AngyEngine';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 
 // ── Stores ──────────────────────────────────────────────────────────────
@@ -94,6 +106,8 @@ const sessionsStore = useSessionsStore();
 const fleetStore = useFleetStore();
 const gitStore = useGitStore();
 const themeStore = useThemeStore();
+const projectStore = useProjectsStore();
+const epicStore = useEpicStore();
 
 // ── Graph ────────────────────────────────────────────────────────────────
 const { buildFromHistory, startLiveGraph } = useGraphBuilder();
@@ -129,7 +143,7 @@ const showProfileEditor = ref(false);
 const showOrchestratorDialog = ref(false);
 
 // ── Orchestrator ──────────────────────────────────────────────────────
-const { startOrchestration, orchestrator } = useOrchestrator();
+const { startOrchestration, orchestrator, getOrchestratorForSession, initPool, setEngine } = useOrchestrator();
 
 // ── Keyboard shortcuts ──────────────────────────────────────────────────
 
@@ -384,6 +398,48 @@ watch(() => ui.rightPanelMode, async (mode) => {
   }
 });
 
+// ── Epic navigation: set workspace when navigating to an epic ────────────
+
+watch(() => ui.activeEpicId, async (epicId) => {
+  if (!epicId || !ui.activeProjectId) return;
+  const epic = epicStore.epicById(epicId);
+  if (!epic) return;
+
+  // Resolve workspace path from the epic's target repos (use first repo)
+  const projectRepos = projectStore.reposByProjectId(ui.activeProjectId);
+  let repoPath = '';
+  if (epic.targetRepoIds.length > 0) {
+    const targetRepo = projectRepos.find((r) => r.id === epic.targetRepoIds[0]);
+    if (targetRepo) repoPath = targetRepo.path;
+  }
+  // Fallback: use first project repo
+  if (!repoPath && projectRepos.length > 0) {
+    repoPath = projectRepos[0].path;
+  }
+
+  if (repoPath && repoPath !== ui.workspacePath) {
+    // Different workspace — the workspacePath watch will handle reload
+    ui.workspacePath = repoPath;
+  } else if (repoPath) {
+    // Same workspace — force reload sessions from DB so headless epic sessions appear
+    const db = getDatabase();
+    await db.open();
+    sessionsStore.sessions.clear();
+    sessionsStore.messages.clear();
+    await sessionsStore.loadFromDatabase(repoPath);
+    fleetStore.rebuildFromSessions();
+
+    await nextTick();
+    // Auto-select the epic's root session if available
+    if (epic.rootSessionId && sessionsStore.sessions.has(epic.rootSessionId)) {
+      await onAgentSelected(epic.rootSessionId);
+    } else if (sessionsStore.sessions.size > 0) {
+      const mostRecent = sessionsStore.sessionList[0];
+      if (mostRecent) await onAgentSelected(mostRecent.sessionId);
+    }
+  }
+});
+
 // ── Workspace path changes: reload sessions + git ───────────────────────
 
 watch(() => ui.workspacePath, async (newPath, oldPath) => {
@@ -401,8 +457,11 @@ watch(() => ui.workspacePath, async (newPath, oldPath) => {
     // Wait for DOM update so ChatPanel is mounted before loading messages
     await nextTick();
 
-    // Auto-select most recent session
-    if (sessionsStore.sessions.size > 0) {
+    // Auto-select the epic's root session if navigating to an epic, else most recent
+    const activeEpic = ui.activeEpicId ? epicStore.epicById(ui.activeEpicId) : null;
+    if (activeEpic?.rootSessionId && sessionsStore.sessions.has(activeEpic.rootSessionId)) {
+      await onAgentSelected(activeEpic.rootSessionId);
+    } else if (sessionsStore.sessions.size > 0) {
       const mostRecent = sessionsStore.sessionList[0];
       if (mostRecent) await onAgentSelected(mostRecent.sessionId);
     }
@@ -467,12 +526,22 @@ function onOrchestratorStart(goal: string) {
       _specialistProfileId: string,
       _contextProfileIds: string[],
       agentName?: string,
-      _teamId?: string,
+      teamId?: string,
       teammates?: string[],
+      workingDir?: string,
     ) => {
       const panel = chatPanelRef.value;
       if (!panel) return '';
-      const childSid = sessionsStore.createChildSession(parentSessionId, ui.workspacePath || '.', 'agent', task);
+      const resolvedDir = workingDir || ui.workspacePath || '.';
+      const childSid = sessionsStore.createChildSession(parentSessionId, resolvedDir, 'agent', task);
+
+      // Update child session title to show role if agent name is provided
+      if (agentName) {
+        const childSession = sessionsStore.sessions.get(childSid);
+        if (childSession) {
+          childSession.title = agentName.charAt(0).toUpperCase() + agentName.slice(1);
+        }
+      }
       fleetStore.rebuildFromSessions();
 
       // Build system prompt with peer messaging instructions
@@ -511,9 +580,11 @@ function onOrchestratorStart(goal: string) {
       };
 
       sendMessageToEngine(childSid, task, handle, {
-        workingDir: ui.workspacePath || '.',
+        workingDir: resolvedDir,
         mode: 'agent',
         systemPrompt,
+        agentName,
+        teamId,
       });
 
       return childSid;
@@ -593,10 +664,12 @@ async function onOrchestrateStarted(sessionId: string) {
       agentName?: string,
       teamId?: string,
       teammates?: string[],
+      workingDir?: string,
     ) => {
       const panel = chatPanelRef.value;
       if (!panel) return '';
-      const childSid = sessionsStore.createChildSession(parentSessionId, ui.workspacePath || '.', 'agent', task);
+      const resolvedDir = workingDir || ui.workspacePath || '.';
+      const childSid = sessionsStore.createChildSession(parentSessionId, resolvedDir, 'agent', task);
 
       // Update child session title to show role if agent name is provided
       if (agentName) {
@@ -640,7 +713,7 @@ async function onOrchestrateStarted(sessionId: string) {
       };
 
       sendMessageToEngine(childSid, task, handle, {
-        workingDir: ui.workspacePath || '.',
+        workingDir: resolvedDir,
         mode: 'agent',
         systemPrompt,
         agentName,
@@ -659,27 +732,18 @@ async function onOrchestrateStarted(sessionId: string) {
   orchestrator.setWorkspace(ui.workspacePath || '.');
   await orchestrator.attachToSession(sessionId, ui.autoCommitEnabled);
 
-  // Register interceptors so MCP tool calls are routed to the orchestrator
-  setMcpToolInterceptor((sid, toolName, args) => {
-    orchestrator.onMcpToolCalled(sid, toolName, args);
-  });
-  setSessionFinishedInterceptor((sid) => {
-    orchestrator.onSessionFinishedProcessing(sid);
-  });
+  // MCP tool routing is handled by setOrchestratorLookup (pool-aware),
+  // which checks the standalone orchestrator via getOrchestratorForSession.
 }
 
-// Clean up interceptors and graph subscriptions when orchestration ends
+// Clean up graph subscriptions when orchestration ends
 orchestrator.on('completed', () => {
-  setMcpToolInterceptor(null);
-  setSessionFinishedInterceptor(null);
   if (graphCleanup) {
     graphCleanup();
     graphCleanup = null;
   }
 });
 orchestrator.on('failed', () => {
-  setMcpToolInterceptor(null);
-  setSessionFinishedInterceptor(null);
   if (graphCleanup) {
     graphCleanup();
     graphCleanup = null;
@@ -724,10 +788,83 @@ onMounted(async () => {
   gitStore.manager.on('fileDiffReady', onGitFileDiffReady);
   themeStore.loadSavedTheme();
 
-  // Initialize database and load saved sessions
+  // Wire scheduler events to UI notifications
+  engineBus.on('scheduler:error', ({ epicId, title, message }) => {
+    ui.addNotification('error', title, message, epicId);
+  });
+  engineBus.on('scheduler:info', ({ epicId, title, message }) => {
+    ui.addNotification('info', title, message, epicId);
+  });
+
+  // ── Initialize AngyEngine (headless core) ────────────────────────────
+  const engine = AngyEngine.getInstance();
+  await engine.initialize();
+
+  // Bridge engine-created sessions into the Pinia store so the UI can track them.
+  // When the headless orchestrator creates child sessions (architect, implementer, etc.),
+  // the SessionService emits 'session:created' on the engine bus. We listen here and
+  // sync those sessions into the reactive Pinia store that drives the sidebar/fleet.
+  engineBus.on('session:created', ({ sessionId }) => {
+    // Only sync sessions we don't already have (avoids duplicate for UI-created sessions)
+    if (sessionsStore.sessions.has(sessionId)) return;
+    const info = engine.sessions.getSession(sessionId);
+    if (info) {
+      sessionsStore.sessions.set(sessionId, info);
+      if (!sessionsStore.messages.has(sessionId)) {
+        sessionsStore.messages.set(sessionId, []);
+      }
+      fleetStore.rebuildFromSessions();
+    }
+  });
+
+  // Share the engine's ProcessManager with the useEngine composable
+  setProcessManager(engine.processes);
+
+  // Wire engine into the useOrchestrator composable for session → orchestrator routing
+  setEngine(engine);
+
+  // Pool-aware MCP routing: standalone orchestrator + engine epic orchestrators
+  setOrchestratorLookup((sessionId: string) => {
+    return getOrchestratorForSession(sessionId);
+  });
+  console.log('[App] Engine initialized, orchestrator lookup registered');
+
+  // Handle manual epic start requests (from EpicCard/EpicDetailPanel arrow buttons)
+  engineBus.on('epic:requestStart', async ({ epicId }) => {
+    console.log(`[App] epic:requestStart received for: ${epicId}`);
+    const epic = epicStore.epicById(epicId);
+    if (!epic) {
+      console.error(`[App] Epic not found: ${epicId}`);
+      return;
+    }
+    if (epic.column === 'in-progress') {
+      console.warn(`[App] Epic already in-progress: ${epicId}`);
+      return;
+    }
+    try {
+      await engine.scheduler.executeStart(epic);
+    } catch (err) {
+      console.error(`[App] Failed to start epic ${epicId}:`, err);
+      ui.addNotification('error', 'Failed to start epic', err instanceof Error ? err.message : String(err), epicId);
+    }
+  });
+
+  // Initialize Pinia stores from engine's database
   const db = getDatabase();
   const ok = await db.open();
   if (ok) {
+    await projectStore.initialize();
+    await epicStore.initialize();
+
+    // Initialize the composable-level pool (for standalone orchestrator)
+    const branchManager = engine.branchManager;
+    initPool(branchManager);
+
+    // Feed Pinia stores into the Scheduler for backward compatibility
+    // (Scheduler also has engine repositories for headless mode)
+    const scheduler = engine.scheduler;
+    await scheduler.initialize(epicStore, projectStore);
+
     await sessionsStore.loadFromDatabase(ui.workspacePath || undefined);
     fleetStore.rebuildFromSessions();
     console.log(`[App] Loaded ${sessionsStore.sessions.size} sessions from database`);

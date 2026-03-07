@@ -1,92 +1,80 @@
 /**
- * useEngine — bridge between ClaudeProcess/StreamParser and ChatPanel.
+ * useEngine — thin composable bridge between ProcessManager and the UI.
  *
- * Creates and manages ClaudeProcess instances per session.
- * Wires StreamParser events back to ChatPanel methods.
+ * Delegates all heavy lifting to ProcessManager (engine layer).
+ * Re-exports AgentHandle (aliased as ChatPanelHandle for backward compat)
+ * and provides module-level functions that match the old API.
  */
 
-import { Command } from '@tauri-apps/plugin-shell';
+import { ProcessManager } from '../engine/ProcessManager';
 import { ClaudeProcess } from '../engine/ClaudeProcess';
+import type { AgentHandle, ProcessOptions } from '../engine/types';
+import type { Orchestrator } from '../engine/Orchestrator';
+
+// ── Re-export for backward compatibility ─────────────────────────────────
+
+export type { AgentHandle, ProcessOptions };
+/** @deprecated Use AgentHandle instead */
+export type ChatPanelHandle = AgentHandle;
+
+// ── Singleton ProcessManager ─────────────────────────────────────────────
+//
+// The AngyEngine owns the canonical ProcessManager instance. This module
+// can either share that instance (via setProcessManager) or create a
+// standalone one for legacy / non-engine usage.
+
+let _pm: ProcessManager | null = null;
+
+function getProcessManager(): ProcessManager {
+  if (!_pm) {
+    _pm = new ProcessManager();
+  }
+  return _pm;
+}
+
+/** Inject the ProcessManager instance (called by AngyEngine or App.vue). */
+export function setProcessManager(pm: ProcessManager): void {
+  _pm = pm;
+}
+
+// ── Legacy interceptor API (delegates to ProcessManager) ─────────────────
+
+/** @deprecated Use engine.processes.setOrchestratorLookup() instead */
+export function setMcpToolInterceptor(
+  _callback: ((sessionId: string, toolName: string, args: Record<string, any>) => void) | null,
+): void {
+  // No longer used — orchestrator routing goes through ProcessManager.setOrchestratorLookup()
+  console.warn('[useEngine] setMcpToolInterceptor is deprecated — use setOrchestratorLookup instead');
+}
+
+/** @deprecated Use engine.processes.setOrchestratorLookup() instead */
+export function setSessionFinishedInterceptor(
+  _callback: ((sessionId: string) => void) | null,
+): void {
+  console.warn('[useEngine] setSessionFinishedInterceptor is deprecated — use setOrchestratorLookup instead');
+}
 
 /**
- * Extract file paths from an `rm` shell command, handling separate flags,
- * quoted paths, and shell operators like `&&`, `||`, `;`, pipes, redirects.
+ * Register a function that maps sessionId → Orchestrator instance.
+ * Delegates to ProcessManager.
  */
-function extractRmPaths(cmd: string): string[] {
-  const rmMatch = cmd.match(/\brm\s+(.*)/);
-  if (!rmMatch) return [];
-
-  // Isolate the rm arguments before any shell operator
-  const rmPart = rmMatch[1].split(/\s*(?:&&|\|\||;|>|>>|\|)\s*/)[0];
-
-  // Tokenize respecting quotes
-  const paths: string[] = [];
-  const tokens = rmPart.match(/(?:"[^"]*"|'[^']*'|\S)+/g) || [];
-  for (const token of tokens) {
-    if (token.startsWith('-')) continue;
-    const clean = token.replace(/^["']|["']$/g, '');
-    if (clean && !clean.includes('*') && !clean.includes('?')) {
-      paths.push(clean);
-    }
-  }
-  return paths;
-}
-
-// Active processes keyed by sessionId
-const processes = new Map<string, ClaudeProcess>();
-
-async function runAutoCommit(workingDir: string): Promise<void> {
-  try {
-    const addCmd = Command.create('exec-sh', ['-c', 'git add -A'], { cwd: workingDir || undefined });
-    await addCmd.execute();
-    const commitCmd = Command.create('exec-sh', ['-c', "git commit -m 'autocommit'"], { cwd: workingDir || undefined });
-    await commitCmd.execute();
-    console.log('[AutoCommit] Committed successfully');
-  } catch (e) {
-    console.warn('[AutoCommit] Failed:', e);
-  }
-}
-
-// ── Global interceptors for orchestrator MCP tools ──────────────────────────
-
-const MCP_ORCHESTRATOR_PREFIX = 'mcp__c3p2-orchestrator__';
-
-let mcpToolInterceptor: ((sessionId: string, toolName: string, args: Record<string, any>) => void) | null = null;
-let sessionFinishedInterceptor: ((sessionId: string) => void) | null = null;
-
-export function setMcpToolInterceptor(
-  callback: ((sessionId: string, toolName: string, args: Record<string, any>) => void) | null,
+export function setOrchestratorLookup(
+  lookup: ((sessionId: string) => Orchestrator | null) | null,
 ): void {
-  mcpToolInterceptor = callback;
+  getProcessManager().setOrchestratorLookup(lookup);
 }
 
-export function setSessionFinishedInterceptor(
-  callback: ((sessionId: string) => void) | null,
-): void {
-  sessionFinishedInterceptor = callback;
-}
-
-export interface ChatPanelHandle {
-  appendTextDelta(sessionId: string, text: string): void;
-  appendThinkingDelta(sessionId: string, text: string): void;
-  addToolUse(sessionId: string, toolName: string, summary: string, toolInput?: Record<string, any>, toolId?: string): void;
-  markDone(sessionId: string): void;
-  showError(sessionId: string, error: string): void;
-  setThinking(sessionId: string, thinking: boolean): void;
-  setRealSessionId(sessionId: string, realId: string): void;
-  onFileEdited?(sessionId: string, filePath: string, toolName: string, toolInput?: Record<string, any>): void;
-  onCheckpointReceived?(sessionId: string, uuid: string, replayIndex: number): void;
-}
+// ── Public API (delegates to ProcessManager) ─────────────────────────────
 
 /**
  * Send a message to Claude for a given session.
- * Creates a new ClaudeProcess, wires all StreamParser events to the chatPanel,
+ * Creates a new ClaudeProcess, wires all StreamParser events to the handle,
  * and sends the message.
  */
 export function sendMessageToEngine(
   sessionId: string,
   text: string,
-  chatPanel: ChatPanelHandle,
+  chatPanel: AgentHandle,
   options: {
     workingDir: string;
     mode?: string;
@@ -99,120 +87,17 @@ export function sendMessageToEngine(
     autoCommit?: boolean;
   } = { workingDir: '.' },
 ): ClaudeProcess {
-  // Cancel any existing process for this session
-  const existing = processes.get(sessionId);
-  if (existing?.isRunning()) {
-    existing.cancel();
-  }
-
-  const proc = new ClaudeProcess();
-  proc.setWorkingDirectory(options.workingDir);
-  if (options.mode) proc.setMode(options.mode);
-  if (options.model) proc.setModel(options.model);
-  if (options.systemPrompt) proc.setSystemPrompt(options.systemPrompt);
-  if (options.resumeSessionId) proc.setSessionId(options.resumeSessionId);
-  if (options.agentName) proc.setAgentName(options.agentName);
-  if (options.teamId) proc.setTeamId(options.teamId);
-  if (options.autoCommit) proc.setAutoCommit(options.autoCommit);
-
-  processes.set(sessionId, proc);
-
-  // ── Wire StreamParser events → ChatPanel ──
-
-  proc.streamParser.events.on('textDelta', (text) => {
-    chatPanel.appendTextDelta(sessionId, text);
-  });
-
-  proc.streamParser.events.on('thinkingStarted', () => {
-    chatPanel.setThinking(sessionId, true);
-  });
-
-  proc.streamParser.events.on('thinkingDelta', (text) => {
-    chatPanel.appendThinkingDelta(sessionId, text);
-  });
-
-  proc.streamParser.events.on('thinkingStopped', () => {
-    chatPanel.setThinking(sessionId, false);
-  });
-
-  proc.streamParser.events.on('toolUseStarted', (payload) => {
-    const summary = summarizeTool(payload.toolName, payload.input);
-    chatPanel.addToolUse(sessionId, payload.toolName, summary, payload.input, payload.toolId);
-
-    // Notify effects panel about file edits
-    if (['Edit', 'Write', 'StrReplace', 'MultiEdit'].includes(payload.toolName)) {
-      const filePath = payload.input?.file_path || payload.input?.path || '';
-      if (filePath) {
-        chatPanel.onFileEdited?.(sessionId, filePath, payload.toolName, payload.input);
-      }
-    }
-
-    // Detect file deletions from Bash rm commands
-    if (payload.toolName === 'Bash') {
-      const cmd = (payload.input?.command as string) ?? '';
-      for (const p of extractRmPaths(cmd)) {
-        chatPanel.onFileEdited?.(sessionId, p, 'Delete', payload.input);
-      }
-    }
-
-    // MCP orchestrator tool interception
-    if (mcpToolInterceptor && payload.toolName.startsWith(MCP_ORCHESTRATOR_PREFIX)) {
-      mcpToolInterceptor(sessionId, payload.toolName, payload.input);
-    }
-  });
-
-  proc.streamParser.events.on('errorOccurred', (error) => {
-    chatPanel.showError(sessionId, error);
-  });
-
-  proc.streamParser.events.on('resultReady', (payload) => {
-    if (payload.sessionId) {
-      chatPanel.setRealSessionId(sessionId, payload.sessionId);
-    }
-  });
-
-  let checkpointIdx = 0;
-  proc.streamParser.events.on('checkpointReceived', (uuid) => {
-    chatPanel.onCheckpointReceived?.(sessionId, uuid, checkpointIdx);
-    checkpointIdx++;
-  });
-
-  // ── Wire ClaudeProcess lifecycle events ──
-
-  proc.events.on('finished', (_exitCode) => {
-    chatPanel.markDone(sessionId);
-    processes.delete(sessionId);
-
-    // Notify orchestrator of session turn completion
-    if (sessionFinishedInterceptor) {
-      sessionFinishedInterceptor(sessionId);
-    }
-
-    // Auto-commit for simple agent modes (orchestrator handles its own commits)
-    if (options.autoCommit && options.mode !== 'orchestrator') {
-      runAutoCommit(options.workingDir);
-    }
-  });
-
-  proc.events.on('errorOccurred', (error) => {
-    chatPanel.showError(sessionId, error);
-  });
-
-  // ── Send the message ──
-  proc.sendMessage(text, options.images);
-
-  return proc;
+  return getProcessManager().sendMessage(sessionId, text, chatPanel, options);
 }
 
 /**
  * Send a tool result back to Claude for a given session.
- * Creates a new ClaudeProcess that resumes the session and sends a tool_result envelope.
  */
 export function sendToolResultToEngine(
   sessionId: string,
   toolUseId: string,
   content: string,
-  chatPanel: ChatPanelHandle,
+  chatPanel: AgentHandle,
   options: {
     workingDir: string;
     mode?: string;
@@ -220,130 +105,19 @@ export function sendToolResultToEngine(
     resumeSessionId: string;
   },
 ): ClaudeProcess {
-  const existing = processes.get(sessionId);
-  if (existing?.isRunning()) {
-    existing.cancel();
-  }
-
-  const proc = new ClaudeProcess();
-  proc.setWorkingDirectory(options.workingDir);
-  if (options.mode) proc.setMode(options.mode);
-  if (options.model) proc.setModel(options.model);
-  proc.setSessionId(options.resumeSessionId);
-
-  processes.set(sessionId, proc);
-
-  // Wire StreamParser events → ChatPanel (same as sendMessageToEngine)
-  proc.streamParser.events.on('textDelta', (text) => {
-    chatPanel.appendTextDelta(sessionId, text);
-  });
-
-  proc.streamParser.events.on('thinkingStarted', () => {
-    chatPanel.setThinking(sessionId, true);
-  });
-
-  proc.streamParser.events.on('thinkingDelta', (text) => {
-    chatPanel.appendThinkingDelta(sessionId, text);
-  });
-
-  proc.streamParser.events.on('thinkingStopped', () => {
-    chatPanel.setThinking(sessionId, false);
-  });
-
-  proc.streamParser.events.on('toolUseStarted', (payload) => {
-    const summary = summarizeTool(payload.toolName, payload.input);
-    chatPanel.addToolUse(sessionId, payload.toolName, summary, payload.input, payload.toolId);
-
-    if (['Edit', 'Write', 'StrReplace', 'MultiEdit'].includes(payload.toolName)) {
-      const filePath = payload.input?.file_path || payload.input?.path || '';
-      if (filePath) {
-        chatPanel.onFileEdited?.(sessionId, filePath, payload.toolName, payload.input);
-      }
-    }
-
-    // Detect file deletions from Bash rm commands
-    if (payload.toolName === 'Bash') {
-      const cmd = (payload.input?.command as string) ?? '';
-      for (const p of extractRmPaths(cmd)) {
-        chatPanel.onFileEdited?.(sessionId, p, 'Delete', payload.input);
-      }
-    }
-  });
-
-  proc.streamParser.events.on('errorOccurred', (error) => {
-    chatPanel.showError(sessionId, error);
-  });
-
-  proc.streamParser.events.on('resultReady', (payload) => {
-    if (payload.sessionId) {
-      chatPanel.setRealSessionId(sessionId, payload.sessionId);
-    }
-  });
-
-  let checkpointIdx2 = 0;
-  proc.streamParser.events.on('checkpointReceived', (uuid) => {
-    chatPanel.onCheckpointReceived?.(sessionId, uuid, checkpointIdx2);
-    checkpointIdx2++;
-  });
-
-  proc.events.on('finished', (_exitCode) => {
-    chatPanel.markDone(sessionId);
-    processes.delete(sessionId);
-  });
-
-  proc.events.on('errorOccurred', (error) => {
-    chatPanel.showError(sessionId, error);
-  });
-
-  // Send the tool result
-  proc.sendToolResult(toolUseId, content);
-
-  return proc;
+  return getProcessManager().sendToolResult(sessionId, toolUseId, content, chatPanel, options);
 }
 
 /**
  * Cancel the running process for a session.
  */
 export function cancelProcess(sessionId: string): void {
-  const proc = processes.get(sessionId);
-  if (proc?.isRunning()) {
-    proc.cancel();
-  }
-  processes.delete(sessionId);
+  getProcessManager().cancelProcess(sessionId);
 }
 
 /**
  * Get the active process for a session (if any).
  */
 export function getProcess(sessionId: string): ClaudeProcess | undefined {
-  return processes.get(sessionId);
-}
-
-/**
- * Summarize a tool call for display.
- */
-function summarizeTool(toolName: string, input: Record<string, any>): string {
-  switch (toolName) {
-    case 'Edit':
-    case 'StrReplace':
-      return input.file_path || input.path || 'file';
-    case 'Write':
-      return input.file_path || input.path || 'file';
-    case 'Read':
-      return input.file_path || input.path || 'file';
-    case 'Bash':
-      return (input.command || '').substring(0, 80);
-    case 'Glob':
-      return input.pattern || '';
-    case 'Grep':
-      return input.pattern || '';
-    case 'TodoWrite':
-      return 'updating tasks';
-    case 'Agent':
-      return input.description || 'subagent';
-    case 'AskUserQuestion':
-      return 'asking question';
-    default:
-      return toolName;
-  }
+  return getProcessManager().getProcess(sessionId);
 }

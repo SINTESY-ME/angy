@@ -1,10 +1,22 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 
-export type ViewMode = 'manager' | 'editor' | 'mission-control';
+export type ViewMode = 'home' | 'kanban' | 'manager' | 'editor' | 'mission-control';
+
+export interface AppNotification {
+  id: string
+  type: 'error' | 'warning' | 'info' | 'success'
+  title: string
+  message: string
+  timestamp: number
+  epicId?: string
+  autoDismiss?: boolean
+}
 
 export const useUiStore = defineStore('ui', () => {
-  const viewMode = ref<ViewMode>('manager');
+  const viewMode = ref<ViewMode>('home');
+  const activeProjectId = ref<string | null>(null);
+  const activeEpicId = ref<string | null>(null);
   const terminalVisible = ref(false);
   const activeLeftTab = ref<'files' | 'git' | 'search'>('files');
   const workspacePath = ref('');
@@ -18,6 +30,8 @@ export const useUiStore = defineStore('ui', () => {
   const rightPanelMode = ref<'effects' | 'graph'>('effects');
   const missionControlFilter = ref<string | null>(null);
   const autoCommitEnabled = ref(false);
+  const kanbanProjectIds = ref<string[]>([]);
+  const notifications = ref<AppNotification[]>([]);
 
   // Diff view state (git diff shown in Monaco DiffSplitView)
   const diffView = ref<{
@@ -89,15 +103,85 @@ export const useUiStore = defineStore('ui', () => {
     diffView.value = null;
   }
 
+  function addNotification(type: AppNotification['type'], title: string, message: string, epicId?: string) {
+    const notification: AppNotification = {
+      id: crypto.randomUUID(),
+      type,
+      title,
+      message,
+      timestamp: Date.now(),
+      epicId,
+      autoDismiss: type !== 'error',
+    }
+    notifications.value.push(notification)
+    if (notification.autoDismiss) {
+      setTimeout(() => dismissNotification(notification.id), 8000)
+    }
+    if (notifications.value.length > 20) {
+      notifications.value = notifications.value.slice(-20)
+    }
+  }
+
+  function dismissNotification(id: string) {
+    notifications.value = notifications.value.filter(n => n.id !== id)
+  }
+
+  function clearNotifications() {
+    notifications.value = []
+  }
+
+  function navigateHome() {
+    viewMode.value = 'home';
+    activeProjectId.value = null;
+    activeEpicId.value = null;
+  }
+
+  function navigateToProject(projectId: string) {
+    activeProjectId.value = projectId;
+    if (!kanbanProjectIds.value.includes(projectId)) {
+      kanbanProjectIds.value = [projectId];
+    }
+    viewMode.value = 'kanban';
+  }
+
+  function navigateToEpic(epicId: string, projectId: string) {
+    activeProjectId.value = projectId;
+    activeEpicId.value = epicId;
+    viewMode.value = 'manager';
+  }
+
+  function navigateToKanban(projectId: string) {
+    activeProjectId.value = projectId;
+    if (!kanbanProjectIds.value.includes(projectId)) {
+      kanbanProjectIds.value = [projectId];
+    }
+    activeEpicId.value = null;
+    viewMode.value = 'kanban';
+  }
+
+  function toggleKanbanProject(projectId: string) {
+    const idx = kanbanProjectIds.value.indexOf(projectId);
+    if (idx >= 0) {
+      // Don't allow removing the last project
+      if (kanbanProjectIds.value.length > 1) {
+        kanbanProjectIds.value = kanbanProjectIds.value.filter(id => id !== projectId);
+      }
+    } else {
+      kanbanProjectIds.value = [...kanbanProjectIds.value, projectId];
+    }
+  }
+
   return {
-    viewMode, terminalVisible, activeLeftTab,
+    viewMode, activeProjectId, activeEpicId, terminalVisible, activeLeftTab,
     workspacePath, currentFile, currentBranch, currentModel, isProcessing,
     inlinePreviewFile, effectsPanelVisible, editorChatVisible, rightPanelMode, diffView,
-    missionControlFilter, autoCommitEnabled,
+    missionControlFilter, autoCommitEnabled, kanbanProjectIds, notifications,
     managerSizes, editorSizes,
     switchToMode, toggleViewMode, toggleTerminal, dismissInlinePreview,
     toggleEffectsPanel, toggleEditorChat, toggleRightPanelMode, setRightPanelMode,
     showDiffView, closeDiffView,
     enterMissionControl, exitMissionControl, setMissionControlFilter, toggleAutoCommit,
+    addNotification, dismissNotification, clearNotifications,
+    navigateHome, navigateToProject, navigateToEpic, navigateToKanban, toggleKanbanProject,
   };
 });

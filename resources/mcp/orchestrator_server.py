@@ -3,14 +3,15 @@
 MCP server for C3P2 orchestrator — zero dependencies (stdlib only).
 version: 2.0.0
 
-Exposes 7 tools over JSON-RPC 2.0 / stdio:
-  delegate      — Delegate work to a specialist agent
-  validate      — Run a shell command to check results
-  done          — Report goal achieved
-  fail          — Report unrecoverable failure
-  send_message  — Send a message to a teammate agent
-  check_inbox   — Check your inbox for messages from teammates
-  checkpoint    — Create a checkpoint commit of current progress
+Exposes 8 tools over JSON-RPC 2.0 / stdio:
+  delegate           — Delegate work to a specialist agent
+  validate           — Run a shell command to check results
+  done               — Report goal achieved
+  fail               — Report unrecoverable failure
+  send_message       — Send a message to a teammate agent
+  check_inbox        — Check your inbox for messages from teammates
+  checkpoint         — Create a checkpoint commit of current progress
+  spawn_orchestrator — Spawn a sub-orchestrator for a complex sub-task
 
 The C++ app intercepts delegate/validate/done/fail from the stream-json output.
 send_message and check_inbox do actual file I/O (inbox JSONL files).
@@ -46,6 +47,13 @@ TOOLS = [
                         "Detailed task description for the specialist. "
                         "Be specific about what to do, which files to touch, "
                         "and what the expected output should be."
+                    ),
+                },
+                "working_dir": {
+                    "type": "string",
+                    "description": (
+                        "Working directory for the delegated agent. "
+                        "Use this to target a specific repo directory."
                     ),
                 },
             },
@@ -157,6 +165,32 @@ TOOLS = [
             "additionalProperties": False,
         },
     },
+    {
+        "name": "spawn_orchestrator",
+        "description": (
+            "Spawn a sub-orchestrator for a complex sub-task. "
+            "The sub-orchestrator runs autonomously and returns results. "
+            "Use this for tasks that require deep, focused work."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "task": {
+                    "type": "string",
+                    "description": "Detailed task description for the sub-orchestrator",
+                },
+                "working_dir": {
+                    "type": "string",
+                    "description": (
+                        "Working directory for the sub-orchestrator "
+                        "(optional, defaults to current epic's primary repo)"
+                    ),
+                },
+            },
+            "required": ["task"],
+            "additionalProperties": False,
+        },
+    },
 ]
 
 # Tool call acknowledgments — Claude sees these as tool results
@@ -165,6 +199,7 @@ TOOL_ACKS = {
     "validate": "Command received. Validation will be executed and results provided in your next message.",
     "done": "Orchestration marked as complete.",
     "fail": "Orchestration marked as failed.",
+    "spawn_orchestrator": "Command received. Sub-orchestrator will be spawned and results provided in your next message.",
 }
 
 INBOX_BASE = os.path.expanduser("~/.angy/inboxes")

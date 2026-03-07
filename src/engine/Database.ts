@@ -2,6 +2,7 @@ import SqlDatabase from '@tauri-apps/plugin-sql';
 import { mkdir } from '@tauri-apps/plugin-fs';
 import { appDataDir } from '@tauri-apps/api/path';
 import { DelegationStatus, type SessionInfo, type MessageRecord, type CheckpointRecord } from './types';
+import type { Project, ProjectRepo, Epic, EpicColumn, EpicBranch, SchedulerConfig, SchedulerAction } from './KosTypes';
 
 export class Database {
   private db: SqlDatabase | null = null;
@@ -116,6 +117,96 @@ export class Database {
         // Column already exists — safe to ignore
       }
     }
+
+    // ── KOS Tables ──────────────────────────────────────────────────────
+
+    await this.db.execute(`
+      CREATE TABLE IF NOT EXISTS projects (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT DEFAULT '',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    `);
+
+    await this.db.execute(`
+      CREATE TABLE IF NOT EXISTS project_repos (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        path TEXT NOT NULL,
+        name TEXT NOT NULL,
+        default_branch TEXT DEFAULT 'main',
+        is_primary INTEGER DEFAULT 0
+      )
+    `);
+
+    await this.db.execute(`
+      CREATE TABLE IF NOT EXISTS epics (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        description TEXT DEFAULT '',
+        acceptance_criteria TEXT DEFAULT '',
+        "column" TEXT NOT NULL DEFAULT 'idea',
+        priority_hint TEXT DEFAULT 'medium',
+        complexity TEXT DEFAULT 'medium',
+        model TEXT DEFAULT '',
+        depends_on TEXT DEFAULT '[]',
+        target_repos TEXT DEFAULT '[]',
+        rejection_count INTEGER DEFAULT 0,
+        rejection_feedback TEXT DEFAULT '',
+        computed_score REAL DEFAULT 0,
+        root_session_id TEXT DEFAULT NULL,
+        cost_total REAL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        started_at TEXT DEFAULT NULL,
+        completed_at TEXT DEFAULT NULL
+      )
+    `);
+
+    // Migration: add model column to existing databases
+    try {
+      await this.db.execute(`ALTER TABLE epics ADD COLUMN model TEXT DEFAULT ''`);
+    } catch { /* column already exists */ }
+
+    await this.db.execute(`
+      CREATE TABLE IF NOT EXISTS epic_branches (
+        id TEXT PRIMARY KEY,
+        epic_id TEXT NOT NULL,
+        repo_id TEXT NOT NULL,
+        branch_name TEXT NOT NULL,
+        base_branch TEXT DEFAULT 'main',
+        status TEXT DEFAULT 'active',
+        created_at TEXT NOT NULL
+      )
+    `);
+
+    await this.db.execute(`
+      CREATE TABLE IF NOT EXISTS scheduler_config (
+        id TEXT PRIMARY KEY DEFAULT 'default',
+        max_concurrent_epics INTEGER DEFAULT 3,
+        tick_interval_ms INTEGER DEFAULT 30000,
+        auto_schedule INTEGER DEFAULT 1,
+        daily_cost_budget REAL DEFAULT 50.0,
+        weight_manual REAL DEFAULT 0.4,
+        weight_dependency_depth REAL DEFAULT 0.2,
+        weight_age REAL DEFAULT 0.15,
+        weight_complexity REAL DEFAULT 0.15,
+        weight_rejection REAL DEFAULT 0.1
+      )
+    `);
+
+    await this.db.execute(`
+      CREATE TABLE IF NOT EXISTS scheduler_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp TEXT NOT NULL,
+        action TEXT NOT NULL,
+        epic_id TEXT,
+        details TEXT DEFAULT ''
+      )
+    `);
   }
 
   // ── Sessions ──────────────────────────────────────────────────────────
@@ -390,7 +481,347 @@ export class Database {
     return rows.map(r => r.workspace);
   }
 
+  // ── Projects ─────────────────────────────────────────────────────────
+
+  async saveProject(project: Project): Promise<void> {
+    if (!this.db) return;
+
+    await this.db.execute(
+      `INSERT OR REPLACE INTO projects (id, name, description, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [project.id, project.name, project.description, project.createdAt, project.updatedAt],
+    );
+  }
+
+  async loadProjects(): Promise<Project[]> {
+    if (!this.db) return [];
+
+    const rows = await this.db.select<any[]>(
+      'SELECT id, name, description, created_at, updated_at FROM projects ORDER BY updated_at DESC',
+    );
+
+    return rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      description: r.description,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+    }));
+  }
+
+  async loadProject(id: string): Promise<Project | null> {
+    if (!this.db) return null;
+
+    const rows = await this.db.select<any[]>(
+      'SELECT id, name, description, created_at, updated_at FROM projects WHERE id = $1 LIMIT 1',
+      [id],
+    );
+
+    if (rows.length === 0) return null;
+    const r = rows[0];
+    return {
+      id: r.id,
+      name: r.name,
+      description: r.description,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+    };
+  }
+
+  async deleteProject(id: string): Promise<void> {
+    if (!this.db) return;
+
+    await this.db.execute(
+      'DELETE FROM epic_branches WHERE epic_id IN (SELECT id FROM epics WHERE project_id = $1)',
+      [id],
+    );
+    await this.db.execute('DELETE FROM epics WHERE project_id = $1', [id]);
+    await this.db.execute('DELETE FROM project_repos WHERE project_id = $1', [id]);
+    await this.db.execute('DELETE FROM projects WHERE id = $1', [id]);
+  }
+
+  // ── Project Repos ───────────────────────────────────────────────────
+
+  async saveProjectRepo(repo: ProjectRepo & { projectId: string }): Promise<void> {
+    if (!this.db) return;
+
+    await this.db.execute(
+      `INSERT OR REPLACE INTO project_repos (id, project_id, path, name, default_branch)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [repo.id, repo.projectId, repo.path, repo.name, repo.defaultBranch],
+    );
+  }
+
+  async loadProjectRepos(projectId: string): Promise<ProjectRepo[]> {
+    if (!this.db) return [];
+
+    const rows = await this.db.select<any[]>(
+      'SELECT id, project_id, path, name, default_branch FROM project_repos WHERE project_id = $1',
+      [projectId],
+    );
+
+    return rows.map((r) => ({
+      id: r.id,
+      projectId: r.project_id,
+      path: r.path,
+      name: r.name,
+      defaultBranch: r.default_branch,
+    }));
+  }
+
+  async loadProjectRepo(repoId: string): Promise<ProjectRepo | null> {
+    if (!this.db) return null;
+
+    const rows = await this.db.select<any[]>(
+      'SELECT id, project_id, path, name, default_branch FROM project_repos WHERE id = $1 LIMIT 1',
+      [repoId],
+    );
+
+    if (rows.length === 0) return null;
+    const r = rows[0];
+    return {
+      id: r.id,
+      projectId: r.project_id,
+      path: r.path,
+      name: r.name,
+      defaultBranch: r.default_branch,
+    };
+  }
+
+  async deleteProjectRepo(repoId: string): Promise<void> {
+    if (!this.db) return;
+
+    await this.db.execute('DELETE FROM project_repos WHERE id = $1', [repoId]);
+  }
+
+  // ── Epics ───────────────────────────────────────────────────────────
+
+  async saveEpic(epic: Epic): Promise<void> {
+    if (!this.db) return;
+
+    await this.db.execute(
+      `INSERT OR REPLACE INTO epics
+       (id, project_id, title, description, acceptance_criteria, "column", priority_hint,
+        complexity, model, depends_on, target_repos, rejection_count, rejection_feedback,
+        computed_score, root_session_id, cost_total, created_at, updated_at, started_at, completed_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
+      [
+        epic.id,
+        epic.projectId,
+        epic.title,
+        epic.description,
+        epic.acceptanceCriteria,
+        epic.column,
+        epic.priorityHint,
+        epic.complexity,
+        epic.model || '',
+        JSON.stringify(epic.dependsOn),
+        JSON.stringify(epic.targetRepoIds),
+        epic.rejectionCount,
+        epic.rejectionFeedback,
+        epic.computedScore,
+        epic.rootSessionId,
+        0,
+        epic.createdAt,
+        epic.updatedAt,
+        epic.startedAt,
+        epic.completedAt,
+      ],
+    );
+  }
+
+  async loadEpics(projectId?: string): Promise<Epic[]> {
+    if (!this.db) return [];
+
+    let sql = 'SELECT * FROM epics';
+    const params: any[] = [];
+    if (projectId) {
+      sql += ' WHERE project_id = $1';
+      params.push(projectId);
+    }
+    sql += ' ORDER BY updated_at DESC';
+
+    const rows = await this.db.select<any[]>(sql, params);
+    return rows.map(this.rowToEpic);
+  }
+
+  async loadEpic(id: string): Promise<Epic | null> {
+    if (!this.db) return null;
+
+    const rows = await this.db.select<any[]>(
+      'SELECT * FROM epics WHERE id = $1 LIMIT 1',
+      [id],
+    );
+
+    return rows.length > 0 ? this.rowToEpic(rows[0]) : null;
+  }
+
+  async updateEpicColumn(id: string, column: EpicColumn): Promise<void> {
+    if (!this.db) return;
+
+    await this.db.execute(
+      'UPDATE epics SET "column" = $1, updated_at = $2 WHERE id = $3',
+      [column, new Date().toISOString(), id],
+    );
+  }
+
+  async deleteEpic(id: string): Promise<void> {
+    if (!this.db) return;
+
+    await this.db.execute('DELETE FROM epic_branches WHERE epic_id = $1', [id]);
+    await this.db.execute('DELETE FROM epics WHERE id = $1', [id]);
+  }
+
+  // ── Epic Branches ───────────────────────────────────────────────────
+
+  async saveEpicBranch(branch: EpicBranch): Promise<void> {
+    if (!this.db) return;
+
+    await this.db.execute(
+      `INSERT OR REPLACE INTO epic_branches (id, epic_id, repo_id, branch_name, base_branch, status, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [branch.id, branch.epicId, branch.repoId, branch.branchName, branch.baseBranch, branch.status, new Date().toISOString()],
+    );
+  }
+
+  async loadEpicBranches(epicId: string): Promise<EpicBranch[]> {
+    if (!this.db) return [];
+
+    const rows = await this.db.select<any[]>(
+      'SELECT id, epic_id, repo_id, branch_name, base_branch, status FROM epic_branches WHERE epic_id = $1',
+      [epicId],
+    );
+
+    return rows.map((r) => ({
+      id: r.id,
+      epicId: r.epic_id,
+      repoId: r.repo_id,
+      branchName: r.branch_name,
+      baseBranch: r.base_branch,
+      status: r.status,
+    }));
+  }
+
+  async deleteEpicBranches(epicId: string): Promise<void> {
+    if (!this.db) return;
+
+    await this.db.execute('DELETE FROM epic_branches WHERE epic_id = $1', [epicId]);
+  }
+
+  // ── Scheduler ───────────────────────────────────────────────────────
+
+  async loadSchedulerConfig(): Promise<SchedulerConfig> {
+    const defaults: SchedulerConfig = {
+      enabled: true,
+      tickIntervalMs: 30000,
+      maxConcurrentEpics: 3,
+      dailyCostBudget: 50.0,
+      weights: {
+        manualHint: 0.4,
+        dependencyDepth: 0.2,
+        age: 0.15,
+        complexity: 0.15,
+        rejectionPenalty: 0.1,
+      },
+    };
+    if (!this.db) return defaults;
+
+    const rows = await this.db.select<any[]>(
+      'SELECT * FROM scheduler_config WHERE id = $1 LIMIT 1',
+      ['default'],
+    );
+    if (rows.length === 0) return defaults;
+
+    const r = rows[0];
+    return {
+      enabled: r.auto_schedule !== 0,
+      tickIntervalMs: r.tick_interval_ms,
+      maxConcurrentEpics: r.max_concurrent_epics,
+      dailyCostBudget: r.daily_cost_budget,
+      weights: {
+        manualHint: r.weight_manual,
+        dependencyDepth: r.weight_dependency_depth,
+        age: r.weight_age,
+        complexity: r.weight_complexity,
+        rejectionPenalty: r.weight_rejection,
+      },
+    };
+  }
+
+  async saveSchedulerConfig(config: SchedulerConfig): Promise<void> {
+    if (!this.db) return;
+
+    await this.db.execute(
+      `INSERT OR REPLACE INTO scheduler_config
+       (id, max_concurrent_epics, tick_interval_ms, auto_schedule, daily_cost_budget,
+        weight_manual, weight_dependency_depth, weight_age, weight_complexity, weight_rejection)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+      [
+        'default',
+        config.maxConcurrentEpics,
+        config.tickIntervalMs,
+        config.enabled ? 1 : 0,
+        config.dailyCostBudget,
+        config.weights.manualHint,
+        config.weights.dependencyDepth,
+        config.weights.age,
+        config.weights.complexity,
+        config.weights.rejectionPenalty,
+      ],
+    );
+  }
+
+  async appendSchedulerLog(action: SchedulerAction): Promise<void> {
+    if (!this.db) return;
+
+    await this.db.execute(
+      `INSERT INTO scheduler_log (timestamp, action, epic_id, details)
+       VALUES ($1, $2, $3, $4)`,
+      [action.timestamp, action.type, action.epicId, action.details],
+    );
+  }
+
+  async loadSchedulerLog(limit: number = 100): Promise<SchedulerAction[]> {
+    if (!this.db) return [];
+
+    const rows = await this.db.select<any[]>(
+      'SELECT timestamp, action, epic_id, details FROM scheduler_log ORDER BY id DESC LIMIT $1',
+      [limit],
+    );
+
+    return rows.map((r) => ({
+      type: r.action,
+      epicId: r.epic_id,
+      timestamp: r.timestamp,
+      details: r.details,
+    }));
+  }
+
   // ── Helpers ───────────────────────────────────────────────────────────
+
+  private rowToEpic(r: any): Epic {
+    return {
+      id: r.id,
+      projectId: r.project_id,
+      title: r.title,
+      description: r.description,
+      acceptanceCriteria: r.acceptance_criteria,
+      column: r.column as EpicColumn,
+      priorityHint: r.priority_hint,
+      complexity: r.complexity,
+      model: r.model || '',
+      dependsOn: JSON.parse(r.depends_on || '[]'),
+      targetRepoIds: JSON.parse(r.target_repos || '[]'),
+      rejectionCount: r.rejection_count,
+      rejectionFeedback: r.rejection_feedback ?? '',
+      computedScore: r.computed_score ?? 0,
+      rootSessionId: r.root_session_id || null,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+      startedAt: r.started_at || null,
+      completedAt: r.completed_at || null,
+    };
+  }
 
   private rowToSessionInfo(r: any): SessionInfo {
     return {

@@ -1,0 +1,206 @@
+import type { Epic, OrchestratorOptions, ProjectRepo } from './KosTypes'
+import type { OrchestratorChatPanelAPI } from './Orchestrator'
+import { ORCHESTRATOR_SYSTEM_PROMPT } from './Orchestrator'
+import type { BranchManager } from './BranchManager'
+
+// ── OrchestratorPool — Multi-Orchestrator Manager (singleton) ─────────────
+
+const DEFAULT_MAX_DEPTH = 3
+
+/**
+ * Factory function that creates and starts a real Orchestrator instance
+ * for an epic. Returns the root session ID.
+ */
+export type OrchestratorFactory = (
+  epicId: string,
+  options: OrchestratorOptions,
+  epic: Epic,
+  repos: ProjectRepo[],
+) => Promise<string>
+
+export class OrchestratorPool {
+  private epicOrchestrators = new Map<string, string>()          // epicId → root sessionId
+  private sessionOrchestrators = new Map<string, {               // sessionId → metadata
+    epicId: string
+    depth: number
+    parentSessionId?: string
+  }>()
+  private epicProjects = new Map<string, string>()               // epicId → projectId
+  private static instance: OrchestratorPool | null = null
+  private branchManager: BranchManager
+  private chatPanel: OrchestratorChatPanelAPI | null = null
+  private orchestratorFactory: OrchestratorFactory | null = null
+
+  private constructor(branchManager: BranchManager) {
+    this.branchManager = branchManager
+  }
+
+  static getInstance(branchManager?: BranchManager): OrchestratorPool {
+    if (!OrchestratorPool.instance) {
+      if (!branchManager) {
+        throw new Error('BranchManager required for first OrchestratorPool initialization')
+      }
+      OrchestratorPool.instance = new OrchestratorPool(branchManager)
+    }
+    return OrchestratorPool.instance
+  }
+
+  /** Reset singleton (for testing). */
+  static resetInstance(): void {
+    OrchestratorPool.instance = null
+  }
+
+  setChatPanel(panel: OrchestratorChatPanelAPI): void {
+    this.chatPanel = panel
+  }
+
+  setOrchestratorFactory(factory: OrchestratorFactory): void {
+    this.orchestratorFactory = factory
+    console.log('[OrchestratorPool] Orchestrator factory set')
+  }
+
+  // ── spawnRoot ─────────────────────────────────────────────────────────
+
+  async spawnRoot(
+    epicId: string,
+    options: OrchestratorOptions,
+    epic: Epic,
+    repos: ProjectRepo[],
+  ): Promise<string> {
+    console.log(`[OrchestratorPool] spawnRoot called for epic: ${epicId} ("${epic.title}")`)
+
+    if (this.epicOrchestrators.has(epicId)) {
+      throw new Error(`Epic ${epicId} already has an active orchestrator`)
+    }
+
+    // Create epic branches via BranchManager
+    if (repos.length > 0) {
+      console.log(`[OrchestratorPool] Creating branches for ${repos.length} repos`)
+      await this.branchManager.createEpicBranches(epicId, repos)
+    }
+
+    let sessionId: string
+
+    // Preferred path: use the orchestrator factory to create a full Orchestrator
+    // with MCP tool interception, delegation handling, etc.
+    if (this.orchestratorFactory) {
+      console.log(`[OrchestratorPool] Using orchestrator factory for epic: ${epicId}`)
+      sessionId = await this.orchestratorFactory(epicId, options, epic, repos)
+      if (!sessionId) {
+        throw new Error(`Orchestrator factory returned empty sessionId for epic ${epicId}`)
+      }
+    } else if (this.chatPanel) {
+      // Legacy path: create session directly (no MCP handling — limited functionality)
+      console.warn(`[OrchestratorPool] Using legacy chatPanel path (no MCP handling) for epic: ${epicId}`)
+      sessionId = this.chatPanel.newChat()
+      this.chatPanel.configureSession(sessionId, 'orchestrator', ['specialist-orchestrator'])
+
+      const repoList = repos.map(r => r.name).join(', ')
+      const goal =
+        `# Epic: ${epic.title}\n\n` +
+        `## Description\n${epic.description}\n\n` +
+        `## Acceptance Criteria\n${epic.acceptanceCriteria}\n\n` +
+        `## Target Repos\n${repoList || '(none)'}\n\n` +
+        ORCHESTRATOR_SYSTEM_PROMPT +
+        `\n\n# Instructions\n\n` +
+        `Implement this epic end-to-end. Start by delegating to an architect to analyze the codebase and design the solution.`
+
+      this.chatPanel.sendMessageToSession(sessionId, goal)
+    } else {
+      console.error(`[OrchestratorPool] No factory or chatPanel available — cannot spawn orchestrator for epic: ${epicId}`)
+      throw new Error(`Cannot spawn orchestrator: no factory or chatPanel configured`)
+    }
+
+    // Register in both maps
+    this.epicOrchestrators.set(epicId, sessionId)
+    this.sessionOrchestrators.set(sessionId, { epicId, depth: 0 })
+    this.epicProjects.set(epicId, options.projectId)
+
+    console.log(`[OrchestratorPool] Epic ${epicId} registered with session: ${sessionId}`)
+    return sessionId
+  }
+
+  // ── registerSubOrchestrator ───────────────────────────────────────────
+
+  registerSubOrchestrator(
+    parentSessionId: string,
+    childSessionId: string,
+    maxDepth: number = DEFAULT_MAX_DEPTH,
+  ): void {
+    const parent = this.sessionOrchestrators.get(parentSessionId)
+    if (!parent) {
+      throw new Error(`Parent session ${parentSessionId} not found in pool`)
+    }
+
+    if (parent.depth >= maxDepth) {
+      throw new Error(
+        `Cannot spawn child: parent depth ${parent.depth} >= maxDepth ${maxDepth}`,
+      )
+    }
+
+    this.sessionOrchestrators.set(childSessionId, {
+      epicId: parent.epicId,
+      depth: parent.depth + 1,
+      parentSessionId,
+    })
+  }
+
+  // ── Lookups ───────────────────────────────────────────────────────────
+
+  getEpicForSession(sessionId: string): string | null {
+    return this.sessionOrchestrators.get(sessionId)?.epicId ?? null
+  }
+
+  getSessionsForEpic(epicId: string): string[] {
+    const sessions: string[] = []
+    for (const [sessionId, meta] of this.sessionOrchestrators) {
+      if (meta.epicId === epicId) {
+        sessions.push(sessionId)
+      }
+    }
+    return sessions
+  }
+
+  // ── removeEpic ────────────────────────────────────────────────────────
+
+  async removeEpic(epicId: string): Promise<void> {
+    // Clean up all sessions for this epic
+    for (const [sessionId, meta] of this.sessionOrchestrators) {
+      if (meta.epicId === epicId) {
+        this.sessionOrchestrators.delete(sessionId)
+      }
+    }
+    this.epicOrchestrators.delete(epicId)
+    this.epicProjects.delete(epicId)
+  }
+
+  // ── Counting & status ─────────────────────────────────────────────────
+
+  activeByProject(projectId: string): number {
+    let count = 0
+    for (const [epicId] of this.epicOrchestrators) {
+      if (this.epicProjects.get(epicId) === projectId) {
+        count++
+      }
+    }
+    return count
+  }
+
+  totalActive(): number {
+    return this.epicOrchestrators.size
+  }
+
+  isEpicActive(epicId: string): boolean {
+    return this.epicOrchestrators.has(epicId)
+  }
+
+  getDepth(sessionId: string): number {
+    return this.sessionOrchestrators.get(sessionId)?.depth ?? 0
+  }
+
+  canSpawnChild(parentSessionId: string, maxDepth: number): boolean {
+    const parent = this.sessionOrchestrators.get(parentSessionId)
+    if (!parent) return false
+    return parent.depth < maxDepth
+  }
+}

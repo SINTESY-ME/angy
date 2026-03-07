@@ -1,10 +1,11 @@
 import mitt from 'mitt';
 import { Command } from '@tauri-apps/plugin-shell';
+import type { OrchestratorOptions } from './KosTypes';
 
 // ── Orchestrator Command (parsed from MCP tool calls) ────────────────────────
 
 export interface OrchestratorCommand {
-  action: 'delegate' | 'validate' | 'done' | 'fail' | 'checkpoint' | 'unknown';
+  action: 'delegate' | 'validate' | 'done' | 'fail' | 'checkpoint' | 'spawn_orchestrator' | 'unknown';
   role?: string;
   task?: string;
   command?: string;
@@ -12,6 +13,7 @@ export interface OrchestratorCommand {
   summary?: string;
   reason?: string;
   message?: string;
+  working_dir?: string;
 }
 
 // ── Pending Child (parallel delegation tracking) ─────────────────────────────
@@ -22,6 +24,7 @@ export interface PendingChild {
   agentName: string; // e.g. "implementer-2"
   completed: boolean;
   output: string;
+  workingDir?: string;
 }
 
 // ── Events ───────────────────────────────────────────────────────────────────
@@ -29,6 +32,7 @@ export interface PendingChild {
 export type OrchestratorEvents = {
   phaseChanged: { phase: string };
   delegationStarted: { role: string; task: string; parentSessionId?: string };
+  subOrchestratorSpawned: { task: string; depth: number; epicId: string };
   validationStarted: { command: string };
   validationResult: { passed: boolean; output: string };
   completed: { summary: string };
@@ -44,7 +48,7 @@ export type OrchestratorEvents = {
 export interface OrchestratorChatPanelAPI {
   newChat(workspace?: string): string;
   configureSession(sessionId: string, mode: string, profileIds: string[]): void;
-  sendMessageToSession(sessionId: string, message: string): void;
+  sendMessageToSession(sessionId: string, message: string): void | Promise<void>;
   delegateToChild(
     parentSessionId: string,
     task: string,
@@ -54,6 +58,7 @@ export interface OrchestratorChatPanelAPI {
     agentName?: string,
     teamId?: string,
     teammates?: string[],
+    workingDir?: string,
   ): string;
   sessionFinalOutput(sessionId: string): string;
 }
@@ -74,9 +79,10 @@ export const ORCHESTRATOR_SYSTEM_PROMPT =
   `You may include brief reasoning text before the tool call, but the tool call is MANDATORY. ` +
   `A response with ONLY text and no tool call is an error.\n\n` +
   `Available tools (these are the ONLY tools you can use):\n` +
-  `- delegate(role, task) — Assign work to a specialist agent.\n` +
+  `- delegate(role, task, working_dir?) — Assign work to a specialist agent.\n` +
   `  Roles: architect (analyzes codebase, writes design docs), ` +
   `implementer (writes code), reviewer (reviews code), tester (writes/runs tests).\n` +
+  `  Optional working_dir sets the agent's working directory.\n` +
   `- validate(command) — Run a shell command to verify work (build, test, lint).\n` +
   `- done(summary) — Report the goal is fully achieved.\n` +
   `- fail(reason) — Report unrecoverable failure.\n\n` +
@@ -122,6 +128,7 @@ export class Orchestrator {
   private pendingFeedResult = '';
   private autoCommit = false;
   private gitAvailable = false;
+  private kosOptions: OrchestratorOptions | null = null;
 
   static readonly MCP_SERVER_NAME = 'c3p2-orchestrator';
   static readonly MAX_STEP_ATTEMPTS = 5;
@@ -129,7 +136,10 @@ export class Orchestrator {
 
   setChatPanel(panel: OrchestratorChatPanelAPI) { this.chatPanel = panel; }
   setWorkspace(ws: string) { this.workspace = ws; }
+  setKosOptions(opts: OrchestratorOptions | null) { this.kosOptions = opts; }
+  getKosOptions() { return this.kosOptions; }
   isRunning() { return this._running; }
+  isEpicScoped() { return this.kosOptions !== null; }
   sessionId() { return this._sessionId; }
   currentPhase() { return this._currentPhase; }
   totalDelegations() { return this._totalDelegations; }
@@ -251,6 +261,12 @@ export class Orchestrator {
       ? `- \`checkpoint(message)\` — create a git checkpoint commit to save progress\n`
       : '';
 
+    const spawnLine = this.kosOptions
+      ? `- \`spawn_orchestrator(task, working_dir?)\` — spawn a child orchestrator for complex sub-tasks\n`
+      : '';
+
+    const kosContext = this.getKosSystemPromptAddition();
+
     const initialMessage =
       `# Goal\n\n${goal}\n\n` +
       `# Instructions\n\n` +
@@ -258,14 +274,16 @@ export class Orchestrator {
       `CRITICAL: You MUST call exactly one MCP tool in every response. ` +
       `You have NO file access — you cannot read, write, or search files. ` +
       `Your ONLY tools are:\n` +
-      `- \`delegate(role, task)\` — assign work to architect/implementer/reviewer/tester\n` +
+      `- \`delegate(role, task, working_dir?)\` — assign work to architect/implementer/reviewer/tester\n` +
       `- \`validate(command, description)\` — run a shell command to verify the work\n` +
       checkpointLine +
+      spawnLine +
       `- \`done(summary)\` — report the goal is fully achieved\n` +
       `- \`fail(reason)\` — report unrecoverable failure\n\n` +
       `You may call MULTIPLE delegate tools in a single turn to run agents in parallel.\n` +
       `For validate, done, and fail — call exactly ONE per turn.\n\n` +
       `Do NOT output plain text without a tool call. Every response needs a tool call.\n\n` +
+      kosContext +
       `Start now by calling delegate(role="architect", task="...") to analyze the codebase and design the solution.`;
 
     this.chatPanel.sendMessageToSession(this._sessionId, initialMessage);
@@ -330,6 +348,13 @@ export class Orchestrator {
 
     console.log(`[Orchestrator] MCP tool called: ${action}`, args);
 
+    // Peer messaging tools are handled by MCP server directly — not actionable.
+    // Don't set mcpCommandReceived so the fallback path can still nudge Claude
+    // to use a real orchestrator tool if this was the only call in the turn.
+    if (action === 'send_message' || action === 'check_inbox') {
+      return;
+    }
+
     this.mcpCommandReceived = true;
     this._stepAttempts = 0;
 
@@ -340,6 +365,7 @@ export class Orchestrator {
         cmd.action = 'delegate';
         cmd.role = args.role || '';
         cmd.task = args.task || '';
+        cmd.working_dir = args.working_dir || '';
         break;
       case 'validate':
         cmd.action = 'validate';
@@ -357,6 +383,11 @@ export class Orchestrator {
       case 'checkpoint':
         cmd.action = 'checkpoint';
         cmd.message = args.message || '';
+        break;
+      case 'spawn_orchestrator':
+        cmd.action = 'spawn_orchestrator';
+        cmd.task = args.task || '';
+        cmd.working_dir = args.working_dir || '';
         break;
       default:
         console.warn('[Orchestrator] Unknown MCP tool action:', action);
@@ -527,6 +558,10 @@ export class Orchestrator {
       } else if (action === 'checkpoint') {
         cmd.action = 'checkpoint';
         cmd.message = j.message || '';
+      } else if (action === 'spawn_orchestrator') {
+        cmd.action = 'spawn_orchestrator';
+        cmd.task = j.task || '';
+        cmd.working_dir = j.working_dir || '';
       }
     } catch (e) {
       console.warn('[Orchestrator] JSON parse error:', e);
@@ -569,6 +604,10 @@ export class Orchestrator {
         this.executeCheckpoint(cmd.message);
         break;
 
+      case 'spawn_orchestrator':
+        this.executeSpawnOrchestrator(cmd);
+        break;
+
       default:
         this.feedResult('ERROR: Unknown action. Use delegate, validate, done, or fail.');
         break;
@@ -602,6 +641,9 @@ export class Orchestrator {
       .filter(c => !c.completed)
       .map(c => c.agentName);
 
+    // Determine working directory: explicit working_dir from command, or KOS repo path
+    const workingDir = cmd.working_dir || undefined;
+
     const childId = this.chatPanel.delegateToChild(
       this._sessionId,
       cmd.task,
@@ -611,6 +653,7 @@ export class Orchestrator {
       agentName,
       this.teamId,
       teammates,
+      workingDir,
     );
 
     if (childId) {
@@ -620,6 +663,7 @@ export class Orchestrator {
         agentName,
         completed: false,
         output: '',
+        workingDir,
       });
 
       console.log(`[Orchestrator] Delegated to ${cmd.role} agent: ${agentName} child: ${childId} pending: ${this.pendingChildren.size}`);
@@ -718,6 +762,142 @@ export class Orchestrator {
     this.chatPanel.sendMessageToSession(this._sessionId, resultText);
   }
 
+  // ── Spawn Sub-Orchestrator (KOS) ────────────────────────────────────────
+
+  private executeSpawnOrchestrator(cmd: OrchestratorCommand) {
+    if (!cmd.task || !this.chatPanel) return;
+
+    if (!this.kosOptions) {
+      this.feedResult(
+        'ERROR: spawn_orchestrator is only available in KOS (epic-scoped) mode.',
+      );
+      return;
+    }
+
+    const currentDepth = this.kosOptions.depth;
+    const maxDepth = this.kosOptions.maxDepth;
+
+    if (currentDepth >= maxDepth) {
+      this.feedResult(
+        `ERROR: Maximum orchestrator depth (${maxDepth}) reached at depth ${currentDepth}. ` +
+        `Use delegate() instead of spawn_orchestrator() to assign work directly.`,
+      );
+      return;
+    }
+
+    // Create child orchestrator options inheriting the epic context
+    const childKosOptions: OrchestratorOptions = {
+      epicId: this.kosOptions.epicId,
+      projectId: this.kosOptions.projectId,
+      repoPaths: { ...this.kosOptions.repoPaths },
+      depth: currentDepth + 1,
+      maxDepth,
+      parentSessionId: this._sessionId,
+      budgetRemaining: this.kosOptions.budgetRemaining,
+    };
+
+    this._totalDelegations++;
+
+    const agentName = `sub-orchestrator-${this.agentCounter + 1}`;
+    this.agentCounter++;
+
+    this._currentPhase = `spawning sub-orchestrator (depth ${childKosOptions.depth})`;
+    this.events.emit('phaseChanged', { phase: this._currentPhase });
+    this.events.emit('subOrchestratorSpawned', {
+      task: cmd.task,
+      depth: childKosOptions.depth,
+      epicId: this.kosOptions.epicId,
+    });
+
+    // Determine working directory for the sub-orchestrator
+    const workingDir = cmd.working_dir || undefined;
+
+    // Use the existing delegation mechanism to create the child session
+    // The child runs as an orchestrator (not a specialist agent)
+    const context = this.chatPanel.sessionFinalOutput(this._sessionId);
+    const childId = this.chatPanel.delegateToChild(
+      this._sessionId,
+      cmd.task,
+      context,
+      'specialist-orchestrator',
+      this.contextProfileIds,
+      agentName,
+      this.teamId,
+      [],
+      workingDir,
+    );
+
+    if (childId) {
+      this.pendingChildren.set(childId, {
+        sessionId: childId,
+        role: 'sub-orchestrator',
+        agentName,
+        completed: false,
+        output: '',
+        workingDir,
+      });
+
+      console.log(
+        `[Orchestrator] Spawned sub-orchestrator: ${agentName} depth=${childKosOptions.depth} child=${childId}`,
+      );
+    }
+  }
+
+  // ── KOS System Prompt Addition ──────────────────────────────────────────
+
+  /**
+   * Generates additional system prompt context when kosOptions is set.
+   * Includes epic details, target repos, and depth information.
+   */
+  getKosSystemPromptAddition(): string {
+    if (!this.kosOptions) return '';
+
+    const opts = this.kosOptions;
+    const lines: string[] = [
+      '\n\n# KOS (Kanban Orchestration System) Context\n',
+      `You are an epic-scoped orchestrator operating within the KOS system.\n`,
+      `- Epic ID: ${opts.epicId}`,
+      `- Project ID: ${opts.projectId}`,
+      `- Current depth: ${opts.depth} / max ${opts.maxDepth}`,
+    ];
+
+    if (opts.parentSessionId) {
+      lines.push(`- Parent session: ${opts.parentSessionId}`);
+    }
+
+    if (opts.budgetRemaining !== null) {
+      lines.push(`- Budget remaining: $${opts.budgetRemaining.toFixed(2)}`);
+    }
+
+    // Target repos
+    const repoEntries = Object.entries(opts.repoPaths);
+    if (repoEntries.length > 0) {
+      lines.push('\n## Target Repositories\n');
+      for (const [repoId, repoPath] of repoEntries) {
+        lines.push(`- ${repoId}: \`${repoPath}\``);
+      }
+      lines.push(
+        '\nUse the `working_dir` parameter on delegate() to run agents in specific repo directories.',
+      );
+    }
+
+    // Depth-aware instructions
+    if (opts.depth < opts.maxDepth) {
+      lines.push(
+        '\n## Sub-Orchestrator Spawning\n',
+        'You can spawn child orchestrators for complex sub-tasks using spawn_orchestrator(task, working_dir).',
+        `Current depth: ${opts.depth}. You can spawn ${opts.maxDepth - opts.depth} more level(s) of sub-orchestrators.`,
+      );
+    } else {
+      lines.push(
+        '\n## Depth Limit Reached\n',
+        'You are at maximum orchestrator depth. Use delegate() for all work assignments.',
+      );
+    }
+
+    return lines.join('\n');
+  }
+
   // ── Helpers ────────────────────────────────────────────────────────────
 
   private generateAgentName(role: string): string {
@@ -812,14 +992,21 @@ export class Orchestrator {
   // ── System Prompt (dynamic, includes checkpoint instructions if enabled) ──
 
   getSystemPrompt(): string {
-    if (!this.autoCommit) return ORCHESTRATOR_SYSTEM_PROMPT;
+    let prompt = ORCHESTRATOR_SYSTEM_PROMPT;
 
-    return ORCHESTRATOR_SYSTEM_PROMPT +
-      `\n\n# Checkpointing\n\n` +
-      `Auto-commit is enabled. After completing each phase (architect, implement, validate, review), ` +
-      `call the checkpoint tool with a descriptive commit message summarizing what was accomplished ` +
-      `in that phase. For example: checkpoint(message="Implemented user authentication module"). ` +
-      `This creates incremental git commits so progress is not lost.`;
+    if (this.autoCommit) {
+      prompt +=
+        `\n\n# Checkpointing\n\n` +
+        `Auto-commit is enabled. After completing each phase (architect, implement, validate, review), ` +
+        `call the checkpoint tool with a descriptive commit message summarizing what was accomplished ` +
+        `in that phase. For example: checkpoint(message="Implemented user authentication module"). ` +
+        `This creates incremental git commits so progress is not lost.`;
+    }
+
+    // Append KOS context if this orchestrator is epic-scoped
+    prompt += this.getKosSystemPromptAddition();
+
+    return prompt;
   }
 
   isAutoCommitEnabled(): boolean {

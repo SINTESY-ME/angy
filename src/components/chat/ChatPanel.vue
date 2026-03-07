@@ -319,7 +319,7 @@ watch(
 function getOrCreateState(sessionId: string): SessionState {
   let state = sessionStates.value.get(sessionId);
   if (!state) {
-    state = {
+    const raw: SessionState = {
       messages: [],
       turnCounter: 0,
       lastPersistedTurnId: 0,
@@ -334,7 +334,11 @@ function getOrCreateState(sessionId: string): SessionState {
       pendingThinkingContent: '',
       thinkingStartTime: 0,
     };
-    sessionStates.value.set(sessionId, state);
+    sessionStates.value.set(sessionId, raw);
+    // Return the reactive proxy from .get(), not the raw object.
+    // Vue's reactive Map wraps values on .get() but .set() stores the raw value.
+    // Returning the raw object causes mutations to bypass Vue's reactivity tracking.
+    state = sessionStates.value.get(sessionId)!;
   }
   return state;
 }
@@ -756,6 +760,10 @@ function addToolUse(sessionId: string, toolName: string, summary: string, toolIn
 function markDone(sessionId: string) {
   const state = sessionStates.value.get(sessionId);
   if (state) {
+    // Ensure the session row exists in the DB before saving messages
+    // (prevents FOREIGN KEY constraint failures for newly-created sessions).
+    sessionsStore.persistSession(sessionId);
+
     // Persist any unsaved assistant/tool messages from this turn batch
     const db = getDatabase();
     for (const msg of state.messages) {
@@ -773,7 +781,6 @@ function markDone(sessionId: string) {
       }
     }
     state.lastPersistedTurnId = state.turnCounter;
-    sessionsStore.persistSession(sessionId);
 
     state.isProcessing = false;
     state.isThinking = false;

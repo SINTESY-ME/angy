@@ -64,6 +64,9 @@ export const useSessionsStore = defineStore('sessions', () => {
       sessions.value.set(sessionId, info);
       messages.value.set(sessionId, []);
     }
+    // Persist immediately so the session row exists in the DB before any
+    // messages are saved (avoids FOREIGN KEY constraint failures).
+    persistSession(sessionId);
     return sessionId;
   }
 
@@ -75,6 +78,9 @@ export const useSessionsStore = defineStore('sessions', () => {
       sessions.value.set(childId, info);
       messages.value.set(childId, []);
     }
+    // Persist immediately so the session row exists in the DB before any
+    // messages are saved (avoids FOREIGN KEY constraint failures).
+    persistSession(childId);
     engineBus.emit('session:created', { sessionId: childId, parentSessionId: parentId });
     return childId;
   }

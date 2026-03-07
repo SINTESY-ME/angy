@@ -1,0 +1,338 @@
+<template>
+  <div class="h-full w-[380px] flex flex-col border-l border-[var(--border-subtle)] bg-[var(--bg-window)]">
+    <!-- Header -->
+    <div class="flex items-center justify-between px-4 py-3 border-b border-[var(--border-subtle)]">
+      <span class="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider">Epic Details</span>
+      <button
+        class="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+        @click="$emit('close')"
+      >
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+    </div>
+
+    <div v-if="epic" class="flex-1 overflow-y-auto px-4 py-3 space-y-4">
+      <!-- Title -->
+      <div>
+        <label class="text-[10px] font-medium text-[var(--text-muted)] uppercase tracking-wider">Title</label>
+        <input
+          v-model="draft.title"
+          class="mt-1 w-full text-sm px-2 py-1.5 rounded border border-[var(--border-subtle)]
+                 bg-[var(--bg-base)] text-[var(--text-primary)]
+                 focus:outline-none focus:border-[var(--accent-mauve)] transition-colors"
+        />
+      </div>
+
+      <!-- Column -->
+      <div>
+        <label class="text-[10px] font-medium text-[var(--text-muted)] uppercase tracking-wider">Column</label>
+        <select
+          v-model="draft.column"
+          class="mt-1 w-full text-sm px-2 py-1.5 rounded border border-[var(--border-subtle)]
+                 bg-[var(--bg-base)] text-[var(--text-primary)]
+                 focus:outline-none focus:border-[var(--accent-mauve)] transition-colors"
+        >
+          <option v-for="col in columns" :key="col" :value="col">
+            {{ col.replace(/-/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) }}
+          </option>
+        </select>
+      </div>
+
+      <!-- Description -->
+      <div>
+        <label class="text-[10px] font-medium text-[var(--text-muted)] uppercase tracking-wider">Description</label>
+        <textarea
+          v-model="draft.description"
+          rows="4"
+          class="mt-1 w-full text-sm px-2 py-1.5 rounded border border-[var(--border-subtle)]
+                 bg-[var(--bg-base)] text-[var(--text-primary)] resize-y
+                 focus:outline-none focus:border-[var(--accent-mauve)] transition-colors"
+          placeholder="Markdown description..."
+        />
+      </div>
+
+      <!-- Acceptance Criteria -->
+      <div>
+        <label class="text-[10px] font-medium text-[var(--text-muted)] uppercase tracking-wider">Acceptance Criteria</label>
+        <textarea
+          v-model="draft.acceptanceCriteria"
+          rows="3"
+          class="mt-1 w-full text-sm px-2 py-1.5 rounded border border-[var(--border-subtle)]
+                 bg-[var(--bg-base)] text-[var(--text-primary)] resize-y
+                 focus:outline-none focus:border-[var(--accent-mauve)] transition-colors"
+          placeholder="What defines done..."
+        />
+      </div>
+
+      <!-- Priority & Complexity row -->
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="text-[10px] font-medium text-[var(--text-muted)] uppercase tracking-wider">Priority</label>
+          <select
+            v-model="draft.priorityHint"
+            class="mt-1 w-full text-sm px-2 py-1.5 rounded border border-[var(--border-subtle)]
+                   bg-[var(--bg-base)] text-[var(--text-primary)]
+                   focus:outline-none focus:border-[var(--accent-mauve)] transition-colors"
+          >
+            <option value="critical">Critical</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
+            <option value="none">None</option>
+          </select>
+        </div>
+        <div>
+          <label class="text-[10px] font-medium text-[var(--text-muted)] uppercase tracking-wider">Complexity</label>
+          <select
+            v-model="draft.complexity"
+            class="mt-1 w-full text-sm px-2 py-1.5 rounded border border-[var(--border-subtle)]
+                   bg-[var(--bg-base)] text-[var(--text-primary)]
+                   focus:outline-none focus:border-[var(--accent-mauve)] transition-colors"
+          >
+            <option value="trivial">Trivial</option>
+            <option value="small">Small</option>
+            <option value="medium">Medium</option>
+            <option value="large">Large</option>
+            <option value="epic">Epic</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Model -->
+      <div>
+        <label class="text-[10px] font-medium text-[var(--text-muted)] uppercase tracking-wider">Model</label>
+        <select
+          v-model="draft.model"
+          class="mt-1 w-full text-sm px-2 py-1.5 rounded border border-[var(--border-subtle)]
+                 bg-[var(--bg-base)] text-[var(--text-primary)]
+                 focus:outline-none focus:border-[var(--accent-mauve)] transition-colors"
+        >
+          <option value="">Default (CLI default)</option>
+          <option value="claude-sonnet-4-6">Sonnet 4.6</option>
+          <option value="claude-opus-4-6">Opus 4.6</option>
+          <option value="claude-haiku-4-5-20251001">Haiku 4.5</option>
+        </select>
+      </div>
+
+      <!-- Target Repos -->
+      <div>
+        <label class="text-[10px] font-medium text-[var(--text-muted)] uppercase tracking-wider">Target Repos</label>
+        <div class="mt-1">
+          <RepoScopeSelector
+            :projectId="epic.projectId"
+            v-model="draft.targetRepoIds"
+          />
+        </div>
+      </div>
+
+      <!-- Dependencies -->
+      <div>
+        <label class="text-[10px] font-medium text-[var(--text-muted)] uppercase tracking-wider">Dependencies</label>
+        <div class="mt-1 space-y-1">
+          <div
+            v-for="depId in draft.dependsOn"
+            :key="depId"
+            class="flex items-center justify-between px-2 py-1 rounded text-sm bg-[var(--bg-raised)]"
+          >
+            <span class="text-[var(--text-secondary)] truncate">{{ depTitle(depId) }}</span>
+            <button
+              class="text-[var(--text-muted)] hover:text-red-400 transition-colors ml-2 shrink-0"
+              @click="removeDep(depId)"
+            >
+              <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          <!-- Add dependency -->
+          <select
+            v-if="availableDeps.length > 0"
+            class="w-full text-xs px-2 py-1 rounded border border-dashed border-[var(--border-subtle)]
+                   bg-[var(--bg-base)] text-[var(--text-muted)]
+                   focus:outline-none focus:border-[var(--accent-mauve)] transition-colors"
+            @change="addDep(($event.target as HTMLSelectElement).value); ($event.target as HTMLSelectElement).value = ''"
+          >
+            <option value="">+ Add dependency...</option>
+            <option v-for="dep in availableDeps" :key="dep.id" :value="dep.id">{{ dep.title }}</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Review actions -->
+      <div v-if="epic.column === 'review'" class="space-y-2">
+        <textarea
+          v-model="rejectionFeedback"
+          rows="2"
+          class="w-full text-xs px-2 py-1.5 rounded border border-[var(--border-subtle)]
+                 bg-[var(--bg-base)] text-[var(--text-primary)] resize-y
+                 focus:outline-none focus:border-[var(--accent-mauve)] transition-colors"
+          placeholder="Rejection feedback (optional)..."
+        />
+        <div class="flex items-center gap-2">
+          <button
+            class="flex-1 text-xs py-1.5 rounded bg-[var(--accent-green)] text-[var(--bg-base)] font-medium
+                   hover:opacity-90 transition-opacity"
+            @click="approve"
+          >
+            Approve
+          </button>
+          <button
+            class="flex-1 text-xs py-1.5 rounded bg-[var(--accent-red)] text-white font-medium
+                   hover:opacity-90 transition-opacity"
+            @click="reject"
+          >
+            Reject
+          </button>
+        </div>
+      </div>
+
+      <!-- In-progress action -->
+      <button
+        v-if="epic.column === 'in-progress'"
+        class="w-full text-xs py-1.5 rounded border border-[var(--accent-blue)]
+               text-[var(--accent-blue)] font-medium hover:bg-[var(--accent-blue)]
+               hover:text-[var(--bg-base)] transition-colors"
+        @click="ui.navigateToEpic(epic.id, epic.projectId)"
+      >
+        Open Workspace
+      </button>
+    </div>
+
+    <!-- Footer actions -->
+    <div v-if="epic" class="flex items-center gap-2 px-4 py-3 border-t border-[var(--border-subtle)]">
+      <button
+        class="flex-1 text-xs py-1.5 rounded bg-[var(--accent-mauve)] text-[var(--bg-base)] font-medium
+               hover:opacity-90 transition-opacity"
+        @click="save"
+      >
+        Save
+      </button>
+      <button
+        class="text-xs py-1.5 px-3 rounded border border-red-500/30 text-red-400
+               hover:bg-red-500/10 transition-colors"
+        @click="remove"
+      >
+        Delete
+      </button>
+    </div>
+
+    <!-- Empty state -->
+    <div v-if="!epic" class="flex-1 flex items-center justify-center">
+      <p class="text-xs text-[var(--text-muted)] italic">No epic selected</p>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, computed, watch } from 'vue';
+import type { EpicColumn, PriorityHint, ComplexityEstimate } from '@/engine/KosTypes';
+import { useUiStore } from '@/stores/ui';
+import { useEpicStore } from '@/stores/epics';
+import { Scheduler } from '@/engine/Scheduler';
+import { engineBus } from '@/engine/EventBus';
+import RepoScopeSelector from './RepoScopeSelector.vue';
+
+const props = defineProps<{ epicId: string }>();
+const emit = defineEmits<{ close: [] }>();
+
+const ui = useUiStore();
+const epicStore = useEpicStore();
+
+const columns: EpicColumn[] = ['idea', 'backlog', 'todo', 'in-progress', 'review', 'done'];
+
+const epic = computed(() => epicStore.epicById(props.epicId));
+
+const draft = ref({
+  title: '',
+  column: 'idea' as EpicColumn,
+  description: '',
+  acceptanceCriteria: '',
+  priorityHint: 'medium' as PriorityHint,
+  complexity: 'medium' as ComplexityEstimate,
+  model: '',
+  targetRepoIds: [] as string[],
+  dependsOn: [] as string[],
+});
+
+watch(() => props.epicId, loadDraft, { immediate: true });
+
+function loadDraft() {
+  const e = epicStore.epicById(props.epicId);
+  if (!e) return;
+  draft.value = {
+    title: e.title,
+    column: e.column,
+    description: e.description,
+    acceptanceCriteria: e.acceptanceCriteria,
+    priorityHint: e.priorityHint,
+    complexity: e.complexity,
+    model: e.model || '',
+    targetRepoIds: [...e.targetRepoIds],
+    dependsOn: [...e.dependsOn],
+  };
+}
+
+function depTitle(id: string) {
+  return epicStore.epicById(id)?.title ?? id.slice(0, 12);
+}
+
+const availableDeps = computed(() => {
+  if (!epic.value) return [];
+  return epicStore.epicsByProject(epic.value.projectId)
+    .filter((e) => e.id !== props.epicId && !draft.value.dependsOn.includes(e.id));
+});
+
+function addDep(id: string) {
+  if (id && !draft.value.dependsOn.includes(id)) {
+    draft.value.dependsOn.push(id);
+  }
+}
+
+function removeDep(id: string) {
+  draft.value.dependsOn = draft.value.dependsOn.filter((d) => d !== id);
+}
+
+async function save() {
+  const d = draft.value;
+  if (d.column !== epic.value?.column) {
+    if (d.column === 'in-progress') {
+      // Route through scheduler so an orchestrator is spawned
+      console.log(`[EpicDetailPanel] Requesting start for epic: ${props.epicId}`);
+      engineBus.emit('epic:requestStart', { epicId: props.epicId });
+    } else {
+      await epicStore.moveEpic(props.epicId, d.column);
+    }
+  }
+  await epicStore.updateEpic(props.epicId, {
+    title: d.title,
+    description: d.description,
+    acceptanceCriteria: d.acceptanceCriteria,
+    priorityHint: d.priorityHint,
+    complexity: d.complexity,
+    model: d.model,
+    targetRepoIds: d.targetRepoIds,
+    dependsOn: d.dependsOn,
+  });
+}
+
+async function remove() {
+  await epicStore.deleteEpic(props.epicId);
+  emit('close');
+}
+
+const rejectionFeedback = ref('');
+
+async function approve() {
+  await Scheduler.getInstance().approveEpic(props.epicId);
+  loadDraft();
+}
+
+async function reject() {
+  const feedback = rejectionFeedback.value || 'Changes requested';
+  await Scheduler.getInstance().rejectEpic(props.epicId, feedback);
+  rejectionFeedback.value = '';
+  loadDraft();
+}
+</script>

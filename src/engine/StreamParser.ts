@@ -191,16 +191,18 @@ export class StreamParser {
     if (type === 'assistant') {
       const content = j.message?.content;
       if (Array.isArray(content)) {
+        // Emit ALL tool_use blocks directly (a single response can contain
+        // multiple parallel tool calls — e.g. two delegate calls).
         for (const block of content) {
           if (jtype(block) === 'tool_use') {
             const toolId = jstr(block, 'id');
             if (toolId && !this.emittedToolIds.has(toolId)) {
               this.emittedToolIds.add(toolId);
-              event.type = 'toolUse';
-              event.toolName = jstr(block, 'name');
-              event.toolId = toolId;
-              if (block.input) event.toolInput = block.input;
-              return event;
+              this.events.emit('toolUseStarted', {
+                toolName: jstr(block, 'name'),
+                toolId,
+                input: block.input ?? {},
+              });
             }
           }
         }

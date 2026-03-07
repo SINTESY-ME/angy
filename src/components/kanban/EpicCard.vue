@@ -1,0 +1,153 @@
+<template>
+  <div
+    class="group rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-2.5
+           cursor-pointer transition-all hover:border-[var(--border-standard)]
+           hover:shadow-md hover:shadow-black/20"
+    @click="onSingleClick"
+    @dblclick="onDoubleClick"
+  >
+    <!-- Title -->
+    <div class="text-sm font-medium text-[var(--text-primary)] leading-snug mb-1.5">
+      {{ epic.title }}
+    </div>
+
+    <!-- Badges row -->
+    <div class="flex items-center gap-1.5 flex-wrap">
+      <!-- Priority badge -->
+      <span
+        class="text-[10px] font-semibold px-1.5 py-0.5 rounded-full"
+        :class="priorityClass"
+      >
+        {{ epic.priorityHint }}
+      </span>
+
+      <!-- Complexity badge -->
+      <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--bg-raised)] text-[var(--text-secondary)]">
+        {{ epic.complexity }}
+      </span>
+
+      <!-- Status indicator -->
+      <span v-if="epic.column === 'in-progress'" class="flex items-center gap-0.5 text-[10px] text-[var(--accent-blue)]">
+        <span class="inline-block w-1.5 h-1.5 rounded-full bg-[var(--accent-blue)] animate-pulse" />
+        running
+      </span>
+      <span v-else-if="epic.column === 'review'" class="flex items-center gap-0.5 text-[10px] text-[var(--accent-yellow)]">
+        <svg class="w-3 h-3" viewBox="0 0 16 16" fill="currentColor"><path d="M8 2c3.3 0 6 2.7 6 6s-2.7 6-6 6-6-2.7-6-6 2.7-6 6-6zm0 1C5.2 3 3 5.2 3 8s2.2 5 5 5 5-2.2 5-5-2.2-5-5-5zm0 2a3 3 0 110 6 3 3 0 010-6z"/></svg>
+        review
+      </span>
+    </div>
+
+    <!-- Repo tags -->
+    <div v-if="epic.targetRepoIds.length > 0" class="flex items-center gap-1 flex-wrap mt-1.5">
+      <span
+        v-for="repoId in epic.targetRepoIds"
+        :key="repoId"
+        class="text-[9px] px-1.5 py-0.5 rounded bg-[var(--bg-raised)] text-[var(--text-muted)]"
+      >
+        {{ repoName(repoId) }}
+      </span>
+    </div>
+
+    <!-- Move left/right arrows -->
+    <div class="flex items-center justify-end gap-1 mt-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+      <button
+        v-if="currentIndex > 0"
+        class="p-0.5 rounded text-[var(--text-faint)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-raised)] transition-colors"
+        title="Move left"
+        @click.stop="moveLeft"
+      >
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+        </svg>
+      </button>
+      <button
+        v-if="currentIndex < columnOrder.length - 1"
+        class="p-0.5 rounded text-[var(--text-faint)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-raised)] transition-colors"
+        title="Move right"
+        @click.stop="moveRight"
+      >
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+        </svg>
+      </button>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { computed } from 'vue';
+import type { Epic, EpicColumn } from '@/engine/KosTypes';
+import { useUiStore } from '@/stores/ui';
+import { useProjectsStore } from '@/stores/projects';
+import { useEpicStore } from '@/stores/epics';
+import { engineBus } from '@/engine/EventBus';
+
+const props = defineProps<{ epic: Epic }>();
+const emit = defineEmits<{ select: [id: string] }>();
+
+const ui = useUiStore();
+const projectsStore = useProjectsStore();
+const epicStore = useEpicStore();
+
+// Debounce single click so double-click can cancel it
+let clickTimer: ReturnType<typeof setTimeout> | null = null;
+
+function onSingleClick() {
+  if (clickTimer) clearTimeout(clickTimer);
+  clickTimer = setTimeout(() => {
+    clickTimer = null;
+    emit('select', props.epic.id);
+  }, 250);
+}
+
+function onDoubleClick() {
+  if (clickTimer) {
+    clearTimeout(clickTimer);
+    clickTimer = null;
+  }
+  ui.navigateToEpic(props.epic.id, props.epic.projectId);
+}
+
+const columnOrder: EpicColumn[] = ['idea', 'backlog', 'todo', 'in-progress', 'review', 'done'];
+const currentIndex = computed(() => columnOrder.indexOf(props.epic.column));
+
+async function moveToColumn(targetColumn: EpicColumn) {
+  if (targetColumn === 'in-progress') {
+    // Route through scheduler so an orchestrator is spawned
+    console.log(`[EpicCard] Requesting start for epic: ${props.epic.id}`);
+    engineBus.emit('epic:requestStart', { epicId: props.epic.id });
+  } else {
+    await epicStore.moveEpic(props.epic.id, targetColumn);
+  }
+}
+
+async function moveLeft() {
+  const idx = currentIndex.value;
+  if (idx > 0) {
+    await moveToColumn(columnOrder[idx - 1]);
+  }
+}
+
+async function moveRight() {
+  const idx = currentIndex.value;
+  if (idx < columnOrder.length - 1) {
+    await moveToColumn(columnOrder[idx + 1]);
+  }
+}
+
+const priorityClass = computed(() => {
+  switch (props.epic.priorityHint) {
+    case 'critical': return 'bg-red-500/20 text-red-400';
+    case 'high': return 'bg-orange-500/20 text-orange-400';
+    case 'medium': return 'bg-blue-500/20 text-blue-400';
+    case 'low': return 'bg-gray-500/20 text-gray-400';
+    default: return 'bg-gray-500/20 text-gray-500';
+  }
+});
+
+function repoName(repoId: string) {
+  const repos = projectsStore.reposByProjectId(props.epic.projectId);
+  const repo = repos.find((r) => r.id === repoId);
+  return repo?.name ?? repoId.slice(0, 8);
+}
+</script>

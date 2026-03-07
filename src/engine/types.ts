@@ -146,7 +146,43 @@ export type EngineEvents = {
   'orchestrator:delegationStarted': { role: string; task: string; parentSessionId?: string };
   'git:statusChanged': { entries: GitFileEntry[] };
   'orchestrator:checkpointCreated': { hash: string; message: string };
+  'epic:phaseChanged': { epicId: string; phase: string };
+  'epic:completed': { epicId: string; summary: string };
+  'epic:failed': { epicId: string; reason: string };
+  'epic:subOrchestratorSpawned': { task: string; depth: number; epicId: string };
+  'scheduler:error': { epicId?: string; title: string; message: string };
+  'scheduler:info': { epicId?: string; title: string; message: string };
+  'epic:requestStart': { epicId: string };
+  'epic:requestStop': { epicId: string };
 };
+
+// ── Agent Handle (UI-agnostic event sink for Claude process output) ──────
+
+export interface AgentHandle {
+  appendTextDelta(sessionId: string, text: string): void;
+  appendThinkingDelta(sessionId: string, text: string): void;
+  addToolUse(sessionId: string, toolName: string, summary: string, toolInput?: Record<string, any>, toolId?: string): void;
+  markDone(sessionId: string): void;
+  showError(sessionId: string, error: string): void;
+  setThinking(sessionId: string, thinking: boolean): void;
+  setRealSessionId(sessionId: string, realId: string): void;
+  onFileEdited?(sessionId: string, filePath: string, toolName: string, toolInput?: Record<string, any>): void;
+  onCheckpointReceived?(sessionId: string, uuid: string, replayIndex: number): void;
+}
+
+// ── Process Options ──────────────────────────────────────────────────────
+
+export interface ProcessOptions {
+  workingDir: string;
+  mode?: string;
+  model?: string;
+  systemPrompt?: string;
+  resumeSessionId?: string;
+  images?: Array<{ data: string; mediaType: string }>;
+  agentName?: string;
+  teamId?: string;
+  autoCommit?: boolean;
+}
 
 // ── Attached Context / Images ─────────────────────────────────────────────
 

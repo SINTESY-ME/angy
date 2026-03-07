@@ -1,0 +1,134 @@
+import { defineStore } from 'pinia';
+import { ref, computed } from 'vue';
+import type { Project, ProjectRepo } from '@/engine/KosTypes';
+import { getDatabase } from './sessions';
+
+export const useProjectsStore = defineStore('projects', () => {
+  // ── State ──────────────────────────────────────────────────────────
+  const projects = ref<Project[]>([]);
+  const repos = ref<ProjectRepo[]>([]);
+  const loading = ref(false);
+
+  // ── Getters ────────────────────────────────────────────────────────
+  const projectById = computed(() => {
+    return (id: string) => projects.value.find((p) => p.id === id);
+  });
+
+  const projectCount = computed(() => projects.value.length);
+
+  const reposByProjectId = computed(() => {
+    return (projectId: string) => repos.value.filter((r) => r.projectId === projectId);
+  });
+
+  // ── Actions ────────────────────────────────────────────────────────
+
+  async function loadAll() {
+    loading.value = true;
+    try {
+      const db = getDatabase();
+      const loadedProjects = await db.loadProjects();
+      const loadedRepos = (await Promise.all(
+        loadedProjects.map((p) => db.loadProjectRepos(p.id))
+      )).flat();
+      projects.value = loadedProjects;
+      repos.value = loadedRepos;
+    } catch (err) {
+      console.error('[ProjectsStore] Failed to load projects:', err);
+    } finally {
+      loading.value = false;
+    }
+  }
+
+  async function createProject(name: string, description?: string): Promise<Project> {
+    const now = new Date().toISOString();
+    const project: Project = {
+      id: crypto.randomUUID(),
+      name,
+      description: description ?? '',
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    const db = getDatabase();
+    await db.saveProject(project);
+    projects.value.push(project);
+    return project;
+  }
+
+  async function updateProject(id: string, updates: Partial<Pick<Project, 'name' | 'description'>>) {
+    const project = projects.value.find((p) => p.id === id);
+    if (!project) return;
+
+    if (updates.name !== undefined) project.name = updates.name;
+    if (updates.description !== undefined) project.description = updates.description;
+    project.updatedAt = new Date().toISOString();
+
+    const db = getDatabase();
+    await db.saveProject(project);
+  }
+
+  async function deleteProject(id: string) {
+    const db = getDatabase();
+    await db.deleteProject(id);
+
+    // Remove associated repos from state
+    repos.value = repos.value.filter((r) => r.projectId !== id);
+    projects.value = projects.value.filter((p) => p.id !== id);
+  }
+
+  async function addRepo(projectId: string, repo: Omit<ProjectRepo, 'id'>): Promise<ProjectRepo> {
+    const fullRepo: ProjectRepo = {
+      ...repo,
+      id: crypto.randomUUID(),
+    };
+
+    const db = getDatabase();
+    await db.saveProjectRepo(fullRepo);
+    repos.value.push(fullRepo);
+
+    // Touch parent project timestamp
+    const project = projects.value.find((p) => p.id === projectId);
+    if (project) {
+      project.updatedAt = new Date().toISOString();
+      await db.saveProject(project);
+    }
+
+    return fullRepo;
+  }
+
+  async function removeRepo(projectId: string, repoId: string) {
+    const db = getDatabase();
+    await db.deleteProjectRepo(repoId);
+    repos.value = repos.value.filter((r) => r.id !== repoId);
+
+    // Touch parent project timestamp
+    const project = projects.value.find((p) => p.id === projectId);
+    if (project) {
+      project.updatedAt = new Date().toISOString();
+      await db.saveProject(project);
+    }
+  }
+
+  async function initialize() {
+    await loadAll();
+  }
+
+  return {
+    // State
+    projects,
+    repos,
+    loading,
+    // Getters
+    projectById,
+    projectCount,
+    reposByProjectId,
+    // Actions
+    loadAll,
+    createProject,
+    updateProject,
+    deleteProject,
+    addRepo,
+    removeRepo,
+    initialize,
+  };
+});
