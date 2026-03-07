@@ -15,6 +15,10 @@ You define high-level goals called **Epics**. An autonomous scheduler picks them
 No micromanaging. No copy-pasting context. Just goals in, working code out.
 
 <p align="center">
+  <img src="public/angy3.png" alt="Angy kanban" width="700">
+</p>
+
+<p align="center">
   <img src="public/angy.png" alt="Angy building itself" width="700">
 </p>
 
