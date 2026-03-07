@@ -178,11 +178,11 @@ export class AngyEngine {
     // Create a HeadlessHandle for this orchestrator
     const handle = new HeadlessHandle(this.db, this.sessions.manager);
     handle.onDelegateFinished = (childSid, result) => {
-      this.sessions.persistSessionSync(childSid);
+      this.sessions.persistSession(childSid);
       orch.onDelegateFinished(childSid, result);
     };
     handle.onPersistSession = (sid) => {
-      this.sessions.persistSessionSync(sid);
+      this.sessions.persistSession(sid);
     };
 
     // Resolve workspace from target repos
@@ -219,6 +219,7 @@ export class AngyEngine {
     const sessionInfo = this.sessions.getSession(sessionId);
     if (sessionInfo) {
       sessionInfo.epicId = epicId;
+      await this.sessions.persistSession(sessionId);
     }
 
     console.log(`[AngyEngine] Epic orchestrator started: epic=${epicId}, session=${sessionId}`);
@@ -236,7 +237,7 @@ export class AngyEngine {
     model?: string,
   ): OrchestratorChatPanelAPI {
     return {
-      newChat: (ws?: string) => {
+      newChat: async (ws?: string) => {
         return this.sessions.createSession(ws || workspace, 'orchestrator');
       },
 
@@ -247,8 +248,8 @@ export class AngyEngine {
         }
       },
 
-      sendMessageToSession: (sid: string, msg: string) => {
-        handle.prepareForSend(sid, msg);
+      sendMessageToSession: async (sid: string, msg: string) => {
+        await handle.prepareForSend(sid, msg);
         this.processes.sendMessage(sid, msg, handle, {
           workingDir: workspace,
           mode: 'orchestrator',
@@ -258,7 +259,7 @@ export class AngyEngine {
         });
       },
 
-      delegateToChild: (
+      delegateToChild: async (
         parentSessionId: string,
         task: string,
         _context: string,
@@ -270,7 +271,7 @@ export class AngyEngine {
         workingDir?: string,
       ) => {
         const resolvedDir = workingDir || workspace;
-        const childSid = this.sessions.createChildSession(
+        const childSid = await this.sessions.createChildSession(
           parentSessionId, resolvedDir, 'agent', task,
         );
 
@@ -286,6 +287,7 @@ export class AngyEngine {
           const childInfo = this.sessions.getSession(childSid);
           if (childInfo) {
             childInfo.epicId = epicId;
+            await this.sessions.persistSession(childSid);
           }
         }
 
@@ -492,22 +494,24 @@ export class AngyEngine {
   }
 
   private wireEpicLifecycleEvents(): void {
-    // When an epic completes, move it to review
+    // When an epic completes, move it to review then notify the UI to sync
     engineBus.on('epic:completed', async ({ epicId }) => {
       try {
         await this.scheduler.moveToReview(epicId);
       } catch (err) {
         console.error(`[AngyEngine] Failed to move epic ${epicId} to review:`, err);
       }
+      engineBus.emit('epic:storeSyncNeeded');
     });
 
-    // When an epic fails, move it back to todo with feedback
+    // When an epic fails, move it back to todo with feedback then notify the UI
     engineBus.on('epic:failed', async ({ epicId, reason }) => {
       try {
         await this.scheduler.rejectEpic(epicId, `Agent failed: ${reason}`);
       } catch (err) {
         console.error(`[AngyEngine] Failed to reject epic ${epicId}:`, err);
       }
+      engineBus.emit('epic:storeSyncNeeded');
     });
 
     // Persist cost entries and accumulate epic cost totals

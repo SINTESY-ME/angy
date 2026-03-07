@@ -35,9 +35,16 @@ export const useEpicStore = defineStore('epics', () => {
 
   // ── Getters ────────────────────────────────────────────────────────
 
+  const epicMap = computed(() => {
+    const map = new Map<string, Epic>();
+    for (const e of epics.value) {
+      map.set(e.id, e);
+    }
+    return map;
+  });
+
   const epicById = computed(() => {
-    return (id: string): Epic | undefined =>
-      epics.value.find((e) => e.id === id);
+    return (id: string): Epic | undefined => epicMap.value.get(id);
   });
 
   const epicsByProject = computed(() => {

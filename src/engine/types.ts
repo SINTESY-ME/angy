@@ -159,6 +159,13 @@ export type EngineEvents = {
   'epic:requestStart': { epicId: string };
   'epic:requestStop': { epicId: string };
   'epic:updated': { epicId: string; epic: Epic };
+  'epic:storeSyncNeeded': void;
+  // Headless agent streaming — emitted by HeadlessHandle so ChatPanel can show live updates
+  'agent:textDelta': { sessionId: string; text: string };
+  'agent:toolUse': { sessionId: string; toolName: string; summary: string; toolInput?: Record<string, any> };
+  'agent:thinkingDelta': { sessionId: string; text: string };
+  'agent:thinking': { sessionId: string; thinking: boolean };
+  'agent:turnDone': { sessionId: string };
 };
 
 // ── Agent Handle (UI-agnostic event sink for Claude process output) ──────

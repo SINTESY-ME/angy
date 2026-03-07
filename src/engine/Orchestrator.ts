@@ -46,7 +46,7 @@ export type OrchestratorEvents = {
 // ── ChatPanel interface (decouples from Vue component) ───────────────────────
 
 export interface OrchestratorChatPanelAPI {
-  newChat(workspace?: string): string;
+  newChat(workspace?: string): string | Promise<string>;
   configureSession(sessionId: string, mode: string, profileIds: string[]): void;
   sendMessageToSession(sessionId: string, message: string): void | Promise<void>;
   delegateToChild(
@@ -59,7 +59,7 @@ export interface OrchestratorChatPanelAPI {
     teamId?: string,
     teammates?: string[],
     workingDir?: string,
-  ): string;
+  ): string | Promise<string>;
   sessionFinalOutput(sessionId: string): string;
 }
 
@@ -249,7 +249,7 @@ export class Orchestrator {
     } catch { /* ok */ }
 
     // Create orchestrator session
-    this._sessionId = this.chatPanel.newChat();
+    this._sessionId = await this.chatPanel.newChat();
     this.chatPanel.configureSession(
       this._sessionId, 'orchestrator', ['specialist-orchestrator'],
     );
@@ -614,7 +614,7 @@ export class Orchestrator {
     }
   }
 
-  private executeDelegation(cmd: OrchestratorCommand) {
+  private async executeDelegation(cmd: OrchestratorCommand) {
     if (!cmd.role || !cmd.task || !this.chatPanel) return;
 
     if (this._totalDelegations >= Orchestrator.MAX_TOTAL_DELEGATIONS) {
@@ -644,7 +644,7 @@ export class Orchestrator {
     // Determine working directory: explicit working_dir from command, or epic repo path
     const workingDir = cmd.working_dir || undefined;
 
-    const childId = this.chatPanel.delegateToChild(
+    const childId = await this.chatPanel.delegateToChild(
       this._sessionId,
       cmd.task,
       context,
@@ -764,7 +764,7 @@ export class Orchestrator {
 
   // ── Spawn Sub-Orchestrator (Epic) ───────────────────────────────────────
 
-  private executeSpawnOrchestrator(cmd: OrchestratorCommand) {
+  private async executeSpawnOrchestrator(cmd: OrchestratorCommand) {
     if (!cmd.task || !this.chatPanel) return;
 
     if (!this.epicOptions) {
@@ -815,7 +815,7 @@ export class Orchestrator {
     // Use the existing delegation mechanism to create the child session
     // The child runs as an orchestrator (not a specialist agent)
     const context = this.chatPanel.sessionFinalOutput(this._sessionId);
-    const childId = this.chatPanel.delegateToChild(
+    const childId = await this.chatPanel.delegateToChild(
       this._sessionId,
       cmd.task,
       context,

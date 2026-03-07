@@ -93,7 +93,7 @@ export class OrchestratorPool {
     } else if (this.chatPanel) {
       // Legacy path: create session directly (no MCP handling — limited functionality)
       console.warn(`[OrchestratorPool] Using legacy chatPanel path (no MCP handling) for epic: ${epicId}`)
-      sessionId = this.chatPanel.newChat()
+      sessionId = await this.chatPanel.newChat()
       this.chatPanel.configureSession(sessionId, 'orchestrator', ['specialist-orchestrator'])
 
       const repoList = repos.map(r => r.name).join(', ')

@@ -13,6 +13,7 @@ import type { AgentHandle } from './types';
 import { DelegationStatus } from './types';
 import type { Database } from './Database';
 import type { SessionManager } from './SessionManager';
+import { engineBus } from './EventBus';
 
 // ── Internal per-session state ───────────────────────────────────────────
 
@@ -81,7 +82,7 @@ export class HeadlessHandle implements AgentHandle {
    * Increments the turn counter, records the user message, and persists it.
    * Must be called before `sendMessageToEngine` for the session.
    */
-  prepareForSend(sessionId: string, text: string): void {
+  async prepareForSend(sessionId: string, text: string): Promise<void> {
     const s = this.getOrCreate(sessionId);
     s.turnCounter++;
     s.currentText = '';
@@ -91,8 +92,7 @@ export class HeadlessHandle implements AgentHandle {
       turnId: s.turnCounter,
       timestamp: Date.now(),
     });
-    // Persist user message immediately
-    this.db.saveMessage({
+    await this.db.saveMessage({
       sessionId,
       role: 'user',
       content: text,
@@ -123,10 +123,11 @@ export class HeadlessHandle implements AgentHandle {
 
   appendTextDelta(sessionId: string, text: string): void {
     this.getOrCreate(sessionId).currentText += text;
+    engineBus.emit('agent:textDelta', { sessionId, text });
   }
 
-  appendThinkingDelta(_sessionId: string, _text: string): void {
-    // No-op: headless mode doesn't display thinking
+  appendThinkingDelta(sessionId: string, text: string): void {
+    engineBus.emit('agent:thinkingDelta', { sessionId, text });
   }
 
   addToolUse(
@@ -145,9 +146,10 @@ export class HeadlessHandle implements AgentHandle {
       turnId: s.turnCounter,
       timestamp: Date.now(),
     });
+    engineBus.emit('agent:toolUse', { sessionId, toolName, summary, toolInput });
   }
 
-  markDone(sessionId: string): void {
+  async markDone(sessionId: string): Promise<void> {
     const s = this.sessions.get(sessionId);
     if (!s) return;
 
@@ -168,9 +170,10 @@ export class HeadlessHandle implements AgentHandle {
     s.currentText = '';
 
     // Persist non-user messages to DB (user messages were persisted in prepareForSend)
+    const savePromises: Promise<void>[] = [];
     for (const msg of s.messages) {
       if (msg.role === 'user') continue;
-      this.db.saveMessage({
+      savePromises.push(this.db.saveMessage({
         sessionId,
         role: msg.role,
         content: msg.content,
@@ -178,8 +181,9 @@ export class HeadlessHandle implements AgentHandle {
         toolInput: msg.toolInput,
         turnId: msg.turnId,
         timestamp: Math.floor(msg.timestamp / 1000),
-      });
+      }));
     }
+    await Promise.all(savePromises);
     s.messages = [];
 
     // Handle delegation completion for child sessions
@@ -192,13 +196,15 @@ export class HeadlessHandle implements AgentHandle {
 
     this.onPersistSession?.(sessionId);
 
+    engineBus.emit('agent:turnDone', { sessionId });
+
     // Notify orchestrator (must be after persist so state is saved)
     if (info?.delegationTask && this.finalizedChildren.has(sessionId)) {
       this.onDelegateFinished?.(sessionId, result);
     }
   }
 
-  showError(sessionId: string, error: string): void {
+  async showError(sessionId: string, error: string): Promise<void> {
     const s = this.getOrCreate(sessionId);
     // Flush any accumulated text
     if (s.currentText) {
@@ -216,11 +222,11 @@ export class HeadlessHandle implements AgentHandle {
       turnId: s.turnCounter,
       timestamp: Date.now(),
     });
-    this.markDone(sessionId);
+    await this.markDone(sessionId);
   }
 
-  setThinking(_sessionId: string, _thinking: boolean): void {
-    // No-op: headless mode doesn't display thinking indicator
+  setThinking(sessionId: string, thinking: boolean): void {
+    engineBus.emit('agent:thinking', { sessionId, thinking });
   }
 
   setRealSessionId(sessionId: string, realId: string): void {

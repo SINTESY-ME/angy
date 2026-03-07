@@ -26,21 +26,21 @@ export class SessionService {
   // ── Session lifecycle ──────────────────────────────────────────────────
 
   /** Create a new session. Persisted to DB immediately. */
-  createSession(workspace: string, mode = 'agent'): string {
+  async createSession(workspace: string, mode = 'agent'): Promise<string> {
     const sessionId = this.manager.createSession(workspace, mode);
-    this.persistSessionSync(sessionId);
+    await this.persistSession(sessionId);
     return sessionId;
   }
 
   /** Create a child session with delegation metadata. Persisted to DB immediately. */
-  createChildSession(
+  async createChildSession(
     parentId: string,
     workspace: string,
     mode: string,
     task: string,
-  ): string {
+  ): Promise<string> {
     const childId = this.manager.createChildSession(parentId, workspace, mode, task);
-    this.persistSessionSync(childId);
+    await this.persistSession(childId);
     engineBus.emit('session:created', { sessionId: childId, parentSessionId: parentId });
     return childId;
   }
@@ -82,12 +82,12 @@ export class SessionService {
 
   setTitle(sessionId: string, title: string): void {
     this.manager.setSessionTitle(sessionId, title);
-    this.persistSessionSync(sessionId);
+    this.persistSession(sessionId);
   }
 
   setFavorite(sessionId: string, favorite: boolean): void {
     this.manager.setSessionFavorite(sessionId, favorite);
-    this.persistSessionSync(sessionId);
+    this.persistSession(sessionId);
   }
 
   async deleteSession(sessionId: string): Promise<void> {
@@ -161,14 +161,6 @@ export class SessionService {
   // ── Persistence ───────────────────────────────────────────────────────
 
   /** Persist a single session to the database. */
-  persistSessionSync(sessionId: string): void {
-    const info = this.manager.sessionInfo(sessionId);
-    if (info) {
-      // Fire-and-forget: DB write is async but we don't need to await
-      this.db.saveSession(info);
-    }
-  }
-
   async persistSession(sessionId: string): Promise<void> {
     const info = this.manager.sessionInfo(sessionId);
     if (info) {

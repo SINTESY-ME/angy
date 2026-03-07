@@ -56,7 +56,7 @@ export const useSessionsStore = defineStore('sessions', () => {
 
   // ── Actions ────────────────────────────────────────────────────────
 
-  function createSession(workspace: string, mode = 'agent'): string {
+  async function createSession(workspace: string, mode = 'agent'): Promise<string> {
     const mgr = getSessionManager();
     const sessionId = mgr.createSession(workspace, mode);
     const info = mgr.sessionInfo(sessionId);
@@ -64,13 +64,11 @@ export const useSessionsStore = defineStore('sessions', () => {
       sessions.value.set(sessionId, info);
       messages.value.set(sessionId, []);
     }
-    // Persist immediately so the session row exists in the DB before any
-    // messages are saved (avoids FOREIGN KEY constraint failures).
-    persistSession(sessionId);
+    await persistSession(sessionId);
     return sessionId;
   }
 
-  function createChildSession(parentId: string, workspace: string, mode: string, task: string): string {
+  async function createChildSession(parentId: string, workspace: string, mode: string, task: string): Promise<string> {
     const mgr = getSessionManager();
     const childId = mgr.createChildSession(parentId, workspace, mode, task);
     const info = mgr.sessionInfo(childId);
@@ -78,9 +76,7 @@ export const useSessionsStore = defineStore('sessions', () => {
       sessions.value.set(childId, info);
       messages.value.set(childId, []);
     }
-    // Persist immediately so the session row exists in the DB before any
-    // messages are saved (avoids FOREIGN KEY constraint failures).
-    persistSession(childId);
+    await persistSession(childId);
     engineBus.emit('session:created', { sessionId: childId, parentSessionId: parentId });
     return childId;
   }
@@ -247,6 +243,7 @@ export const useSessionsStore = defineStore('sessions', () => {
         existing.title = info.title;
         existing.updatedAt = info.updatedAt;
         existing.delegationStatus = info.delegationStatus;
+        existing.epicId = info.epicId;
       }
     }
     return added;

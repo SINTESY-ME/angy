@@ -61,6 +61,7 @@
 
     <!-- Input bar -->
     <InputBar
+      v-if="!isAutoSpawned"
       ref="inputBar"
       :processing="isProcessing"
       :workspacePath="ui.workspacePath"
@@ -85,11 +86,14 @@
         </button>
       </template>
     </InputBar>
+    <div v-else class="py-3 text-center text-[11px] text-[var(--text-muted)] border-t border-[var(--border-subtle)]">
+      This agent is managed by the scheduler
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, watch } from 'vue';
+import { ref, computed, nextTick, watch, onMounted, onUnmounted } from 'vue';
 import ChatMessage from './ChatMessage.vue';
 import ThinkingIndicator from './ThinkingIndicator.vue';
 import QuestionWidget from './QuestionWidget.vue';
@@ -107,6 +111,7 @@ import { ClaudeProcess } from '../../engine/ClaudeProcess';
 import { sendMessageToEngine, sendToolResultToEngine, cancelProcess, type ChatPanelHandle } from '../../composables/useEngine';
 import { ORCHESTRATOR_SYSTEM_PROMPT } from '../../engine/Orchestrator';
 import type { AgentStatus, AttachedContext, AttachedImage, MessageRecord } from '../../engine/types';
+import { engineBus } from '../../engine/EventBus';
 
 // ── Message type ──────────────────────────────────────────────────────────
 
@@ -197,6 +202,12 @@ const isThinking = computed((): boolean => {
 
 const isLoadingHistory = computed((): boolean => {
   return activeState.value?.isLoadingHistory ?? false;
+});
+
+const isAutoSpawned = computed((): boolean => {
+  if (!activeSessionId.value) return false;
+  const session = sessionsStore.sessions.get(activeSessionId.value);
+  return !!session?.epicId && !!session?.parentSessionId;
 });
 
 function setLoadingHistory(sessionId: string, loading: boolean) {
@@ -337,8 +348,8 @@ function selectSession(sessionId: string) {
   nextTick(() => inputBar.value?.focus());
 }
 
-function newChat(workspace = ''): string {
-  const sessionId = sessionsStore.createSession(workspace || ui.workspacePath || '.');
+async function newChat(workspace = ''): Promise<string> {
+  const sessionId = await sessionsStore.createSession(workspace || ui.workspacePath || '.');
   getOrCreateState(sessionId);
   sessionsStore.selectSession(sessionId);
   fleetStore.rebuildFromSessions();
@@ -415,7 +426,7 @@ function buildOrchestratorPrompt(goal: string): string {
   );
 }
 
-function onSend(text: string, _contexts?: AttachedContext[], _images?: AttachedImage[]) {
+async function onSend(text: string, _contexts?: AttachedContext[], _images?: AttachedImage[]) {
   // Orchestrate mode: send normally but with 'orchestrator' mode (one-shot toggle)
   const isOrchestrate = orchestrateMode.value;
   const effectiveMode = isOrchestrate ? 'orchestrator' : currentMode.value;
@@ -425,7 +436,7 @@ function onSend(text: string, _contexts?: AttachedContext[], _images?: AttachedI
 
   let sid = activeSessionId.value;
   if (!sid) {
-    sid = newChat();
+    sid = await newChat();
   }
 
   // Emit orchestrate-started BEFORE sending so App.vue can register interceptors
@@ -901,6 +912,58 @@ function appendDbMessage(sessionId: string, msg: MessageRecord) {
     state.turnCounter = msg.turnId;
   }
 }
+
+// ── Headless agent live streaming ────────────────────────────────────────
+//
+// Epic/orchestrated agents use HeadlessHandle instead of ChatPanel's handle,
+// so their streaming events are broadcast on engineBus. We subscribe here so
+// ChatPanel shows real-time updates when viewing a headless session.
+
+function onHeadlessTextDelta({ sessionId, text }: { sessionId: string; text: string }) {
+  getOrCreateState(sessionId).isProcessing = true;
+  appendTextDelta(sessionId, text);
+}
+
+function onHeadlessToolUse({ sessionId, toolName, summary, toolInput }: { sessionId: string; toolName: string; summary: string; toolInput?: Record<string, any> }) {
+  getOrCreateState(sessionId).isProcessing = true;
+  addToolUse(sessionId, toolName, summary, toolInput);
+}
+
+function onHeadlessThinkingDelta({ sessionId, text }: { sessionId: string; text: string }) {
+  getOrCreateState(sessionId).isProcessing = true;
+  appendThinkingDelta(sessionId, text);
+}
+
+function onHeadlessThinking({ sessionId, thinking }: { sessionId: string; thinking: boolean }) {
+  getOrCreateState(sessionId).isProcessing = true;
+  setThinking(sessionId, thinking);
+}
+
+function onHeadlessTurnDone({ sessionId }: { sessionId: string }) {
+  // HeadlessHandle already persisted messages to DB — skip ChatPanel's DB writes
+  // by marking everything as already persisted before calling markDone.
+  const state = sessionStates.value.get(sessionId);
+  if (state) {
+    state.lastPersistedTurnId = state.turnCounter;
+  }
+  markDone(sessionId);
+}
+
+onMounted(() => {
+  engineBus.on('agent:textDelta', onHeadlessTextDelta);
+  engineBus.on('agent:toolUse', onHeadlessToolUse);
+  engineBus.on('agent:thinkingDelta', onHeadlessThinkingDelta);
+  engineBus.on('agent:thinking', onHeadlessThinking);
+  engineBus.on('agent:turnDone', onHeadlessTurnDone);
+});
+
+onUnmounted(() => {
+  engineBus.off('agent:textDelta', onHeadlessTextDelta);
+  engineBus.off('agent:toolUse', onHeadlessToolUse);
+  engineBus.off('agent:thinkingDelta', onHeadlessThinkingDelta);
+  engineBus.off('agent:thinking', onHeadlessThinking);
+  engineBus.off('agent:turnDone', onHeadlessTurnDone);
+});
 
 // Expose methods for parent / engine integration
 defineExpose({

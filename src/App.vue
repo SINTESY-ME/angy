@@ -81,7 +81,7 @@ import OrchestratorDialog from './components/settings/OrchestratorDialog.vue';
 import NotificationToast from './components/home/NotificationToast.vue';
 import { useUiStore } from './stores/ui';
 import { useThemeStore } from './stores/theme';
-import { useSessionsStore, getDatabase, getSessionManager } from './stores/sessions';
+import { useSessionsStore, getDatabase, getSessionManager, initSessionEngines } from './stores/sessions';
 import { useFleetStore } from './stores/fleet';
 import { useProjectsStore } from './stores/projects';
 import { useEpicStore } from './stores/epics';
@@ -234,13 +234,12 @@ async function onAgentSelected(sessionId: string) {
   }
 }
 
-function onNewChat() {
-  const sessionId = chatPanelRef.value?.newChat() ?? '';
+async function onNewChat() {
+  const sessionId = await chatPanelRef.value?.newChat() ?? '';
   if (sessionId) {
     fleetStore.selectAgent(sessionId);
     effectsPanelRef.value?.setCurrentSession(sessionId);
     diffEngine.setCurrentSessionId(sessionId);
-    // Restart live graph for the new session if graph is active
     if (ui.rightPanelMode === 'graph') {
       ensureLiveGraph(sessionId);
     }
@@ -481,261 +480,171 @@ function onOrchestrate() {
   showOrchestratorDialog.value = true;
 }
 
+/**
+ * Build a shared OrchestratorChatPanelAPI backed by ChatPanel + Pinia stores.
+ * Used by both dialog-initiated and input-bar-initiated orchestration.
+ */
+function buildChatPanelAPI(opts: {
+  newChatHook?: (sid: string) => void;
+  sendSystemPrompt?: () => string;
+  sendAutoCommit?: boolean;
+  injectUserMessage?: boolean;
+}) {
+  return {
+    newChat: async (workspace: string) => {
+      const sid = await chatPanelRef.value?.newChat(workspace) ?? '';
+      opts.newChatHook?.(sid);
+      return sid;
+    },
+
+    configureSession: (sid: string, mode: string, _profileIds: string[]) => {
+      const session = sessionsStore.sessions.get(sid);
+      if (session) {
+        session.title = session.title || `${mode} session`;
+      }
+    },
+
+    sendMessageToSession: (sid: string, msg: string) => {
+      const panel = chatPanelRef.value;
+      if (!panel) return;
+
+      if (opts.injectUserMessage) {
+        const state = panel.sessionStates?.get(sid);
+        if (state) {
+          state.turnCounter++;
+          state.isProcessing = true;
+          state.isThinking = true;
+          state.currentAssistantMsgId = null;
+          state.messages.push({
+            id: `msg-${Date.now()}-feed`,
+            role: 'user',
+            content: msg,
+            turnId: state.turnCounter,
+            timestamp: Date.now(),
+          });
+        }
+      }
+
+      const handle = {
+        appendTextDelta: panel.appendTextDelta,
+        appendThinkingDelta: (_s: string, _t: string) => { /* no-op */ },
+        addToolUse: panel.addToolUse,
+        markDone: panel.markDone,
+        showError: panel.showError,
+        setThinking: panel.setThinking,
+        setRealSessionId: panel.setRealSessionId!,
+      };
+      const state = panel.sessionStates?.get(sid);
+      sendMessageToEngine(sid, msg, handle, {
+        workingDir: ui.workspacePath || '.',
+        mode: 'orchestrator',
+        systemPrompt: opts.sendSystemPrompt?.() ?? ORCHESTRATOR_SYSTEM_PROMPT,
+        autoCommit: opts.sendAutoCommit,
+        resumeSessionId: state?.realClaudeSessionId || undefined,
+      });
+    },
+
+    delegateToChild: async (
+      parentSessionId: string,
+      task: string,
+      _context: string,
+      _specialistProfileId: string,
+      _contextProfileIds: string[],
+      agentName?: string,
+      teamId?: string,
+      teammates?: string[],
+      workingDir?: string,
+    ) => {
+      const panel = chatPanelRef.value;
+      if (!panel) return '';
+      const resolvedDir = workingDir || ui.workspacePath || '.';
+      const childSid = await sessionsStore.createChildSession(parentSessionId, resolvedDir, 'agent', task);
+
+      if (agentName) {
+        const childSession = sessionsStore.sessions.get(childSid);
+        if (childSession) {
+          childSession.title = agentName.charAt(0).toUpperCase() + agentName.slice(1);
+        }
+      }
+      fleetStore.rebuildFromSessions();
+
+      let systemPrompt = '';
+      if (teammates && teammates.length > 0 && agentName) {
+        systemPrompt = `Your agent name is "${agentName}". ` +
+          `You are on a team with: ${teammates.join(', ')}. ` +
+          `Use send_message(to, content) and check_inbox() to coordinate.`;
+      }
+
+      const handle = {
+        appendTextDelta: panel.appendTextDelta,
+        appendThinkingDelta: (_s: string, _t: string) => { /* no-op */ },
+        addToolUse: panel.addToolUse,
+        markDone: (s: string) => {
+          panel.markDone(s);
+          const mgr = getSessionManager();
+          mgr.setDelegationStatus(s, DelegationStatus.Completed);
+          const childState = panel.sessionStates?.get(s);
+          const lastMsg = childState?.messages
+            ? [...childState.messages].reverse().find((m: { role: string }) => m.role === 'assistant')
+            : null;
+          const result = lastMsg?.content ?? '';
+          mgr.setDelegationResult(s, result);
+          sessionsStore.syncFromEngine(s);
+          sessionsStore.persistSession(s);
+          orchestrator.onDelegateFinished(s, result);
+        },
+        showError: panel.showError,
+        setThinking: panel.setThinking,
+        setRealSessionId: panel.setRealSessionId!,
+        onFileEdited,
+      };
+
+      sendMessageToEngine(childSid, task, handle, {
+        workingDir: resolvedDir,
+        mode: 'agent',
+        systemPrompt,
+        agentName,
+        teamId,
+      });
+
+      return childSid;
+    },
+
+    sessionFinalOutput: (sid: string) => {
+      const state = chatPanelRef.value?.sessionStates?.get(sid);
+      if (!state) return '';
+      const lastAssistant = [...state.messages].reverse().find((m: { role: string }) => m.role === 'assistant');
+      return lastAssistant?.content ?? '';
+    },
+  };
+}
+
 function onOrchestratorStart(goal: string) {
   showOrchestratorDialog.value = false;
   ui.setRightPanelMode('graph');
-  orchestrator.setChatPanel({
-    newChat: (workspace: string) => {
-      const sid = chatPanelRef.value?.newChat(workspace) ?? '';
+  orchestrator.setChatPanel(buildChatPanelAPI({
+    newChatHook: (sid) => {
       if (sid) {
         if (graphCleanup) graphCleanup();
         graphCleanup = startLiveGraph(sid);
       }
-      return sid;
     },
-    configureSession: (sid: string, mode: string, _profileIds: string[]) => {
-      // Update the session's mode in the store
-      const session = sessionsStore.sessions.get(sid);
-      if (session) {
-        session.title = session.title || `${mode} session`;
-      }
-    },
-    sendMessageToSession: (sid: string, msg: string) => {
-      const panel = chatPanelRef.value;
-      if (!panel) return;
-      // Build a ChatPanelHandle that routes events to the panel's methods
-      const handle = {
-        appendTextDelta: panel.appendTextDelta,
-        appendThinkingDelta: (_s: string, _t: string) => { /* thinking delta for orchestrator sessions */ },
-        addToolUse: panel.addToolUse,
-        markDone: panel.markDone,
-        showError: panel.showError,
-        setThinking: panel.setThinking,
-        setRealSessionId: panel.setRealSessionId!,
-      };
-      const state = panel.sessionStates?.get(sid);
-      sendMessageToEngine(sid, msg, handle, {
-        workingDir: ui.workspacePath || '.',
-        mode: 'orchestrator',
-        systemPrompt: ORCHESTRATOR_SYSTEM_PROMPT,
-        resumeSessionId: state?.realClaudeSessionId || undefined,
-      });
-    },
-    delegateToChild: (
-      parentSessionId: string,
-      task: string,
-      _context: string,
-      _specialistProfileId: string,
-      _contextProfileIds: string[],
-      agentName?: string,
-      teamId?: string,
-      teammates?: string[],
-      workingDir?: string,
-    ) => {
-      const panel = chatPanelRef.value;
-      if (!panel) return '';
-      const resolvedDir = workingDir || ui.workspacePath || '.';
-      const childSid = sessionsStore.createChildSession(parentSessionId, resolvedDir, 'agent', task);
-
-      // Update child session title to show role if agent name is provided
-      if (agentName) {
-        const childSession = sessionsStore.sessions.get(childSid);
-        if (childSession) {
-          childSession.title = agentName.charAt(0).toUpperCase() + agentName.slice(1);
-        }
-      }
-      fleetStore.rebuildFromSessions();
-
-      // Build system prompt with peer messaging instructions
-      let systemPrompt = '';
-      if (teammates && teammates.length > 0 && agentName) {
-        systemPrompt = `Your agent name is "${agentName}". ` +
-          `You are on a team with: ${teammates.join(', ')}. ` +
-          `Use send_message(to, content) and check_inbox() to coordinate.`;
-      }
-
-      // Build handle that routes events to the panel and notifies orchestrator on done
-      const handle = {
-        appendTextDelta: panel.appendTextDelta,
-        appendThinkingDelta: (_s: string, _t: string) => { /* no-op */ },
-        addToolUse: panel.addToolUse,
-        markDone: (s: string) => {
-          panel.markDone(s);
-          // Update child session delegation status
-          const mgr = getSessionManager();
-          mgr.setDelegationStatus(s, DelegationStatus.Completed);
-          const childState = panel.sessionStates?.get(s);
-          const lastMsg = childState?.messages
-            ? [...childState.messages].reverse().find((m: { role: string }) => m.role === 'assistant')
-            : null;
-          const result = lastMsg?.content ?? '';
-          mgr.setDelegationResult(s, result);
-          sessionsStore.syncFromEngine(s);
-          sessionsStore.persistSession(s);
-          // Notify orchestrator that this child finished
-          orchestrator.onDelegateFinished(s, result);
-        },
-        showError: panel.showError,
-        setThinking: panel.setThinking,
-        setRealSessionId: panel.setRealSessionId!,
-        onFileEdited,
-      };
-
-      sendMessageToEngine(childSid, task, handle, {
-        workingDir: resolvedDir,
-        mode: 'agent',
-        systemPrompt,
-        agentName,
-        teamId,
-      });
-
-      return childSid;
-    },
-    sessionFinalOutput: (sid: string) => {
-      const state = chatPanelRef.value?.sessionStates?.get(sid);
-      if (!state) return '';
-      const lastAssistant = [...state.messages].reverse().find((m: { role: string }) => m.role === 'assistant');
-      return lastAssistant?.content ?? '';
-    },
-  });
+  }));
   orchestrator.setWorkspace(ui.workspacePath || '.');
   startOrchestration(goal);
 }
 
-/**
- * Orchestrate from input bar: attach orchestrator to existing session.
- * The message is already sent by ChatPanel.onSend with mode 'orchestrator'.
- * We just need to wire up the orchestrator to intercept MCP tool calls
- * and manage child sessions.
- */
 async function onOrchestrateStarted(sessionId: string) {
   ui.setRightPanelMode('graph');
   if (graphCleanup) graphCleanup();
   graphCleanup = startLiveGraph(sessionId);
-  orchestrator.setChatPanel({
-    newChat: (workspace: string) => chatPanelRef.value?.newChat(workspace) ?? '',
-    configureSession: (sid: string, mode: string, _profileIds: string[]) => {
-      const session = sessionsStore.sessions.get(sid);
-      if (session) {
-        session.title = session.title || `${mode} session`;
-      }
-    },
-    sendMessageToSession: (sid: string, msg: string) => {
-      const panel = chatPanelRef.value;
-      if (!panel) return;
-
-      // Add feedback as visible user message so the user sees orchestrator progress
-      const state = panel.sessionStates?.get(sid);
-      if (state) {
-        state.turnCounter++;
-        state.isProcessing = true;
-        state.isThinking = true;
-        state.currentAssistantMsgId = null;
-        state.messages.push({
-          id: `msg-${Date.now()}-feed`,
-          role: 'user',
-          content: msg,
-          turnId: state.turnCounter,
-          timestamp: Date.now(),
-        });
-      }
-
-      const handle = {
-        appendTextDelta: panel.appendTextDelta,
-        appendThinkingDelta: (_s: string, _t: string) => { /* no-op */ },
-        addToolUse: panel.addToolUse,
-        markDone: panel.markDone,
-        showError: panel.showError,
-        setThinking: panel.setThinking,
-        setRealSessionId: panel.setRealSessionId!,
-      };
-      sendMessageToEngine(sid, msg, handle, {
-        workingDir: ui.workspacePath || '.',
-        mode: 'orchestrator',
-        systemPrompt: orchestrator.getSystemPrompt(),
-        autoCommit: ui.autoCommitEnabled,
-        resumeSessionId: state?.realClaudeSessionId || undefined,
-      });
-    },
-    delegateToChild: (
-      parentSessionId: string,
-      task: string,
-      _context: string,
-      _specialistProfileId: string,
-      _contextProfileIds: string[],
-      agentName?: string,
-      teamId?: string,
-      teammates?: string[],
-      workingDir?: string,
-    ) => {
-      const panel = chatPanelRef.value;
-      if (!panel) return '';
-      const resolvedDir = workingDir || ui.workspacePath || '.';
-      const childSid = sessionsStore.createChildSession(parentSessionId, resolvedDir, 'agent', task);
-
-      // Update child session title to show role if agent name is provided
-      if (agentName) {
-        const childSession = sessionsStore.sessions.get(childSid);
-        if (childSession) {
-          childSession.title = agentName.charAt(0).toUpperCase() + agentName.slice(1);
-        }
-      }
-      fleetStore.rebuildFromSessions();
-
-      let systemPrompt = '';
-      if (teammates && teammates.length > 0 && agentName) {
-        systemPrompt = `Your agent name is "${agentName}". ` +
-          `You are on a team with: ${teammates.join(', ')}. ` +
-          `Use send_message(to, content) and check_inbox() to coordinate.`;
-      }
-
-      const handle = {
-        appendTextDelta: panel.appendTextDelta,
-        appendThinkingDelta: (_s: string, _t: string) => { /* no-op */ },
-        addToolUse: panel.addToolUse,
-        markDone: (s: string) => {
-          panel.markDone(s);
-          // Update child session delegation status
-          const mgr = getSessionManager();
-          mgr.setDelegationStatus(s, DelegationStatus.Completed);
-          const childState = panel.sessionStates?.get(s);
-          const lastMsg = childState?.messages
-            ? [...childState.messages].reverse().find((m: { role: string }) => m.role === 'assistant')
-            : null;
-          const result = lastMsg?.content ?? '';
-          mgr.setDelegationResult(s, result);
-          sessionsStore.syncFromEngine(s);
-          sessionsStore.persistSession(s);
-          orchestrator.onDelegateFinished(s, result);
-        },
-        showError: panel.showError,
-        setThinking: panel.setThinking,
-        setRealSessionId: panel.setRealSessionId!,
-        onFileEdited,
-      };
-
-      sendMessageToEngine(childSid, task, handle, {
-        workingDir: resolvedDir,
-        mode: 'agent',
-        systemPrompt,
-        agentName,
-        teamId,
-      });
-
-      return childSid;
-    },
-    sessionFinalOutput: (sid: string) => {
-      const state = chatPanelRef.value?.sessionStates?.get(sid);
-      if (!state) return '';
-      const lastAssistant = [...state.messages].reverse().find((m: { role: string }) => m.role === 'assistant');
-      return lastAssistant?.content ?? '';
-    },
-  });
+  orchestrator.setChatPanel(buildChatPanelAPI({
+    sendSystemPrompt: () => orchestrator.getSystemPrompt(),
+    sendAutoCommit: ui.autoCommitEnabled,
+    injectUserMessage: true,
+  }));
   orchestrator.setWorkspace(ui.workspacePath || '.');
   await orchestrator.attachToSession(sessionId, ui.autoCommitEnabled);
-
-  // MCP tool routing is handled by setOrchestratorLookup (pool-aware),
-  // which checks the standalone orchestrator via getOrchestratorForSession.
 }
 
 // Clean up graph subscriptions when orchestration ends
@@ -751,6 +660,16 @@ orchestrator.on('failed', () => {
     graphCleanup = null;
   }
 });
+
+// ── engineBus listener references (hoisted for cleanup in onUnmounted) ──
+
+let onSchedulerError: (e: { epicId?: string; title: string; message: string }) => void;
+let onSchedulerInfo: (e: { epicId?: string; title: string; message: string }) => void;
+let onSessionCreatedBus: (e: { sessionId: string }) => void;
+let onAgentStatusBus: (e: { agentId: string; status: string; activity: string }) => void;
+let onEpicRequestStart: (e: { epicId: string }) => void;
+let onEpicRequestStop: (e: { epicId: string }) => void;
+let onEpicStoreSync: () => Promise<void>;
 
 // ── Global keyboard event: Cmd+N new chat ───────────────────────────────
 
@@ -791,27 +710,31 @@ onMounted(async () => {
   themeStore.loadSavedTheme();
 
   // Wire scheduler events to UI notifications
-  engineBus.on('scheduler:error', ({ epicId, title, message }) => {
+  onSchedulerError = ({ epicId, title, message }) => {
     ui.addNotification('error', title, message, epicId);
-  });
-  engineBus.on('scheduler:info', ({ epicId, title, message }) => {
+  };
+  onSchedulerInfo = ({ epicId, title, message }) => {
     ui.addNotification('info', title, message, epicId);
-  });
+  };
+  engineBus.on('scheduler:error', onSchedulerError);
+  engineBus.on('scheduler:info', onSchedulerInfo);
 
   // ── Initialize AngyEngine (headless core) ────────────────────────────
   const engine = AngyEngine.getInstance();
   await engine.initialize();
 
+  // Unify the Database and SessionManager singletons: the engine owns the
+  // canonical instances; Pinia stores must share them to avoid split-brain.
+  initSessionEngines(engine.sessions.manager, engine.db);
+
   // Bridge engine-created sessions into the Pinia store so the UI can track them.
   // When the headless orchestrator creates child sessions (architect, implementer, etc.),
   // the SessionService emits 'session:created' on the engine bus. We listen here and
   // sync those sessions into the reactive Pinia store that drives the sidebar/fleet.
-  engineBus.on('session:created', ({ sessionId }) => {
-    // Only sync sessions we don't already have (avoids duplicate for UI-created sessions)
+  onSessionCreatedBus = ({ sessionId }) => {
     if (sessionsStore.sessions.has(sessionId)) return;
     const info = engine.sessions.getSession(sessionId);
     if (info) {
-      // Only add sessions belonging to the current workspace
       const currentWs = ui.workspacePath;
       if (currentWs && (!info.workspace || info.workspace !== currentWs)) {
         return;
@@ -822,14 +745,16 @@ onMounted(async () => {
       }
       fleetStore.rebuildFromSessions();
     }
-  });
+  };
+  engineBus.on('session:created', onSessionCreatedBus);
 
   // Bridge agent status changes into the fleet store.
   // ProcessManager emits this for every tool use and session finish, so the fleet
   // cards show real-time activity for ALL agents (including headless epic agents).
-  engineBus.on('agent:statusChanged', ({ agentId, status, activity }) => {
-    fleetStore.updateAgent({ sessionId: agentId, status, activity });
-  });
+  onAgentStatusBus = ({ agentId, status, activity }) => {
+    fleetStore.updateAgent({ sessionId: agentId, status: status as any, activity });
+  };
+  engineBus.on('agent:statusChanged', onAgentStatusBus);
 
   // Share the engine's ProcessManager with the useEngine composable
   setProcessManager(engine.processes);
@@ -844,7 +769,7 @@ onMounted(async () => {
   console.log('[App] Engine initialized, orchestrator lookup registered');
 
   // Handle manual epic start requests (from EpicCard/EpicDetailPanel arrow buttons)
-  engineBus.on('epic:requestStart', async ({ epicId }) => {
+  onEpicRequestStart = async ({ epicId }) => {
     console.log(`[App] epic:requestStart received for: ${epicId}`);
     const epic = epicStore.epicById(epicId);
     if (!epic) {
@@ -862,9 +787,10 @@ onMounted(async () => {
       console.error(`[App] Failed to start epic ${epicId}:`, err);
       ui.addNotification('error', 'Failed to start epic', err instanceof Error ? err.message : String(err), epicId);
     }
-  });
+  };
+  engineBus.on('epic:requestStart', onEpicRequestStart);
 
-  engineBus.on('epic:requestStop', async ({ epicId }) => {
+  onEpicRequestStop = async ({ epicId }) => {
     console.log(`[App] epic:requestStop received for: ${epicId}`);
     try {
       await engine.cancelEpicOrchestration(epicId);
@@ -873,25 +799,20 @@ onMounted(async () => {
     } catch (err) {
       console.error(`[App] Failed to stop epic ${epicId}:`, err);
     }
-  });
+  };
+  engineBus.on('epic:requestStop', onEpicRequestStop);
 
-  // Sync Pinia store when engine moves epics through lifecycle.
-  // Small delay ensures the AngyEngine handler (which also listens to these
-  // events and async-updates the DB via Scheduler) has finished writing.
-  engineBus.on('epic:completed', async ({ epicId }) => {
-    console.log(`[App] epic:completed — syncing store for: ${epicId}`);
-    setTimeout(() => epicStore.loadAll(), 200);
-  });
+  // Sync Pinia store when the engine finishes writing epic lifecycle changes.
+  // The engine emits epic:storeSyncNeeded AFTER its DB writes complete —
+  // no timing hacks needed.
+  onEpicStoreSync = async () => {
+    await epicStore.loadAll();
+  };
+  engineBus.on('epic:storeSyncNeeded', onEpicStoreSync);
 
-  engineBus.on('epic:failed', async ({ epicId }) => {
-    console.log(`[App] epic:failed — syncing store for: ${epicId}`);
-    setTimeout(() => epicStore.loadAll(), 200);
-  });
-
-  // Initialize Pinia stores from engine's database
+  // Initialize Pinia stores from engine's database (DB is already open via engine)
   const db = getDatabase();
-  const ok = await db.open();
-  if (ok) {
+  if (db) {
     await projectStore.initialize();
     await epicStore.initialize();
 
@@ -934,6 +855,16 @@ onUnmounted(() => {
   window.removeEventListener('angy:open-settings', onGlobalOpenSettings);
   window.removeEventListener('angy:open-profile-editor', onGlobalOpenProfileEditor);
   gitStore.manager.off('fileDiffReady', onGitFileDiffReady);
+
+  // Clean up engineBus listeners to prevent leaks
+  engineBus.off('scheduler:error', onSchedulerError);
+  engineBus.off('scheduler:info', onSchedulerInfo);
+  engineBus.off('session:created', onSessionCreatedBus);
+  engineBus.off('agent:statusChanged', onAgentStatusBus);
+  engineBus.off('epic:requestStart', onEpicRequestStart);
+  engineBus.off('epic:requestStop', onEpicRequestStop);
+  engineBus.off('epic:storeSyncNeeded', onEpicStoreSync);
+
   if (graphCleanup) {
     graphCleanup();
     graphCleanup = null;
