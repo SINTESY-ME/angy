@@ -849,6 +849,17 @@ onMounted(async () => {
     }
   });
 
+  engineBus.on('epic:requestStop', async ({ epicId }) => {
+    console.log(`[App] epic:requestStop received for: ${epicId}`);
+    try {
+      await engine.cancelEpicOrchestration(epicId);
+      await epicStore.moveEpic(epicId, 'todo');
+      console.log(`[App] Epic stopped and moved to todo: ${epicId}`);
+    } catch (err) {
+      console.error(`[App] Failed to stop epic ${epicId}:`, err);
+    }
+  });
+
   // Initialize Pinia stores from engine's database
   const db = getDatabase();
   const ok = await db.open();

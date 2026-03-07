@@ -188,16 +188,24 @@
         </div>
       </div>
 
-      <!-- In-progress action -->
-      <button
-        v-if="epic.column === 'in-progress'"
-        class="w-full text-xs py-1.5 rounded border border-[var(--accent-blue)]
-               text-[var(--accent-blue)] font-medium hover:bg-[var(--accent-blue)]
-               hover:text-[var(--bg-base)] transition-colors"
-        @click="ui.navigateToEpic(epic.id, epic.projectId)"
-      >
-        Open Workspace
-      </button>
+      <!-- In-progress actions -->
+      <div v-if="epic.column === 'in-progress'" class="flex items-center gap-2">
+        <button
+          class="flex-1 text-xs py-1.5 rounded border border-[var(--accent-blue)]
+                 text-[var(--accent-blue)] font-medium hover:bg-[var(--accent-blue)]
+                 hover:text-[var(--bg-base)] transition-colors"
+          @click="ui.navigateToEpic(epic.id, epic.projectId)"
+        >
+          Open Workspace
+        </button>
+        <button
+          class="text-xs py-1.5 px-3 rounded border border-red-500/50
+                 text-red-400 font-medium hover:bg-red-500/10 transition-colors"
+          @click="stopEpic"
+        >
+          Stop
+        </button>
+      </div>
     </div>
 
     <!-- Footer actions -->
@@ -320,6 +328,11 @@ async function save() {
 async function remove() {
   await epicStore.deleteEpic(props.epicId);
   emit('close');
+}
+
+function stopEpic() {
+  engineBus.emit('epic:requestStop', { epicId: props.epicId });
+  loadDraft();
 }
 
 const rejectionFeedback = ref('');

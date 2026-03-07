@@ -130,7 +130,13 @@ function onScheduleNow() {
 }
 
 function onSchedulerConfigSaved(config: SchedulerConfig) {
-  Scheduler.getInstance().saveConfig(config);
+  const scheduler = Scheduler.getInstance();
+  scheduler.saveConfig(config);
+  if (config.enabled && !scheduler.isRunning()) {
+    scheduler.start();
+  } else if (!config.enabled && scheduler.isRunning()) {
+    scheduler.stop();
+  }
 }
 
 // Close dropdown on outside click

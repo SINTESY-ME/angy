@@ -30,10 +30,25 @@
       <span v-if="epic.column === 'in-progress'" class="flex items-center gap-0.5 text-[10px] text-[var(--accent-blue)]">
         <span class="inline-block w-1.5 h-1.5 rounded-full bg-[var(--accent-blue)] animate-pulse" />
         running
+        <button
+          class="ml-0.5 p-0.5 rounded text-red-400 hover:bg-red-500/20 transition-colors"
+          title="Stop epic"
+          @click.stop="stopEpic"
+        >
+          <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 16 16"><rect x="3" y="3" width="10" height="10" rx="1" /></svg>
+        </button>
       </span>
       <span v-else-if="epic.column === 'review'" class="flex items-center gap-0.5 text-[10px] text-[var(--accent-yellow)]">
         <svg class="w-3 h-3" viewBox="0 0 16 16" fill="currentColor"><path d="M8 2c3.3 0 6 2.7 6 6s-2.7 6-6 6-6-2.7-6-6 2.7-6 6-6zm0 1C5.2 3 3 5.2 3 8s2.2 5 5 5 5-2.2 5-5-2.2-5-5-5zm0 2a3 3 0 110 6 3 3 0 010-6z"/></svg>
         review
+      </span>
+
+      <!-- Agent count -->
+      <span v-if="agentCount > 0" class="flex items-center gap-0.5 text-[10px] text-[var(--text-secondary)]">
+        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>
+        {{ agentCount }}
       </span>
     </div>
 
@@ -80,6 +95,7 @@ import type { Epic, EpicColumn } from '@/engine/KosTypes';
 import { useUiStore } from '@/stores/ui';
 import { useProjectsStore } from '@/stores/projects';
 import { useEpicStore } from '@/stores/epics';
+import { useSessionsStore } from '@/stores/sessions';
 import { engineBus } from '@/engine/EventBus';
 
 const props = defineProps<{ epic: Epic }>();
@@ -88,6 +104,19 @@ const emit = defineEmits<{ select: [id: string] }>();
 const ui = useUiStore();
 const projectsStore = useProjectsStore();
 const epicStore = useEpicStore();
+const sessionsStore = useSessionsStore();
+
+const agentCount = computed(() => {
+  const rootId = props.epic.rootSessionId;
+  if (!rootId) return 0;
+  let count = 0;
+  for (const info of sessionsStore.sessions.values()) {
+    if (info.sessionId === rootId || info.parentSessionId === rootId) {
+      count++;
+    }
+  }
+  return count;
+});
 
 // Debounce single click so double-click can cancel it
 let clickTimer: ReturnType<typeof setTimeout> | null = null;
@@ -106,6 +135,10 @@ function onDoubleClick() {
     clickTimer = null;
   }
   ui.navigateToEpic(props.epic.id, props.epic.projectId);
+}
+
+function stopEpic() {
+  engineBus.emit('epic:requestStop', { epicId: props.epic.id });
 }
 
 const columnOrder: EpicColumn[] = ['idea', 'backlog', 'todo', 'in-progress', 'review', 'done'];

@@ -319,14 +319,26 @@ export class AngyEngine {
     return null;
   }
 
-  /** Cancel an epic's orchestration. */
+  /** Cancel an epic's orchestration — kills all processes and releases resources. */
   async cancelEpicOrchestration(epicId: string): Promise<void> {
+    // 1. Kill all running processes for this epic (root + children)
+    const sessionIds = this.pool.getSessionsForEpic(epicId);
+    for (const sid of sessionIds) {
+      this.processes.cancelProcess(sid);
+    }
+
+    // 2. Cancel the orchestrator state machine
     const orch = this.epicOrchestrators.get(epicId);
     if (orch) {
       orch.cancel();
       this.epicOrchestrators.delete(epicId);
     }
+
+    // 3. Release repo locks and clean up pool tracking
+    this.scheduler.releaseRepos(epicId);
     await this.pool.removeEpic(epicId);
+
+    console.log(`[AngyEngine] Cancelled epic orchestration: ${epicId}, killed ${sessionIds.length} session(s)`);
   }
 
   activeEpicCount(): number {
