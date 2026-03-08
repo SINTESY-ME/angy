@@ -203,6 +203,16 @@ async function onAgentSelected(sessionId: string) {
         panel.setLoadingHistory(sessionId, false);
       }
     }
+
+    // Restore Claude session ID from persisted SessionInfo so --resume works
+    // after ChatPanel was unmounted/remounted by v-if navigation
+    const sessionInfo = sessionsStore.sessions.get(sessionId);
+    if (sessionInfo?.claudeSessionId) {
+      const state = panel.sessionStates.get(sessionId);
+      if (state && !state.realClaudeSessionId) {
+        state.realClaudeSessionId = sessionInfo.claudeSessionId;
+      }
+    }
   }
 
   // Reconstruct EffectsPanel from tool_input in the messages table

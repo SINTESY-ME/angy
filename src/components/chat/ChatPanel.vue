@@ -423,9 +423,14 @@ function onCheckpointReceived(sessionId: string, uuid: string, replayIndex: numb
 }
 
 function setRealSessionId(sessionId: string, realId: string) {
-  const state = sessionStates.value.get(sessionId);
+  const state = getOrCreateState(sessionId);
   if (state) {
     state.realClaudeSessionId = realId;
+  }
+  const info = sessionsStore.sessions.get(sessionId);
+  if (info) {
+    info.claudeSessionId = realId;
+    sessionsStore.persistSession(sessionId);
   }
 }
 

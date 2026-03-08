@@ -58,6 +58,7 @@ export interface SessionInfo {
   delegationTask?: string;
   delegationStatus: DelegationStatus;
   delegationResult?: string;
+  claudeSessionId?: string;
 }
 
 // ── Agent Status (for fleet panel) ────────────────────────────────────────

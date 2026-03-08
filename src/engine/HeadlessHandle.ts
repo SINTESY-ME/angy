@@ -235,6 +235,10 @@ export class HeadlessHandle implements AgentHandle {
 
   setRealSessionId(sessionId: string, realId: string): void {
     this.getOrCreate(sessionId).realClaudeSessionId = realId;
+    const info = this.mgr.sessionInfo(sessionId);
+    if (info) {
+      info.claudeSessionId = realId;
+    }
   }
 
   onFileEdited(sessionId: string, filePath: string, toolName: string, toolInput?: Record<string, any>): void {
