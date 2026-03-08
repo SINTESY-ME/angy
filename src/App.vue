@@ -820,8 +820,8 @@ onMounted(async () => {
     console.log(`[App] epic:requestStop received for: ${epicId}`);
     try {
       await engine.cancelEpicOrchestration(epicId);
-      await epicStore.moveEpic(epicId, 'todo');
-      console.log(`[App] Epic stopped and moved to todo: ${epicId}`);
+      await epicStore.moveEpic(epicId, 'backlog');
+      console.log(`[App] Epic stopped and moved to backlog: ${epicId}`);
     } catch (err) {
       console.error(`[App] Failed to stop epic ${epicId}:`, err);
     }
