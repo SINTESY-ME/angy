@@ -44,7 +44,10 @@
       "identifier": "fs:scope",
       "allow": [
         { "path": "**" },
-        { "path": "$HOME/.claude/**" }
+        { "path": "$HOME/.claude/**" },
+        { "path": "$HOME/.local/bin/**" },
+        { "path": "/opt/homebrew/bin/**" },
+        { "path": "/usr/local/bin/**" }
       ]
     },
     "dialog:default",

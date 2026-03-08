@@ -1,6 +1,6 @@
 import { Command } from '@tauri-apps/plugin-shell';
 import { homeDir } from '@tauri-apps/api/path';
-import { writeTextFile, exists } from '@tauri-apps/plugin-fs';
+import { writeTextFile } from '@tauri-apps/plugin-fs';
 import { useEpicStore } from '../stores/epics';
 import { getDatabase } from '../stores/sessions';
 import type { PriorityHint, ComplexityEstimate } from '../engine/KosTypes';
@@ -11,21 +11,6 @@ interface EpicAnalysis {
   acceptanceCriteria: string;
   priorityHint: PriorityHint;
   complexity: ComplexityEstimate;
-}
-
-async function resolveClaudeBinary(): Promise<string> {
-  const home = (await homeDir()).replace(/\/+$/, '');
-  const candidates = [
-    `${home}/.local/bin/claude`,
-    '/opt/homebrew/bin/claude',
-    '/usr/local/bin/claude',
-  ];
-  for (const candidate of candidates) {
-    try {
-      if (await exists(candidate)) return candidate;
-    } catch { /* ignore */ }
-  }
-  return 'claude';
 }
 
 export async function transformChatToEpic(sessionId: string, projectId: string): Promise<string> {
@@ -65,11 +50,22 @@ Based on the conversation, create a well-defined epic. Return ONLY a valid JSON 
   const promptFile = `/tmp/angy-epic-${Date.now()}.txt`;
   await writeTextFile(promptFile, prompt);
 
-  const claudeBin = await resolveClaudeBinary();
+  const home = (await homeDir()).replace(/\/+$/, '');
+  const env = {
+    HOME: home,
+    PATH: [
+      `${home}/.local/bin`,
+      '/opt/homebrew/bin',
+      '/usr/local/bin',
+      '/usr/bin',
+      '/bin',
+    ].join(':'),
+  };
+
   const command = Command.create('exec-sh', [
     '-c',
-    `"${claudeBin}" -p --output-format json < "${promptFile}"`,
-  ]);
+    `claude -p --output-format json < "${promptFile}"`,
+  ], { env });
   const output = await command.execute();
 
   if (output.code !== 0) {
