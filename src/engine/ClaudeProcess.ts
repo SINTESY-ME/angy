@@ -3,16 +3,7 @@ import { homeDir } from '@tauri-apps/api/path';
 import { exists } from '@tauri-apps/plugin-fs';
 import mitt from 'mitt';
 import { StreamParser } from './StreamParser';
-
-// ── Specialist tool restrictions (sandboxing by role) ─────────────────────
-
-const SPECIALIST_TOOL_SETS: Record<string, string> = {
-  architect: 'Read,Glob,Grep,Task',
-  implementer: 'Bash,Read,Edit,Write,Glob,Grep,Task',
-  reviewer: 'Read,Glob,Grep',
-  tester: 'Bash,Read,Edit,Write,Glob,Grep,Task',
-  debugger: 'Bash,Read,Glob,Grep',
-};
+import { SPECIALIST_TOOLS } from './Orchestrator';
 
 // ── ClaudeProcess Events ──────────────────────────────────────────────────
 
@@ -118,8 +109,8 @@ export class ClaudeProcess {
       args.push('--permission-mode', 'plan');
     } else {
       let allowedTools: string;
-      if (this._specialistRole && SPECIALIST_TOOL_SETS[this._specialistRole]) {
-        allowedTools = SPECIALIST_TOOL_SETS[this._specialistRole];
+      if (this._specialistRole && SPECIALIST_TOOLS[this._specialistRole]) {
+        allowedTools = SPECIALIST_TOOLS[this._specialistRole];
       } else {
         allowedTools = 'Bash,Read,Edit,Write,Glob,Grep,Task,AskUserQuestion';
       }

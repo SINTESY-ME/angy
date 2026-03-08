@@ -1,6 +1,7 @@
 import { readTextFile, writeTextFile, readDir, mkdir, remove } from '@tauri-apps/plugin-fs';
 import { homeDir, join } from '@tauri-apps/api/path';
 import mitt from 'mitt';
+import { SPECIALIST_PROMPTS } from './Orchestrator';
 
 export interface PersonalityProfile {
   id: string;
@@ -72,7 +73,7 @@ export class ProfileManager {
       {
         id: 'specialist-architect',
         name: 'Architect',
-        systemPrompt: 'You are a software architect. Analyze requirements, design solutions, identify risks, and produce detailed implementation plans. Do NOT write code — focus on design.',
+        systemPrompt: SPECIALIST_PROMPTS.architect,
         isBuiltIn: true,
         isSpecialistRole: true,
         icon: '🏗️',
@@ -80,7 +81,7 @@ export class ProfileManager {
       {
         id: 'specialist-implementer',
         name: 'Implementer',
-        systemPrompt: 'You are a senior software engineer. Write clean, production-quality code following best practices. Focus on correctness, readability, and minimal complexity.',
+        systemPrompt: SPECIALIST_PROMPTS.implementer,
         isBuiltIn: true,
         isSpecialistRole: true,
         icon: '⚡',
@@ -88,7 +89,7 @@ export class ProfileManager {
       {
         id: 'specialist-reviewer',
         name: 'Reviewer',
-        systemPrompt: 'You are a code reviewer. Review code for bugs, security issues, performance problems, and style. Provide specific, actionable feedback with line references.',
+        systemPrompt: SPECIALIST_PROMPTS.reviewer,
         isBuiltIn: true,
         isSpecialistRole: true,
         icon: '🔍',
@@ -96,7 +97,7 @@ export class ProfileManager {
       {
         id: 'specialist-tester',
         name: 'Tester',
-        systemPrompt: 'You are a QA engineer. Write comprehensive tests covering edge cases, error conditions, and happy paths. Focus on meaningful test coverage.',
+        systemPrompt: SPECIALIST_PROMPTS.tester,
         isBuiltIn: true,
         isSpecialistRole: true,
         icon: '🧪',
@@ -104,7 +105,7 @@ export class ProfileManager {
       {
         id: 'specialist-debugger',
         name: 'Debugger',
-        systemPrompt: 'You are a debugging specialist. Given an error, test failure, or rejection feedback, systematically investigate the codebase to identify the root cause. Read the relevant files, trace the logic, and produce a precise diagnosis with exact file paths and line numbers. Do NOT fix the code — only diagnose and report your findings.',
+        systemPrompt: SPECIALIST_PROMPTS.debugger,
         isBuiltIn: true,
         isSpecialistRole: true,
         icon: '🔬',

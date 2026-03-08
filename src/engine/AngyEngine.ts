@@ -19,7 +19,7 @@
 import { Database } from './Database';
 import { SessionService } from './SessionService';
 import { ProcessManager } from './ProcessManager';
-import { Orchestrator, SPECIALIST_PROMPTS } from './Orchestrator';
+import { Orchestrator, SPECIALIST_PROMPTS, SPECIALIST_TOOLS } from './Orchestrator';
 import type { OrchestratorChatPanelAPI } from './Orchestrator';
 import { OrchestratorPool } from './OrchestratorPool';
 import { BranchManager } from './BranchManager';
@@ -226,7 +226,7 @@ export class AngyEngine {
     let goal =
       `# Epic: ${epic.title}\n\n` +
       `## Description\n${epic.description}\n\n` +
-      `## Acceptance Criteria\n${epic.acceptanceCriteria}\n\n` +
+      `## Acceptance Criteria (Definition of Done)\n${epic.acceptanceCriteria}\n\n` +
       `## Target Repos\n${repoLines || '(none)'}\n\n` +
       `**Important:** Only work within the listed repositories above. Do not explore or modify files outside these repo paths.\n\n`;
 
@@ -255,7 +255,7 @@ export class AngyEngine {
         goal += '\n';
       }
       if (epic.lastArchitectPlan) {
-        goal += `### Architect Plan from Previous Attempt\n${epic.lastArchitectPlan.substring(0, 2000)}\n\n`;
+        goal += `### Architect Plan from Previous Attempt\n${epic.lastArchitectPlan.slice(-4000)}\n\n`;
       }
 
       goal += `Start by using diagnose() to inspect the current state, then fix the issues described above.\n`;
@@ -366,6 +366,11 @@ export class AngyEngine {
             `You are on a team with: ${teammates.join(', ')}. ` +
             `Use send_message(to, content) and check_inbox() to coordinate.`,
           );
+        }
+
+        const toolList = SPECIALIST_TOOLS[role];
+        if (toolList) {
+          promptParts.push(`\nYou have access to these tools: ${toolList}. Use only these tools.`);
         }
 
         const systemPrompt = promptParts.join('\n\n');

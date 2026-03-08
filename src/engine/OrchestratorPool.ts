@@ -1,6 +1,5 @@
 import type { Epic, EpicBranch, OrchestratorOptions, ProjectRepo } from './KosTypes'
 import type { OrchestratorChatPanelAPI } from './Orchestrator'
-import { ORCHESTRATOR_SYSTEM_PROMPT } from './Orchestrator'
 import { BranchManager } from './BranchManager'
 
 // ── OrchestratorPool — Multi-Orchestrator Manager (singleton) ─────────────
@@ -123,6 +122,7 @@ export class OrchestratorPool {
         throw new Error(`Orchestrator factory returned empty sessionId for epic ${epicId}`)
       }
     } else if (this.chatPanel) {
+      // TODO: Legacy code path - verify if still needed
       // Legacy path: create session directly (no MCP handling — limited functionality)
       console.warn(`[OrchestratorPool] Using legacy chatPanel path (no MCP handling) for epic: ${epicId}`)
       sessionId = await this.chatPanel.newChat()
@@ -132,10 +132,8 @@ export class OrchestratorPool {
       const goal =
         `# Epic: ${epic.title}\n\n` +
         `## Description\n${epic.description}\n\n` +
-        `## Acceptance Criteria\n${epic.acceptanceCriteria}\n\n` +
+        `## Acceptance Criteria (Definition of Done)\n${epic.acceptanceCriteria}\n\n` +
         `## Target Repos\n${repoList || '(none)'}\n\n` +
-        ORCHESTRATOR_SYSTEM_PROMPT +
-        `\n\n# Instructions\n\n` +
         `Implement this epic end-to-end. Start by delegating to an architect to analyze the codebase and design the solution.`
 
       this.chatPanel.sendMessageToSession(sessionId, goal)

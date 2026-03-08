@@ -92,7 +92,7 @@ import { useOrchestrator } from './composables/useOrchestrator';
 import { useGraphBuilder } from './composables/useGraphBuilder';
 import { useMissionControl } from './composables/useMissionControl';
 import { sendMessageToEngine, cancelProcess, setOrchestratorLookup, setProcessManager } from './composables/useEngine';
-import { ORCHESTRATOR_SYSTEM_PROMPT, SPECIALIST_PROMPTS } from './engine/Orchestrator';
+import { ORCHESTRATOR_SYSTEM_PROMPT, SPECIALIST_PROMPTS, SPECIALIST_TOOLS } from './engine/Orchestrator';
 import { DelegationStatus } from './engine/types';
 import { DiffEngine } from './engine/DiffEngine';
 import { engineBus } from './engine/EventBus';
@@ -615,6 +615,11 @@ function buildChatPanelAPI(opts: {
           `You are on a team with: ${teammates.join(', ')}. ` +
           `Use send_message(to, content) and check_inbox() to coordinate.`,
         );
+      }
+
+      const toolList = SPECIALIST_TOOLS[role];
+      if (toolList) {
+        promptParts.push(`\nYou have access to these tools: ${toolList}. Use only these tools.`);
       }
 
       const systemPrompt = promptParts.join('\n\n');
