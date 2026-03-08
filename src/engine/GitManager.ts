@@ -25,6 +25,16 @@ export interface GitUnifiedDiff {
   isBinary: boolean;
 }
 
+export interface GitCommitEntry {
+  hash: string;
+  shortHash: string;
+  parents: string[];
+  refs: string[];
+  subject: string;
+  author: string;
+  relativeDate: string;
+}
+
 // ── Events ─────────────────────────────────────────────────────────────────
 
 type GitEvents = {
@@ -40,6 +50,7 @@ type GitEvents = {
   'branchesListed': { branches: GitBranchEntry[] };
   'checkoutSucceeded': { branch: string };
   'checkoutFailed': { error: string };
+  'logReady': { commits: GitCommitEntry[] };
   'errorOccurred': { operation: string; message: string };
 };
 
@@ -305,6 +316,45 @@ export class GitManager {
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
         this.events.emit('checkoutFailed', { error: msg });
+      }
+    });
+  }
+
+  // ── Log ─────────────────────────────────────────────────────────────
+
+  async fetchLog(workDir: string, maxCount: number = 200) {
+    this.enqueue(async () => {
+      try {
+        const cmd = Command.create('git', [
+          '-C', workDir,
+          'log', '--all',
+          '--format=%H\x1e%h\x1e%P\x1e%D\x1e%s\x1e%an\x1e%ar',
+          '--topo-order',
+          `--max-count=${maxCount}`,
+        ]);
+        const output = await cmd.execute();
+        if (output.code !== 0) {
+          throw new Error(output.stderr || `git log failed with code ${output.code}`);
+        }
+        const commits: GitCommitEntry[] = [];
+        for (const line of output.stdout.split('\n').filter(l => l.length > 0)) {
+          const fields = line.split('\x1e');
+          if (fields.length < 7) continue;
+          commits.push({
+            hash: fields[0],
+            shortHash: fields[1],
+            parents: fields[2].split(' ').filter(s => s.length > 0),
+            refs: fields[3].split(', ').map(s => s.trim()).filter(s => s.length > 0),
+            subject: fields[4],
+            author: fields[5],
+            relativeDate: fields[6],
+          });
+        }
+        this.events.emit('logReady', { commits });
+      } catch (e: unknown) {
+        this.events.emit('logReady', { commits: [] });
+        const msg = e instanceof Error ? e.message : String(e);
+        this.events.emit('errorOccurred', { operation: 'log', message: msg });
       }
     });
   }

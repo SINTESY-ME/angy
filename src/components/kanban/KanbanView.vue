@@ -7,6 +7,7 @@
       @addEpic="addEpic"
       @scheduleNow="onScheduleNow"
       @openSchedulerConfig="showSchedulerConfig = true"
+      @openGitTree="showGitTree = true"
     >
       <!-- Multi-project selector slot -->
       <template #projectSelector>
@@ -107,6 +108,12 @@
       @close="showSchedulerConfig = false"
       @save="onSchedulerConfigSaved"
     />
+
+    <!-- Git tree dialog -->
+    <GitTreeDialog
+      :visible="showGitTree"
+      @close="showGitTree = false"
+    />
   </div>
 </template>
 
@@ -122,6 +129,7 @@ import KanbanToolbar from './KanbanToolbar.vue';
 import KanbanColumn from './KanbanColumn.vue';
 import EpicDetailPanel from './EpicDetailPanel.vue';
 import SchedulerConfigDialog from './SchedulerConfigDialog.vue';
+import GitTreeDialog from './GitTreeDialog.vue';
 
 const ui = useUiStore();
 const projectsStore = useProjectsStore();
@@ -130,6 +138,7 @@ const epicStore = useEpicStore();
 const selectedEpicId = ref<string | null>(null);
 const filterText = ref('');
 const showSchedulerConfig = ref(false);
+const showGitTree = ref(false);
 const showProjectDropdown = ref(false);
 const dropdownRef = ref<HTMLElement | null>(null);
 
