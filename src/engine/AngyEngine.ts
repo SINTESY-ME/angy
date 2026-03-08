@@ -188,11 +188,33 @@ export class AngyEngine {
       this.sessions.persistSession(sid);
     };
 
-    // Resolve workspace from target repos
-    const targetRepo = epic.targetRepoIds.length > 0
-      ? repos.find(r => r.id === epic.targetRepoIds[0])
-      : repos[0];
-    const workspace = targetRepo?.path || '.';
+    // Compute workspace as the common parent directory of all target repos
+    let workspace: string;
+    if (repos.length === 0) {
+      workspace = '.';
+    } else if (repos.length === 1) {
+      workspace = repos[0].path || '.';
+    } else {
+      // Find common parent directory of all repo paths
+      const paths = repos.map(r => r.path).filter(Boolean);
+      if (paths.length === 0) {
+        workspace = '.';
+      } else if (paths.length === 1) {
+        workspace = paths[0];
+      } else {
+        const segments = paths.map(p => p.split('/'));
+        const commonParts: string[] = [];
+        for (let i = 0; i < segments[0].length; i++) {
+          const seg = segments[0][i];
+          if (segments.every(s => s[i] === seg)) {
+            commonParts.push(seg);
+          } else {
+            break;
+          }
+        }
+        workspace = commonParts.join('/') || '/';
+      }
+    }
 
     // Build OrchestratorChatPanelAPI backed by HeadlessHandle + ProcessManager
     const panelAPI = this.buildHeadlessPanelAPI(handle, orch, workspace, epic.model || undefined);
@@ -200,12 +222,13 @@ export class AngyEngine {
     orch.setWorkspace(workspace);
 
     // Build goal message
-    const repoList = repos.map(r => r.name).join(', ');
+    const repoLines = repos.map(r => `- ${r.name}: ${r.path}`).join('\n');
     let goal =
       `# Epic: ${epic.title}\n\n` +
       `## Description\n${epic.description}\n\n` +
       `## Acceptance Criteria\n${epic.acceptanceCriteria}\n\n` +
-      `## Target Repos\n${repoList || '(none)'}\n\n`;
+      `## Target Repos\n${repoLines || '(none)'}\n\n` +
+      `**Important:** Only work within the listed repositories above. Do not explore or modify files outside these repo paths.\n\n`;
 
     if (epic.rejectionCount > 0 && epic.rejectionFeedback) {
       goal +=

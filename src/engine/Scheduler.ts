@@ -156,8 +156,11 @@ export class Scheduler {
 
   private getReposForEpic(epic: Epic): any[] {
     if (this.projectRepo) {
-      return this.projectRepo.reposByProjectId(epic.projectId)
-        .filter(r => epic.targetRepoIds.includes(r.id));
+      const allRepos = this.projectRepo.reposByProjectId(epic.projectId);
+      if (epic.targetRepoIds.length === 0) {
+        return allRepos;
+      }
+      return allRepos.filter(r => epic.targetRepoIds.includes(r.id));
     }
     return [];
   }

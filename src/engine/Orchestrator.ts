@@ -107,7 +107,9 @@ export const SPECIALIST_TOOLS: Record<string, string> = {
  * System prompt for orchestrator sessions.
  * Passed via --append-system-prompt to guide Claude to use MCP tools exclusively.
  */
-export const ORCHESTRATOR_SYSTEM_PROMPT =
+// ── Base prompt (shared between create and fix) ─────────────────────────
+
+const ORCHESTRATOR_PREAMBLE =
   `You are an autonomous project orchestrator. You receive a high-level goal and must ` +
   `break it down into steps, delegate work to specialist agents, validate results, ` +
   `and iterate until the goal is fully achieved.\n\n` +
@@ -120,7 +122,9 @@ export const ORCHESTRATOR_SYSTEM_PROMPT =
   `  Roles: architect (designs/plans), implementer (writes code), reviewer (reviews code), ` +
   `tester (writes/runs tests), debugger (diagnoses issues).\n` +
   `  Optional working_dir sets the agent's working directory.\n` +
-  `- validate(command) — Run a shell command to verify work (build, test, lint).\n` +
+  `- validate(command) — Run a build, test, or lint command to verify work.\n` +
+  `  ONLY for verification commands (npm run build, npm test, cargo check, etc.).\n` +
+  `  Do NOT use validate to read files, view diffs, or inspect code — use diagnose() instead.\n` +
   `- diagnose(action, target?) — Inspect codebase state without modifying anything.\n` +
   `  Actions: git_diff (working tree changes), git_log (recent commits), ` +
   `git_status (repo status), file_contents (read a file via target path).\n` +
@@ -131,37 +135,53 @@ export const ORCHESTRATOR_SYSTEM_PROMPT =
   `- Do NOT use Read, Write, Edit, Grep, Glob, Bash, or any other tools — only the tools listed above.\n` +
   `- If you need to understand code or files, delegate to an architect, debugger, or use diagnose().\n` +
   `- If you need to modify code, delegate to an implementer.\n` +
-  `- If you need to run a command, use validate().\n\n` +
+  `- If you need to run a command, use validate().\n\n`;
+
+const ORCHESTRATOR_RULES =
+  `# Rules\n\n` +
+  `- You may call MULTIPLE delegate tools in a single turn to run agents in parallel.\n` +
+  `- For validate, diagnose, done, and fail — call exactly ONE per turn.\n` +
+  `- Write detailed, specific task descriptions when delegating.\n` +
+  `- Always validate after implementation.\n` +
+  `- When you receive agent results, immediately proceed to the next tool call.\n` +
+  `- Do NOT call validate() more than 3 times in a row without delegating work.\n` +
+  `- After receiving agent results, decide the next action quickly — do not re-read code yourself.\n` +
+  `- If all work is done and validated, call done() immediately — do not keep iterating.`;
+
+const CREATE_WORKFLOW =
   `# Workflow\n\n` +
   `1. Delegate to architect to analyze requirements and design the solution.\n` +
   `2. Delegate to implementer to write the actual code.\n` +
   `3. Validate with build/test commands.\n` +
   `4. If validation fails, delegate fixes to implementer and re-validate.\n` +
   `5. Optionally delegate to reviewer for code review.\n` +
-  `6. Call done() when work is complete and validated.\n\n` +
-  `# Rules\n\n` +
-  `- You may call MULTIPLE delegate tools in a single turn to run agents in parallel.\n` +
-  `- For validate, diagnose, done, and fail — call exactly ONE per turn.\n` +
-  `- Write detailed, specific task descriptions when delegating.\n` +
-  `- The architect analyzes and designs; the implementer writes code; the debugger diagnoses.\n` +
-  `- Always validate after implementation.\n` +
-  `- When you receive agent results, immediately proceed to the next tool call.`;
+  `6. Call done() when work is complete and validated.\n\n`;
 
-/**
- * Additional workflow instructions appended when the orchestrator is in fix mode
- * (epic was rejected and is being retried).
- */
-export const ORCHESTRATOR_FIX_WORKFLOW =
-  `\n\n# Fix Workflow (previous attempt was rejected)\n\n` +
-  `Your previous attempt was rejected. Follow this modified workflow:\n\n` +
-  `1. Use diagnose(action="git_diff") to see the current state of code from the previous attempt.\n` +
-  `2. Delegate to a debugger to analyze the rejection feedback and identify exactly what went wrong.\n` +
-  `3. Delegate to an implementer with SPECIFIC fix instructions (exact files, exact changes). ` +
-  `Do NOT re-implement from scratch unless the debugger recommends it.\n` +
-  `4. Validate with the same commands that failed before.\n` +
+const FIX_WORKFLOW =
+  `# Workflow (FIX MODE — you are repairing a previous failed attempt)\n\n` +
+  `IMPORTANT: Do NOT delegate to an architect. Do NOT re-design or re-implement from scratch.\n` +
+  `You are fixing an existing codebase. Follow these steps IN ORDER:\n\n` +
+  `1. Call diagnose(action="git_diff") to see the current state of the code.\n` +
+  `2. Delegate to a DEBUGGER (not architect!) to analyze the rejection feedback and identify the root cause.\n` +
+  `3. Delegate to an implementer with SPECIFIC, TARGETED fix instructions — exact files and exact changes.\n` +
+  `4. Validate with build/test commands.\n` +
   `5. If validation passes, delegate to a reviewer to verify the fix addresses the original feedback.\n` +
   `6. Call done() only after the reviewer confirms the fix.\n\n` +
-  `IMPORTANT: Do NOT re-architect the entire solution. Start by understanding what is broken.\n`;
+  `NEVER delegate to an architect in fix mode. Use debugger for analysis, implementer for changes.\n\n`;
+
+/**
+ * System prompt for CREATION orchestrator sessions.
+ */
+export const ORCHESTRATOR_SYSTEM_PROMPT = ORCHESTRATOR_PREAMBLE + CREATE_WORKFLOW + ORCHESTRATOR_RULES;
+
+/**
+ * System prompt for FIX orchestrator sessions.
+ * Replaces the creation workflow with the fix workflow — no ambiguity.
+ */
+export const ORCHESTRATOR_FIX_PROMPT = ORCHESTRATOR_PREAMBLE + FIX_WORKFLOW + ORCHESTRATOR_RULES;
+
+/** @deprecated Use ORCHESTRATOR_FIX_PROMPT instead — kept for backward compat */
+export const ORCHESTRATOR_FIX_WORKFLOW = FIX_WORKFLOW;
 
 export class Orchestrator {
   private events = mitt<OrchestratorEvents>();
@@ -182,7 +202,9 @@ export class Orchestrator {
   private contextProfileIds: string[] = [];
   private pendingChildren = new Map<string, PendingChild>();
   private orchestratorTurnDone = false;
-  private pendingFeedResult = '';
+  private turnResults: string[] = [];
+  private pendingValidation = false;
+  private _consecutiveValidates = 0;
   private autoCommit = false;
   private gitAvailable = false;
   private epicOptions: OrchestratorOptions | null = null;
@@ -196,6 +218,8 @@ export class Orchestrator {
   static readonly MAX_STEP_ATTEMPTS = 5;
   static readonly MAX_TOTAL_DELEGATIONS = 100;
   static readonly CHILD_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+  static readonly MAX_CONSECUTIVE_VALIDATES = 5;
+  private static readonly VALIDATE_BLOCKLIST = /\b(cat|head|tail|less|more|sed|awk|bat)\b/;
 
   setChatPanel(panel: OrchestratorChatPanelAPI) { this.chatPanel = panel; }
   setWorkspace(ws: string) { this.workspace = ws; }
@@ -328,7 +352,9 @@ export class Orchestrator {
     this._stepAttempts = 0;
     this.mcpCommandReceived = false;
     this.orchestratorTurnDone = false;
-    this.pendingFeedResult = '';
+    this.turnResults = [];
+    this.pendingValidation = false;
+    this._consecutiveValidates = 0;
     this.pendingChildren.clear();
     this.childTimeouts.clear();
     this.validationResults = [];
@@ -397,7 +423,7 @@ export class Orchestrator {
       `You have NO file access — you cannot read, write, or search files. ` +
       `Your ONLY tools are:\n` +
       `- \`delegate(role, task, working_dir?)\` — assign work to architect/implementer/reviewer/tester/debugger\n` +
-      `- \`validate(command, description)\` — run a shell command to verify the work\n` +
+      `- \`validate(command, description)\` — run a build/test/lint command to verify work (NOT for reading files)\n` +
       `- \`diagnose(action, target?)\` — inspect codebase state (git_diff, git_log, git_status, file_contents)\n` +
       checkpointLine +
       spawnLine +
@@ -441,7 +467,9 @@ export class Orchestrator {
     this._stepAttempts = 0;
     this.mcpCommandReceived = false;
     this.orchestratorTurnDone = false;
-    this.pendingFeedResult = '';
+    this.turnResults = [];
+    this.pendingValidation = false;
+    this._consecutiveValidates = 0;
     this.pendingChildren.clear();
     this.childTimeouts.clear();
     this.validationResults = [];
@@ -492,8 +520,19 @@ export class Orchestrator {
       return;
     }
 
+    // Reset per-turn tracking on the first tool call of a new turn
+    if (!this.mcpCommandReceived) {
+      this.turnResults = [];
+      this.pendingValidation = false;
+    }
+
     this.mcpCommandReceived = true;
     this._stepAttempts = 0;
+
+    // Track if this turn includes a validation alongside delegations
+    if (action === 'validate') {
+      this.pendingValidation = true;
+    }
 
     const cmd: OrchestratorCommand = { action: 'unknown' };
 
@@ -566,15 +605,11 @@ export class Orchestrator {
 
     this.orchestratorTurnDone = true;
 
-    // If a validation (or other fast operation) already produced a result
-    // while the Claude CLI was still running, send it now.
-    if (this.pendingFeedResult) {
-      const result = this.pendingFeedResult;
-      this.pendingFeedResult = '';
+    // Try to flush any accumulated turn results now that the process is done.
+    // Results may have been queued while the Claude CLI was still running.
+    if (this.turnResults.length > 0) {
       this.mcpCommandReceived = false;
-      this.orchestratorTurnDone = false;
-      console.log('[Orchestrator] Sending deferred feed result');
-      this.chatPanel?.sendMessageToSession(this._sessionId, result);
+      this.flushTurnResults();
       return;
     }
 
@@ -640,8 +675,10 @@ export class Orchestrator {
       return;
     }
 
-    let hint = '';
-    if (this._currentPhase.includes('delegating') || this._currentPhase === 'planning') {
+    // Escalating recovery messages — generic nudge → concrete suggestion → forced termination
+    let message: string;
+    if (this._stepAttempts <= 2) {
+      let hint = '';
       if (this._totalDelegations === 0) {
         hint = this._fixMode
           ? ' Start by calling diagnose(action="git_diff") to inspect the current state.'
@@ -650,14 +687,29 @@ export class Orchestrator {
         hint = ' Call delegate(role="implementer", task="...") to write the code, ' +
           'or validate(command="...") to check existing work, or done(summary="...") if finished.';
       }
+      message =
+        `ERROR: Your response did not include a tool call. You MUST call one of: ` +
+        `delegate, validate, diagnose, done, or fail. ` +
+        `You cannot read files or use other tools — only MCP orchestrator tools.` +
+        hint;
+    } else if (this._stepAttempts === 3) {
+      message =
+        `ERROR: No tool call detected (attempt ${this._stepAttempts}/${Orchestrator.MAX_STEP_ATTEMPTS}). ` +
+        `You have completed ${this._totalDelegations} delegation(s) so far. ` +
+        `You MUST call exactly one tool now. Choose one:\n` +
+        `- done(summary="<describe what was accomplished>") — if all work is complete\n` +
+        `- fail(reason="<explain why>") — if the goal cannot be achieved\n` +
+        `- delegate(role="implementer", task="<specific task>") — if more work is needed\n` +
+        `- validate(command="<build or test command>") — to verify existing work`;
+    } else {
+      message =
+        `FINAL WARNING (attempt ${this._stepAttempts}/${Orchestrator.MAX_STEP_ATTEMPTS}): ` +
+        `You must call done() or fail() NOW. ` +
+        `Next response without a tool call will terminate this orchestration as failed. ` +
+        `Call done(summary="...") if any progress was made, or fail(reason="...") otherwise.`;
     }
 
-    this.feedResult(
-      `ERROR: Your response did not include a tool call. You MUST call one of: ` +
-      `delegate, validate, diagnose, done, or fail. ` +
-      `You cannot read files or use other tools — only MCP orchestrator tools.` +
-      hint,
-    );
+    this.feedResult(message);
   }
 
   // ── Command Execution (shared by MCP and fallback paths) ───────────────
@@ -716,6 +768,7 @@ export class Orchestrator {
 
   private async executeDelegation(cmd: OrchestratorCommand) {
     if (!cmd.role || !cmd.task || !this.chatPanel) return;
+    this._consecutiveValidates = 0;
 
     if (this._totalDelegations >= Orchestrator.MAX_TOTAL_DELEGATIONS) {
       this.feedResult(
@@ -783,7 +836,33 @@ export class Orchestrator {
 
   private async executeValidation(cmd: OrchestratorCommand) {
     if (!cmd.command?.trim()) {
+      this.pendingValidation = false;
       this.feedResult("ERROR: validate requires a non-empty 'command' parameter.");
+      return;
+    }
+
+    // Block file-reading commands — validate is for build/test/lint only
+    if (Orchestrator.VALIDATE_BLOCKLIST.test(cmd.command)) {
+      this.pendingValidation = false;
+      this.logEvent('validateBlocked', cmd.command);
+      this.feedResult(
+        'ERROR: validate() is for build/test/lint commands only. ' +
+        'To read files, use diagnose(action="file_contents", target="path") ' +
+        'or delegate to a debugger/architect.',
+      );
+      return;
+    }
+
+    // Circuit breaker: too many consecutive validates without delegation
+    this._consecutiveValidates++;
+    if (this._consecutiveValidates > Orchestrator.MAX_CONSECUTIVE_VALIDATES) {
+      this.pendingValidation = false;
+      this.logEvent('validateBudgetExceeded', `${this._consecutiveValidates} consecutive validates`);
+      this.feedResult(
+        'ERROR: Too many consecutive validate calls. ' +
+        'You must delegate to a specialist or call done/fail. ' +
+        'Use delegate() to assign work, or diagnose() to inspect code.',
+      );
       return;
     }
 
@@ -809,9 +888,11 @@ export class Orchestrator {
         output: stdout.substring(0, 2000),
       });
 
+      this.pendingValidation = false;
+
       if (passed) {
         this.logEvent('validationPassed', cmd.command);
-        this.feedResult(
+        this.enqueueTurnResult(
           `## Validation PASSED (exit code 0)\n\n` +
           `**Command:** \`${cmd.command}\`\n\n` +
           `**Output:**\n\`\`\`\n${stdout}\n\`\`\``,
@@ -820,17 +901,19 @@ export class Orchestrator {
         this._totalRetries++;
         this.logEvent('validationFailed', `exit=${output.code} cmd=${cmd.command}`);
 
-        // Classify common error patterns
         const errorSummary = Orchestrator.classifyErrors(rawOutput);
 
-        this.feedResult(
+        this.enqueueTurnResult(
           `## Validation FAILED (exit code ${output.code})\n\n` +
           `**Command:** \`${cmd.command}\`\n` +
           (errorSummary ? `**Error Summary:** ${errorSummary}\n\n` : '\n') +
           `**Output:**\n\`\`\`\n${stdout}\n\`\`\``,
         );
       }
+
+      this.flushTurnResults();
     } catch (e: any) {
+      this.pendingValidation = false;
       this.logEvent('validationError', e.message);
       this.feedResult(`Validation ERROR: ${e.message}`);
     }
@@ -875,6 +958,7 @@ export class Orchestrator {
   // ── Diagnose (inspect codebase state without modifying) ────────────
 
   private async executeDiagnose(cmd: OrchestratorCommand) {
+    this._consecutiveValidates = 0;
     const action = cmd.diagnoseAction || '';
     if (!action) {
       this.feedResult("ERROR: diagnose requires an 'action' parameter (git_diff, git_log, git_status, file_contents).");
@@ -962,38 +1046,74 @@ export class Orchestrator {
       }
     }
 
-    this.feedResult(
+    this.enqueueTurnResult(
       `${count} agent(s) completed successfully.${checkpointInfo}\n\n${parts.join('\n\n---\n\n')}\n\n` +
-      `What should be done next?`,
+      `Decide the next action. If all work is done and validated, call done(summary).`,
     );
+    this.flushTurnResults();
   }
 
-  // ── Feed Result (deferred if process still running) ────────────────────
+  // ── Turn Result Accumulation ────────────────────────────────────────────
+  //
+  // When the orchestrator calls multiple tools in one turn (e.g. delegate + validate),
+  // results arrive independently. We accumulate them and only send a single combined
+  // message back when ALL operations from the turn are complete.
 
-  private feedResult(resultText: string) {
+  /**
+   * Queue a result string for the current turn.
+   * Does NOT send immediately — call flushTurnResults() to check if all
+   * pending operations are done and send the combined result.
+   */
+  private enqueueTurnResult(resultText: string) {
     if (!this._running || !this.chatPanel) return;
-
-    this.mcpCommandReceived = false;
     this.events.emit('progressUpdate', { message: resultText.substring(0, 100) + '...' });
+    this.turnResults.push(resultText);
+  }
 
+  /**
+   * Check whether all pending operations for the current turn are done.
+   * If so, concatenate all queued results and send as one message.
+   * If not, defer — the last completing operation will trigger the flush.
+   */
+  private flushTurnResults() {
+    if (!this._running || !this.chatPanel) return;
+    if (this.turnResults.length === 0) return;
+
+    // Wait for pending validation to finish
+    if (this.pendingValidation) return;
+
+    // Wait for all children to complete (if any were spawned this turn)
+    for (const pc of this.pendingChildren.values()) {
+      if (!pc.completed) return;
+    }
+
+    // Not safe to send yet — the Claude process is still running
     if (!this.orchestratorTurnDone) {
-      // Claude CLI process is still running (common for fast validation commands).
-      // Defer until onSessionFinishedProcessing picks it up.
-      console.log('[Orchestrator] Deferring feed result (process still running)');
-      this.pendingFeedResult = resultText;
+      console.log('[Orchestrator] Deferring flush (process still running)');
       return;
     }
 
-    // Process is done, safe to send the next message
+    // All done — combine and send
+    const combined = this.turnResults.join('\n\n---\n\n');
+    this.turnResults = [];
     this.orchestratorTurnDone = false;
-    this.pendingFeedResult = '';
-    this.chatPanel.sendMessageToSession(this._sessionId, resultText);
+    this.chatPanel.sendMessageToSession(this._sessionId, combined);
+  }
+
+  /**
+   * Legacy convenience: enqueue a result and immediately attempt to flush.
+   * Used by single-result paths (diagnose, checkpoint, error messages, fallback).
+   */
+  private feedResult(resultText: string) {
+    this.enqueueTurnResult(resultText);
+    this.flushTurnResults();
   }
 
   // ── Spawn Sub-Orchestrator (Epic) ───────────────────────────────────────
 
   private async executeSpawnOrchestrator(cmd: OrchestratorCommand) {
     if (!cmd.task || !this.chatPanel) return;
+    this._consecutiveValidates = 0;
 
     if (!this.epicOptions) {
       this.feedResult(
@@ -1220,11 +1340,7 @@ export class Orchestrator {
   // ── System Prompt (dynamic, includes checkpoint instructions if enabled) ──
 
   getSystemPrompt(): string {
-    let prompt = ORCHESTRATOR_SYSTEM_PROMPT;
-
-    if (this._fixMode) {
-      prompt += ORCHESTRATOR_FIX_WORKFLOW;
-    }
+    let prompt = this._fixMode ? ORCHESTRATOR_FIX_PROMPT : ORCHESTRATOR_SYSTEM_PROMPT;
 
     if (this.autoCommit) {
       prompt +=

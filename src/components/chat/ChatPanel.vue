@@ -110,9 +110,10 @@ import ProfileSelector from '../input/ProfileSelector.vue';
 import { useSessionsStore, getDatabase } from '../../stores/sessions';
 import { useFleetStore } from '../../stores/fleet';
 import { useUiStore } from '../../stores/ui';
+import { useProjectsStore } from '../../stores/projects';
 import { ClaudeProcess } from '../../engine/ClaudeProcess';
 import { sendMessageToEngine, sendToolResultToEngine, cancelProcess, type ChatPanelHandle } from '../../composables/useEngine';
-import { Orchestrator, ORCHESTRATOR_SYSTEM_PROMPT, ORCHESTRATOR_FIX_WORKFLOW } from '../../engine/Orchestrator';
+import { Orchestrator, ORCHESTRATOR_SYSTEM_PROMPT, ORCHESTRATOR_FIX_PROMPT } from '../../engine/Orchestrator';
 import type { AgentStatus, AttachedContext, AttachedImage, MessageRecord } from '../../engine/types';
 import { engineBus } from '../../engine/EventBus';
 
@@ -170,6 +171,7 @@ const emit = defineEmits<{
 const sessionsStore = useSessionsStore();
 const fleetStore = useFleetStore();
 const ui = useUiStore();
+const projectsStore = useProjectsStore();
 
 // ── Selector state ──────────────────────────────────────────────────────
 const currentMode = ref('agent');
@@ -502,7 +504,20 @@ async function onSend(text: string, _contexts?: AttachedContext[], _images?: Att
   if (isOrchestrate) {
     const isFixer = currentPipeline === 'fixer';
     engineMessage = Orchestrator.buildInitialMessage(text, { fixMode: isFixer });
-    systemPrompt = ORCHESTRATOR_SYSTEM_PROMPT + (isFixer ? ORCHESTRATOR_FIX_WORKFLOW : '');
+    systemPrompt = isFixer ? ORCHESTRATOR_FIX_PROMPT : ORCHESTRATOR_SYSTEM_PROMPT;
+  }
+
+  // When a project is active, inject repo context so the agent only checks configured repos
+  if (!systemPrompt && ui.activeProjectId) {
+    const repos = projectsStore.reposByProjectId(ui.activeProjectId);
+    if (repos.length > 0) {
+      const project = projectsStore.projectById(ui.activeProjectId);
+      const repoLines = repos.map(r => `- ${r.name}: ${r.path}`).join('\n');
+      systemPrompt =
+        `You are working on the "${project?.name || 'project'}" project.\n` +
+        `This project contains ONLY the following repositories:\n${repoLines}\n\n` +
+        `Only inspect and work within these repositories. Do not explore or reference other folders outside these repos.`;
+    }
   }
 
   sendMessageToEngine(sid, engineMessage, chatPanelHandle, {
@@ -763,11 +778,14 @@ function markDone(sessionId: string) {
     // (prevents FOREIGN KEY constraint failures for newly-created sessions).
     sessionsStore.persistSession(sessionId);
 
-    // Persist any unsaved assistant/tool messages from this turn batch
+    // Persist any unsaved assistant/tool messages from this turn batch.
+    // Also persist orchestrator feed-result user messages (id contains '-feed')
+    // so orchestrator sessions are fully debuggable from the DB.
     const db = getDatabase();
     for (const msg of state.messages) {
-      if (msg.id.startsWith('db-')) continue; // Already from DB
-      if (msg.role !== 'user' && msg.turnId > state.lastPersistedTurnId) {
+      if (msg.id.startsWith('db-')) continue;
+      const isFeedMessage = msg.role === 'user' && msg.id.includes('-feed');
+      if ((msg.role !== 'user' || isFeedMessage) && msg.turnId > state.lastPersistedTurnId) {
         db.saveMessage({
           sessionId,
           role: msg.role,

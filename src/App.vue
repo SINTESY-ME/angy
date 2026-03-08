@@ -445,6 +445,19 @@ watch(() => ui.activeEpicId, async (epicId) => {
 
 watch(() => ui.workspacePath, async (newPath, oldPath) => {
   if (newPath && newPath !== oldPath) {
+    // Repo-only switch (multi-repo tab): skip heavy session reload,
+    // just update git status and window title.
+    if (ui.repoSwitchOnly) {
+      ui.repoSwitchOnly = false;
+      gitStore.init(newPath);
+      const projectName = ui.activeProjectId
+        ? projectStore.projectById(ui.activeProjectId)?.name
+        : null;
+      const folderName = newPath.replace(/\/$/, '').split('/').pop() || newPath;
+      getCurrentWindow().setTitle(projectName || folderName);
+      return;
+    }
+
     // Ensure database is open before querying
     const db = getDatabase();
     await db.open();
@@ -466,11 +479,13 @@ watch(() => ui.workspacePath, async (newPath, oldPath) => {
       const mostRecent = sessionsStore.sessionList[0];
       if (mostRecent) await onAgentSelected(mostRecent.sessionId);
     }
-  }
-  if (newPath) {
+
     gitStore.init(newPath);
-    const name = newPath.replace(/\/$/, '').split('/').pop() || newPath;
-    getCurrentWindow().setTitle(name);
+    const projectName = ui.activeProjectId
+      ? projectStore.projectById(ui.activeProjectId)?.name
+      : null;
+    const folderName = newPath.replace(/\/$/, '').split('/').pop() || newPath;
+    getCurrentWindow().setTitle(projectName || folderName);
   }
 }, { immediate: true });
 
@@ -599,7 +614,8 @@ function buildChatPanelAPI(opts: {
         appendThinkingDelta: (_s: string, _t: string) => { /* no-op */ },
         addToolUse: panel.addToolUse,
         markDone: (s: string) => {
-          panel.markDone(s);
+          // Set delegation status BEFORE panel.markDone so the first persist
+          // already writes Completed (not Pending) to the DB.
           const mgr = getSessionManager();
           mgr.setDelegationStatus(s, DelegationStatus.Completed);
           const childState = panel.sessionStates?.get(s);
@@ -608,6 +624,7 @@ function buildChatPanelAPI(opts: {
             : null;
           const result = lastMsg?.content ?? '';
           mgr.setDelegationResult(s, result);
+          panel.markDone(s);
           sessionsStore.syncFromEngine(s);
           sessionsStore.persistSession(s);
           orchestrator.onDelegateFinished(s, result);

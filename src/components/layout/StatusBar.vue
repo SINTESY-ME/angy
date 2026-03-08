@@ -92,11 +92,18 @@
 import { computed } from 'vue';
 import { open } from '@tauri-apps/plugin-dialog';
 import { useUiStore } from '../../stores/ui';
+import { useProjectsStore } from '../../stores/projects';
 
 const ui = useUiStore();
+const projectsStore = useProjectsStore();
 
 const workspaceLabel = computed(() => {
   if (!ui.workspacePath) return 'Open folder…';
+  // Show project name when a project is active
+  if (ui.activeProjectId) {
+    const project = projectsStore.projectById(ui.activeProjectId);
+    if (project) return project.name;
+  }
   const parts = ui.workspacePath.replace(/\/$/, '').split('/');
   return parts[parts.length - 1] || ui.workspacePath;
 });

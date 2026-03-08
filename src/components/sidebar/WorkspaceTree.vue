@@ -60,13 +60,18 @@ const emit = defineEmits<{
 const tree = ref<FileNode[]>([]);
 const activeRepoPath = ref('');
 
-// Compute repos for the active epic (multi-repo support)
+// Compute repos for multi-repo tab switching (project-level or epic-scoped)
 const epicRepos = computed(() => {
-  if (!ui.activeEpicId || !ui.activeProjectId) return [];
-  const epic = epicStore.epicById(ui.activeEpicId);
-  if (!epic || epic.targetRepoIds.length <= 1) return [];
+  if (!ui.activeProjectId) return [];
   const projectRepos = projectsStore.reposByProjectId(ui.activeProjectId);
-  return projectRepos.filter((r) => epic.targetRepoIds.includes(r.id));
+  if (projectRepos.length <= 1) return [];
+  if (ui.activeEpicId) {
+    const epic = epicStore.epicById(ui.activeEpicId);
+    if (epic && epic.targetRepoIds.length > 0) {
+      return projectRepos.filter((r) => epic.targetRepoIds.includes(r.id));
+    }
+  }
+  return projectRepos;
 });
 
 const displayPath = computed(() => {
@@ -74,12 +79,26 @@ const displayPath = computed(() => {
     const repo = epicRepos.value.find((r) => r.path === activeRepoPath.value);
     return repo ? repo.name : activeRepoPath.value;
   }
+  // Show the project name when active, otherwise show the folder name
+  if (ui.activeProjectId) {
+    const project = projectsStore.projectById(ui.activeProjectId);
+    if (project) return project.name;
+  }
   return props.rootPath || '';
 });
 
 function switchRepo(repoPath: string) {
   activeRepoPath.value = repoPath;
-  ui.workspacePath = repoPath;
+  if (repoPath !== ui.workspacePath) {
+    // Path is changing — flag it as repo-only switch, let prop watcher load the tree
+    ui.repoSwitchOnly = true;
+    ui.workspacePath = repoPath;
+  } else {
+    // Same path — reload tree locally (no prop change will fire the watcher)
+    loadDirectory(repoPath).then((nodes) => {
+      tree.value = nodes;
+    });
+  }
 }
 
 const SKIP_DIRS = new Set(['node_modules', 'target', 'build', 'dist', '.git', '__pycache__']);
@@ -112,6 +131,7 @@ watch(() => props.rootPath, async (path) => {
     activeRepoPath.value = path;
     tree.value = await loadDirectory(path);
   } else {
+    activeRepoPath.value = '';
     tree.value = [];
   }
 }, { immediate: true });
