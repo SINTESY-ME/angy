@@ -82,7 +82,7 @@ export interface EpicBranch {
   repoId: string;
   branchName: string;
   baseBranch: string;
-  status: 'active' | 'merged' | 'deleted';
+  status: 'active' | 'merged' | 'deleted' | 'tracking';
 }
 
 export interface RepoLock {

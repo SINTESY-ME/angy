@@ -427,7 +427,10 @@ export class AngyEngine {
       this.epicOrchestrators.delete(epicId);
     }
 
-    // 3. Release repo locks and clean up pool tracking
+    // 3. Restore repos to default branch (for branch-ON epics)
+    await this.restoreReposForEpic(epicId);
+
+    // 4. Release repo locks and clean up pool tracking
     this.scheduler.releaseRepos(epicId);
     await this.pool.removeEpic(epicId);
 
@@ -497,7 +500,7 @@ export class AngyEngine {
       model: opts?.model ?? '',
       targetRepoIds: opts?.targetRepoIds ?? [],
       pipelineType: opts?.pipelineType ?? 'create',
-      useGitBranch: true,
+      useGitBranch: false,
       dependsOn: opts?.dependsOn ?? [],
       rejectionCount: 0,
       rejectionFeedback: '',
@@ -600,10 +603,29 @@ export class AngyEngine {
     }
   }
 
+  /**
+   * For branch-ON epics: commit any uncommitted work and restore the default branch.
+   * For branch-OFF (tracking) epics: no-op — user manages git.
+   */
+  async restoreReposForEpic(epicId: string): Promise<void> {
+    const epic = this.epics.getEpic(epicId);
+    const branches = await this.branchManager.getEpicBranches(epicId);
+
+    for (const branch of branches) {
+      if (branch.status !== 'active') continue;
+      const repo = await this.db.loadProjectRepo(branch.repoId);
+      if (!repo) continue;
+
+      await this.branchManager.commitEpicWork(repo.path, epic?.title ?? epicId);
+      await this.branchManager.restoreBranch(repo.path, branch.baseBranch);
+    }
+  }
+
   private wireEpicLifecycleEvents(): void {
-    // When an epic completes, move it to review then notify the UI to sync
+    // When an epic completes, restore repos then move to review
     engineBus.on('epic:completed', async ({ epicId }) => {
       try {
+        await this.restoreReposForEpic(epicId);
         await this.scheduler.moveToReview(epicId);
       } catch (err) {
         console.error(`[AngyEngine] Failed to move epic ${epicId} to review:`, err);
@@ -611,9 +633,10 @@ export class AngyEngine {
       engineBus.emit('epic:storeSyncNeeded');
     });
 
-    // When an epic fails, move it back to todo with feedback then notify the UI
+    // When an epic fails, restore repos then move back to todo
     engineBus.on('epic:failed', async ({ epicId, reason }) => {
       try {
+        await this.restoreReposForEpic(epicId);
         await this.scheduler.rejectEpic(epicId, `Agent failed: ${reason}`);
       } catch (err) {
         console.error(`[AngyEngine] Failed to reject epic ${epicId}:`, err);

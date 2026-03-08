@@ -1,7 +1,7 @@
-import type { Epic, OrchestratorOptions, ProjectRepo } from './KosTypes'
+import type { Epic, EpicBranch, OrchestratorOptions, ProjectRepo } from './KosTypes'
 import type { OrchestratorChatPanelAPI } from './Orchestrator'
 import { ORCHESTRATOR_SYSTEM_PROMPT } from './Orchestrator'
-import type { BranchManager } from './BranchManager'
+import { BranchManager } from './BranchManager'
 
 // ── OrchestratorPool — Multi-Orchestrator Manager (singleton) ─────────────
 
@@ -73,11 +73,43 @@ export class OrchestratorPool {
       throw new Error(`Epic ${epicId} already has an active orchestrator`)
     }
 
-    // Create epic branches via BranchManager
-    if (epic.useGitBranch && repos.length > 0) {
-      console.log(`[OrchestratorPool] Creating branches for ${repos.length} repos`)
-      await this.branchManager.createEpicBranches(epicId, repos)
-      await this.branchManager.checkoutEpicBranches(epicId)
+    // Prepare repos: checkpoint dirty state, optionally create epic branch
+    if (repos.length > 0) {
+      for (const repo of repos) {
+        await this.branchManager.createCheckpoint(repo.path, epic.title)
+
+        if (epic.useGitBranch) {
+          const slug = BranchManager.epicTitleToSlug(epic.title)
+          const branchName = `epic/${slug}`
+          const ok = await this.branchManager.createAndCheckoutEpicBranch(
+            repo.path, branchName, repo.defaultBranch,
+          )
+          if (ok) {
+            const branch: EpicBranch = {
+              id: crypto.randomUUID(),
+              epicId,
+              repoId: repo.id,
+              branchName,
+              baseBranch: repo.defaultBranch,
+              status: 'active',
+            }
+            await this.branchManager.saveBranchRecord(branch)
+          }
+        } else {
+          const currentBranch = await this.branchManager.getCurrentBranch(repo.path)
+          if (currentBranch) {
+            const branch: EpicBranch = {
+              id: crypto.randomUUID(),
+              epicId,
+              repoId: repo.id,
+              branchName: currentBranch,
+              baseBranch: currentBranch,
+              status: 'tracking',
+            }
+            await this.branchManager.saveBranchRecord(branch)
+          }
+        }
+      }
     }
 
     let sessionId: string

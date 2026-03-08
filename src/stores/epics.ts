@@ -124,7 +124,7 @@ export const useEpicStore = defineStore('epics', () => {
       model: '',
       targetRepoIds: opts?.targetRepoIds ?? [],
       pipelineType: 'create',
-      useGitBranch: true,
+      useGitBranch: false,
       dependsOn: [],
       rejectionCount: 0,
       rejectionFeedback: '',

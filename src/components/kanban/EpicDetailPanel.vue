@@ -150,22 +150,27 @@
         </div>
       </div>
 
-      <!-- Use git branch -->
-      <div class="flex items-center justify-between">
-        <label class="text-[10px] font-medium text-[var(--text-muted)] uppercase tracking-wider">Use git branch</label>
-        <button
-          class="relative w-7 h-4 rounded-full transition-colors"
-          :class="draft.useGitBranch ? 'bg-[var(--accent-green)]' : 'bg-[var(--bg-raised)]'"
-          @click="draft.useGitBranch = !draft.useGitBranch"
-        >
-          <span
-            class="absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform"
-            :class="draft.useGitBranch ? 'left-3.5' : 'left-0.5'"
-          />
-        </button>
+      <!-- Auto branch -->
+      <div>
+        <div class="flex items-center justify-between">
+          <label class="text-[10px] font-medium text-[var(--text-muted)] uppercase tracking-wider">Auto branch</label>
+          <button
+            class="relative w-7 h-4 rounded-full transition-colors"
+            :class="draft.useGitBranch ? 'bg-[var(--accent-green)]' : 'bg-[var(--bg-raised)]'"
+            @click="draft.useGitBranch = !draft.useGitBranch"
+          >
+            <span
+              class="absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform"
+              :class="draft.useGitBranch ? 'left-3.5' : 'left-0.5'"
+            />
+          </button>
+        </div>
+        <p class="text-[9px] text-[var(--text-muted)] mt-1">
+          {{ draft.useGitBranch ? 'Creates a branch for this epic, restores default when done' : 'Agents work on the current branch' }}
+        </p>
       </div>
 
-      <!-- Active branch -->
+      <!-- Working branch -->
       <div v-if="branchName" class="flex items-center gap-2 mt-2">
         <label class="text-[10px] font-medium text-[var(--text-muted)] uppercase tracking-wider">Branch</label>
         <span class="text-xs font-mono text-[var(--accent-green)] bg-[var(--bg-raised)] px-2 py-0.5 rounded select-all" :title="branchName">
@@ -313,7 +318,7 @@ const draft = ref({
   model: '',
   targetRepoIds: [] as string[],
   pipelineType: 'create' as EpicPipelineType,
-  useGitBranch: true,
+  useGitBranch: false,
   dependsOn: [] as string[],
 });
 

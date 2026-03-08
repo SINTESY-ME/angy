@@ -241,17 +241,8 @@ export class Scheduler {
 
   canAcquireRepos(epic: Epic): boolean {
     if (epic.targetRepoIds.length === 0) return true;
-    const LOCK_TTL_MS = 10 * 60 * 1000; // 10 minutes
-    const now = Date.now();
     for (const repoId of epic.targetRepoIds) {
-      const lock = this.repoLocks.get(repoId);
-      if (lock) {
-        if (now - new Date(lock.acquiredAt).getTime() < LOCK_TTL_MS) {
-          return false;
-        }
-        this.repoLocks.delete(repoId);
-        console.log(`[Scheduler] Auto-expired stale repo lock: repo=${repoId}, epic=${lock.epicId}`);
-      }
+      if (this.repoLocks.has(repoId)) return false;
     }
     return true;
   }
