@@ -5,11 +5,9 @@ import type { OrchestratorOptions } from './KosTypes';
 // ── Orchestrator Command (parsed from MCP tool calls) ────────────────────────
 
 export interface OrchestratorCommand {
-  action: 'delegate' | 'validate' | 'done' | 'fail' | 'checkpoint' | 'spawn_orchestrator' | 'diagnose' | 'unknown';
+  action: 'delegate' | 'done' | 'fail' | 'checkpoint' | 'spawn_orchestrator' | 'diagnose' | 'unknown';
   role?: string;
   task?: string;
-  command?: string;
-  description?: string;
   summary?: string;
   reason?: string;
   message?: string;
@@ -35,8 +33,6 @@ export type OrchestratorEvents = {
   phaseChanged: { phase: string };
   delegationStarted: { role: string; task: string; parentSessionId?: string };
   subOrchestratorSpawned: { task: string; depth: number; epicId: string };
-  validationStarted: { command: string };
-  validationResult: { passed: boolean; output: string };
   completed: { summary: string };
   failed: { reason: string };
   retrying: { reason: string; attempt: number };
@@ -44,7 +40,6 @@ export type OrchestratorEvents = {
   peerMessageSent: { from: string; to: string; content: string };
   checkpointCreated: { hash: string; message: string };
   artifactsCollected: {
-    validations: Array<{ command: string; passed: boolean; output: string }>;
     childOutputs: Array<{ role: string; agentName: string; output: string }>;
   };
 };
@@ -111,8 +106,8 @@ export const SPECIALIST_TOOLS: Record<string, string> = {
 
 const ORCHESTRATOR_PREAMBLE =
   `You are an autonomous project orchestrator. You receive a high-level goal and must ` +
-  `break it down into steps, delegate work to specialist agents, validate results, ` +
-  `and iterate until the goal is fully achieved.\n\n` +
+  `break it down into steps, delegate work to specialist agents, and iterate until ` +
+  `the goal is fully achieved.\n\n` +
   `# CRITICAL: Every response MUST include a tool call\n\n` +
   `You MUST call exactly one of the provided MCP tools in EVERY response. ` +
   `You may include brief reasoning text before the tool call, but the tool call is MANDATORY. ` +
@@ -120,11 +115,8 @@ const ORCHESTRATOR_PREAMBLE =
   `Available tools (these are the ONLY tools you can use):\n` +
   `- delegate(role, task, working_dir?) — Assign work to a specialist agent.\n` +
   `  Roles: architect (designs/plans), implementer (writes code), reviewer (reviews code), ` +
-  `tester (writes/runs tests), debugger (diagnoses issues).\n` +
+  `tester (writes/runs tests, verifies builds), debugger (diagnoses issues).\n` +
   `  Optional working_dir sets the agent's working directory.\n` +
-  `- validate(command) — Run a build, test, or lint command to verify work.\n` +
-  `  ONLY for verification commands (npm run build, npm test, cargo check, etc.).\n` +
-  `  Do NOT use validate to read files, view diffs, or inspect code — use diagnose() instead.\n` +
   `- diagnose(action, target?) — Inspect codebase state without modifying anything.\n` +
   `  Actions: git_diff (working tree changes), git_log (recent commits), ` +
   `git_status (repo status), file_contents (read a file via target path).\n` +
@@ -135,27 +127,26 @@ const ORCHESTRATOR_PREAMBLE =
   `- Do NOT use Read, Write, Edit, Grep, Glob, Bash, or any other tools — only the tools listed above.\n` +
   `- If you need to understand code or files, delegate to an architect, debugger, or use diagnose().\n` +
   `- If you need to modify code, delegate to an implementer.\n` +
-  `- If you need to run a command, use validate().\n\n`;
+  `- If you need to run builds or tests, delegate to a tester.\n\n`;
 
 const ORCHESTRATOR_RULES =
   `# Rules\n\n` +
   `- You may call MULTIPLE delegate tools in a single turn to run agents in parallel.\n` +
-  `- For validate, diagnose, done, and fail — call exactly ONE per turn.\n` +
+  `- For diagnose, done, and fail — call exactly ONE per turn.\n` +
   `- Write detailed, specific task descriptions when delegating.\n` +
-  `- Always validate after implementation.\n` +
   `- When you receive agent results, immediately proceed to the next tool call.\n` +
-  `- Do NOT call validate() more than 3 times in a row without delegating work.\n` +
   `- After receiving agent results, decide the next action quickly — do not re-read code yourself.\n` +
-  `- If all work is done and validated, call done() immediately — do not keep iterating.`;
+  `- If all work is done, call done() immediately — do not keep iterating.\n` +
+  `- To verify builds/tests, delegate to a tester — do NOT try to run commands yourself.`;
 
 const CREATE_WORKFLOW =
   `# Workflow\n\n` +
   `1. Delegate to architect to analyze requirements and design the solution.\n` +
-  `2. Delegate to implementer to write the actual code.\n` +
-  `3. Validate with build/test commands.\n` +
-  `4. If validation fails, delegate fixes to implementer and re-validate.\n` +
+  `2. Delegate to implementer(s) to write the actual code.\n` +
+  `3. Delegate to tester to verify the build/tests pass.\n` +
+  `4. If tests fail, delegate fixes to implementer and re-test.\n` +
   `5. Optionally delegate to reviewer for code review.\n` +
-  `6. Call done() when work is complete and validated.\n\n`;
+  `6. Call done() when work is complete.\n\n`;
 
 const FIX_WORKFLOW =
   `# Workflow (FIX MODE — you are repairing a previous failed attempt)\n\n` +
@@ -164,8 +155,8 @@ const FIX_WORKFLOW =
   `1. Call diagnose(action="git_diff") to see the current state of the code.\n` +
   `2. Delegate to a DEBUGGER (not architect!) to analyze the rejection feedback and identify the root cause.\n` +
   `3. Delegate to an implementer with SPECIFIC, TARGETED fix instructions — exact files and exact changes.\n` +
-  `4. Validate with build/test commands.\n` +
-  `5. If validation passes, delegate to a reviewer to verify the fix addresses the original feedback.\n` +
+  `4. Delegate to a tester to verify the build/tests pass.\n` +
+  `5. Delegate to a reviewer to verify the fix addresses the original feedback.\n` +
   `6. Call done() only after the reviewer confirms the fix.\n\n` +
   `NEVER delegate to an architect in fix mode. Use debugger for analysis, implementer for changes.\n\n`;
 
@@ -194,7 +185,6 @@ export class Orchestrator {
   private _running = false;
   private _currentPhase = '';
   private _totalDelegations = 0;
-  private _totalRetries = 0;
   private _stepAttempts = 0;
   private mcpCommandReceived = false;
   private teamId = '';
@@ -203,14 +193,11 @@ export class Orchestrator {
   private pendingChildren = new Map<string, PendingChild>();
   private orchestratorTurnDone = false;
   private turnResults: string[] = [];
-  private pendingValidation = false;
-  private _consecutiveValidates = 0;
   private autoCommit = false;
   private gitAvailable = false;
   private epicOptions: OrchestratorOptions | null = null;
   private _fixMode = false;
   private childTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
-  private validationResults: Array<{ command: string; passed: boolean; output: string }> = [];
   private childOutputs: Array<{ role: string; agentName: string; output: string }> = [];
   private orchestrationLog: Array<{ timestamp: number; event: string; details: string }> = [];
 
@@ -218,8 +205,6 @@ export class Orchestrator {
   static readonly MAX_STEP_ATTEMPTS = 5;
   static readonly MAX_TOTAL_DELEGATIONS = 100;
   static readonly CHILD_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
-  static readonly MAX_CONSECUTIVE_VALIDATES = 5;
-  private static readonly VALIDATE_BLOCKLIST = /\b(cat|head|tail|less|more|sed|awk|bat)\b/;
 
   setChatPanel(panel: OrchestratorChatPanelAPI) { this.chatPanel = panel; }
   setWorkspace(ws: string) { this.workspace = ws; }
@@ -258,7 +243,7 @@ export class Orchestrator {
       let needsInstall = true;
       try {
         const existing = await readTextFile(targetPath);
-        if (existing.includes('version: 3.0.0')) {
+        if (existing.includes('version: 4.0.0')) {
           needsInstall = false;
         }
       } catch { /* doesn't exist */ }
@@ -348,16 +333,12 @@ export class Orchestrator {
     this._running = true;
     this.contextProfileIds = contextProfileIds;
     this._totalDelegations = 0;
-    this._totalRetries = 0;
     this._stepAttempts = 0;
     this.mcpCommandReceived = false;
     this.orchestratorTurnDone = false;
     this.turnResults = [];
-    this.pendingValidation = false;
-    this._consecutiveValidates = 0;
     this.pendingChildren.clear();
     this.childTimeouts.clear();
-    this.validationResults = [];
     this.childOutputs = [];
     this.orchestrationLog = [];
     this.agentCounter = 0;
@@ -423,14 +404,13 @@ export class Orchestrator {
       `You have NO file access — you cannot read, write, or search files. ` +
       `Your ONLY tools are:\n` +
       `- \`delegate(role, task, working_dir?)\` — assign work to architect/implementer/reviewer/tester/debugger\n` +
-      `- \`validate(command, description)\` — run a build/test/lint command to verify work (NOT for reading files)\n` +
       `- \`diagnose(action, target?)\` — inspect codebase state (git_diff, git_log, git_status, file_contents)\n` +
       checkpointLine +
       spawnLine +
       `- \`done(summary)\` — report the goal is fully achieved\n` +
       `- \`fail(reason)\` — report unrecoverable failure\n\n` +
       `You may call MULTIPLE delegate tools in a single turn to run agents in parallel.\n` +
-      `For validate, diagnose, done, and fail — call exactly ONE per turn.\n\n` +
+      `For diagnose, done, and fail — call exactly ONE per turn.\n\n` +
       `Do NOT output plain text without a tool call. Every response needs a tool call.\n\n`;
 
     if (opts.epicContext) {
@@ -463,16 +443,12 @@ export class Orchestrator {
     this._sessionId = sessionId;
     this.contextProfileIds = [];
     this._totalDelegations = 0;
-    this._totalRetries = 0;
     this._stepAttempts = 0;
     this.mcpCommandReceived = false;
     this.orchestratorTurnDone = false;
     this.turnResults = [];
-    this.pendingValidation = false;
-    this._consecutiveValidates = 0;
     this.pendingChildren.clear();
     this.childTimeouts.clear();
-    this.validationResults = [];
     this.childOutputs = [];
     this.orchestrationLog = [];
     this.agentCounter = 0;
@@ -523,16 +499,10 @@ export class Orchestrator {
     // Reset per-turn tracking on the first tool call of a new turn
     if (!this.mcpCommandReceived) {
       this.turnResults = [];
-      this.pendingValidation = false;
     }
 
     this.mcpCommandReceived = true;
     this._stepAttempts = 0;
-
-    // Track if this turn includes a validation alongside delegations
-    if (action === 'validate') {
-      this.pendingValidation = true;
-    }
 
     const cmd: OrchestratorCommand = { action: 'unknown' };
 
@@ -542,11 +512,6 @@ export class Orchestrator {
         cmd.role = args.role || '';
         cmd.task = args.task || '';
         cmd.working_dir = args.working_dir || '';
-        break;
-      case 'validate':
-        cmd.action = 'validate';
-        cmd.command = args.command || '';
-        cmd.description = args.description || 'Validation';
         break;
       case 'done':
         cmd.action = 'done';
@@ -685,11 +650,11 @@ export class Orchestrator {
           : ' Start by calling delegate(role="architect", task="...") to analyze the codebase.';
       } else {
         hint = ' Call delegate(role="implementer", task="...") to write the code, ' +
-          'or validate(command="...") to check existing work, or done(summary="...") if finished.';
+          'or delegate(role="tester", task="verify builds") to check existing work, or done(summary="...") if finished.';
       }
       message =
         `ERROR: Your response did not include a tool call. You MUST call one of: ` +
-        `delegate, validate, diagnose, done, or fail. ` +
+        `delegate, diagnose, done, or fail. ` +
         `You cannot read files or use other tools — only MCP orchestrator tools.` +
         hint;
     } else if (this._stepAttempts === 3) {
@@ -700,7 +665,7 @@ export class Orchestrator {
         `- done(summary="<describe what was accomplished>") — if all work is complete\n` +
         `- fail(reason="<explain why>") — if the goal cannot be achieved\n` +
         `- delegate(role="implementer", task="<specific task>") — if more work is needed\n` +
-        `- validate(command="<build or test command>") — to verify existing work`;
+        `- delegate(role="tester", task="verify builds pass") — to verify existing work`;
     } else {
       message =
         `FINAL WARNING (attempt ${this._stepAttempts}/${Orchestrator.MAX_STEP_ATTEMPTS}): ` +
@@ -718,10 +683,6 @@ export class Orchestrator {
     switch (cmd.action) {
       case 'delegate':
         this.executeDelegation(cmd);
-        break;
-
-      case 'validate':
-        this.executeValidation(cmd);
         break;
 
       case 'diagnose':
@@ -761,14 +722,13 @@ export class Orchestrator {
         break;
 
       default:
-        this.feedResult('ERROR: Unknown action. Use delegate, validate, diagnose, done, or fail.');
+        this.feedResult('ERROR: Unknown action. Use delegate, diagnose, done, or fail.');
         break;
     }
   }
 
   private async executeDelegation(cmd: OrchestratorCommand) {
     if (!cmd.role || !cmd.task || !this.chatPanel) return;
-    this._consecutiveValidates = 0;
 
     if (this._totalDelegations >= Orchestrator.MAX_TOTAL_DELEGATIONS) {
       this.feedResult(
@@ -834,186 +794,23 @@ export class Orchestrator {
     }
   }
 
-  private async executeValidation(cmd: OrchestratorCommand) {
-    if (!cmd.command?.trim()) {
-      this.pendingValidation = false;
-      this.feedResult("ERROR: validate requires a non-empty 'command' parameter.");
-      return;
-    }
+  // ── Diagnose (inspect codebase state — executed by MCP server) ─────
 
-    // Block file-reading commands — validate is for build/test/lint only
-    if (Orchestrator.VALIDATE_BLOCKLIST.test(cmd.command)) {
-      this.pendingValidation = false;
-      this.logEvent('validateBlocked', cmd.command);
-      this.feedResult(
-        'ERROR: validate() is for build/test/lint commands only. ' +
-        'To read files, use diagnose(action="file_contents", target="path") ' +
-        'or delegate to a debugger/architect.',
-      );
-      return;
-    }
-
-    // Circuit breaker: too many consecutive validates without delegation
-    this._consecutiveValidates++;
-    if (this._consecutiveValidates > Orchestrator.MAX_CONSECUTIVE_VALIDATES) {
-      this.pendingValidation = false;
-      this.logEvent('validateBudgetExceeded', `${this._consecutiveValidates} consecutive validates`);
-      this.feedResult(
-        'ERROR: Too many consecutive validate calls. ' +
-        'You must delegate to a specialist or call done/fail. ' +
-        'Use delegate() to assign work, or diagnose() to inspect code.',
-      );
-      return;
-    }
-
-    this._currentPhase = `validating: ${cmd.description || ''}`;
+  /**
+   * Diagnose: state tracking only.
+   * The MCP server executes the command synchronously and returns real results
+   * directly to Claude. The orchestrator only tracks phase/events.
+   */
+  private executeDiagnose(cmd: OrchestratorCommand) {
+    this._currentPhase = `diagnosing: ${cmd.diagnoseAction || ''}`;
     this.events.emit('phaseChanged', { phase: this._currentPhase });
-    this.events.emit('validationStarted', { command: cmd.command });
-
-    try {
-      const shellCmd = Command.create('exec-sh', ['-c', cmd.command], {
-        cwd: this.workspace || undefined,
-      });
-
-      const output = await shellCmd.execute();
-      const maxLen = output.code === 0 ? 3000 : 5000;
-      const rawOutput = (output.stdout + '\n' + output.stderr).trim();
-      const stdout = rawOutput.substring(0, maxLen);
-      const passed = output.code === 0;
-
-      this.events.emit('validationResult', { passed, output: stdout });
-      this.validationResults.push({
-        command: cmd.command,
-        passed,
-        output: stdout.substring(0, 2000),
-      });
-
-      this.pendingValidation = false;
-
-      if (passed) {
-        this.logEvent('validationPassed', cmd.command);
-        this.enqueueTurnResult(
-          `## Validation PASSED (exit code 0)\n\n` +
-          `**Command:** \`${cmd.command}\`\n\n` +
-          `**Output:**\n\`\`\`\n${stdout}\n\`\`\``,
-        );
-      } else {
-        this._totalRetries++;
-        this.logEvent('validationFailed', `exit=${output.code} cmd=${cmd.command}`);
-
-        const errorSummary = Orchestrator.classifyErrors(rawOutput);
-
-        this.enqueueTurnResult(
-          `## Validation FAILED (exit code ${output.code})\n\n` +
-          `**Command:** \`${cmd.command}\`\n` +
-          (errorSummary ? `**Error Summary:** ${errorSummary}\n\n` : '\n') +
-          `**Output:**\n\`\`\`\n${stdout}\n\`\`\``,
-        );
-      }
-
-      this.flushTurnResults();
-    } catch (e: any) {
-      this.pendingValidation = false;
-      this.logEvent('validationError', e.message);
-      this.feedResult(`Validation ERROR: ${e.message}`);
-    }
-  }
-
-  /** Classify common error patterns in build/test output for structured feedback. */
-  private static classifyErrors(output: string): string {
-    const lines = output.split('\n');
-    const parts: string[] = [];
-
-    // Count compiler-style errors (file:line:col pattern)
-    const compileErrors = lines.filter(l => /:\d+:\d+:\s*(error|Error)/.test(l));
-    if (compileErrors.length > 0) {
-      const files = new Set(compileErrors.map(l => l.split(':')[0]));
-      parts.push(`${compileErrors.length} compile error(s) in ${files.size} file(s)`);
-    }
-
-    // Count test failures
-    const failMatch = output.match(/(\d+)\s+(?:failing|failed|failures)/i);
-    const passMatch = output.match(/(\d+)\s+(?:passing|passed)/i);
-    if (failMatch) {
-      parts.push(`${failMatch[1]} test(s) failed${passMatch ? `, ${passMatch[1]} passed` : ''}`);
-    }
-
-    // Lint errors
-    const lintErrors = lines.filter(l => /^\s*\d+:\d+\s+(error|warning)\s/.test(l));
-    if (lintErrors.length > 0) {
-      const errors = lintErrors.filter(l => /\serror\s/.test(l)).length;
-      const warnings = lintErrors.length - errors;
-      parts.push(`${errors} lint error(s), ${warnings} warning(s)`);
-    }
-
-    // TypeScript errors
-    const tsErrors = lines.filter(l => /error TS\d+:/.test(l));
-    if (tsErrors.length > 0) {
-      parts.push(`${tsErrors.length} TypeScript error(s)`);
-    }
-
-    return parts.join('; ');
-  }
-
-  // ── Diagnose (inspect codebase state without modifying) ────────────
-
-  private async executeDiagnose(cmd: OrchestratorCommand) {
-    this._consecutiveValidates = 0;
-    const action = cmd.diagnoseAction || '';
-    if (!action) {
-      this.feedResult("ERROR: diagnose requires an 'action' parameter (git_diff, git_log, git_status, file_contents).");
-      return;
-    }
-
-    this._currentPhase = `diagnosing: ${action}`;
-    this.events.emit('phaseChanged', { phase: this._currentPhase });
-
-    try {
-      let shellCommand: string;
-      switch (action) {
-        case 'git_diff':
-          shellCommand = 'git diff --stat && echo "---FULL DIFF---" && git diff';
-          break;
-        case 'git_log':
-          shellCommand = `git log --oneline -${cmd.target || '15'}`;
-          break;
-        case 'git_status':
-          shellCommand = 'git status';
-          break;
-        case 'file_contents':
-          if (!cmd.target) {
-            this.feedResult("ERROR: diagnose(action='file_contents') requires a 'target' parameter with the file path.");
-            return;
-          }
-          shellCommand = `head -200 '${cmd.target.replace(/'/g, "'\\''")}'`;
-          break;
-        default:
-          this.feedResult(`ERROR: Unknown diagnose action '${action}'. Use: git_diff, git_log, git_status, file_contents.`);
-          return;
-      }
-
-      const shellCmd = Command.create('exec-sh', ['-c', shellCommand], {
-        cwd: this.workspace || undefined,
-      });
-      const output = await shellCmd.execute();
-      const result = (output.stdout + '\n' + output.stderr).trim().substring(0, 6000);
-
-      this.logEvent('diagnose', `${action} exit=${output.code}`);
-      this.feedResult(
-        `## Diagnose: ${action}${cmd.target ? ` (${cmd.target})` : ''}\n\n` +
-        `\`\`\`\n${result}\n\`\`\``,
-      );
-    } catch (e: any) {
-      this.logEvent('diagnoseError', e.message);
-      this.feedResult(`Diagnose ERROR: ${e.message}`);
-    }
+    this.logEvent('diagnose', `action=${cmd.diagnoseAction || ''} target=${cmd.target || ''}`);
   }
 
   // ── Artifact Collection ────────────────────────────────────────────
 
   private emitArtifacts() {
     this.events.emit('artifactsCollected', {
-      validations: this.validationResults,
       childOutputs: this.childOutputs,
     });
   }
@@ -1048,14 +845,17 @@ export class Orchestrator {
 
     this.enqueueTurnResult(
       `${count} agent(s) completed successfully.${checkpointInfo}\n\n${parts.join('\n\n---\n\n')}\n\n` +
-      `Decide the next action. If all work is done and validated, call done(summary).`,
+      `IMPORTANT: Respond with exactly one tool call. Choose one:\n` +
+      `- delegate(role, task) — if more work is needed\n` +
+      `- delegate(role="tester", task="verify builds/tests pass") — to verify the work\n` +
+      `- done(summary) — if all work is complete`,
     );
     this.flushTurnResults();
   }
 
   // ── Turn Result Accumulation ────────────────────────────────────────────
   //
-  // When the orchestrator calls multiple tools in one turn (e.g. delegate + validate),
+  // When the orchestrator calls multiple tools in one turn (e.g. multiple delegates),
   // results arrive independently. We accumulate them and only send a single combined
   // message back when ALL operations from the turn are complete.
 
@@ -1078,9 +878,6 @@ export class Orchestrator {
   private flushTurnResults() {
     if (!this._running || !this.chatPanel) return;
     if (this.turnResults.length === 0) return;
-
-    // Wait for pending validation to finish
-    if (this.pendingValidation) return;
 
     // Wait for all children to complete (if any were spawned this turn)
     for (const pc of this.pendingChildren.values()) {
@@ -1113,7 +910,6 @@ export class Orchestrator {
 
   private async executeSpawnOrchestrator(cmd: OrchestratorCommand) {
     if (!cmd.task || !this.chatPanel) return;
-    this._consecutiveValidates = 0;
 
     if (!this.epicOptions) {
       this.feedResult(
@@ -1345,7 +1141,7 @@ export class Orchestrator {
     if (this.autoCommit) {
       prompt +=
         `\n\n# Checkpointing\n\n` +
-        `Auto-commit is enabled. After completing each phase (architect, implement, validate, review), ` +
+        `Auto-commit is enabled. After completing each phase (architect, implement, test, review), ` +
         `call the checkpoint tool with a descriptive commit message summarizing what was accomplished ` +
         `in that phase. For example: checkpoint(message="Implemented user authentication module"). ` +
         `This creates incremental git commits so progress is not lost.`;

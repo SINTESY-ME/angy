@@ -586,7 +586,7 @@ export class AngyEngine {
 
         await this.epics.updateEpic(epicId, {
           lastAttemptFiles: Array.from(fileSet).slice(0, 50),
-          lastValidationResults: e.validations.slice(0, 20),
+          lastValidationResults: [],
           lastArchitectPlan: architectPlan,
         });
         this.emitEpicUpdated(epicId);

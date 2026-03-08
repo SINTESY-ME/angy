@@ -95,7 +95,6 @@ export class ClaudeProcess {
     if (this.mode === 'orchestrator') {
       let orchestratorTools =
         'mcp__c3p2-orchestrator__delegate,' +
-        'mcp__c3p2-orchestrator__validate,' +
         'mcp__c3p2-orchestrator__diagnose,' +
         'mcp__c3p2-orchestrator__done,' +
         'mcp__c3p2-orchestrator__fail';
@@ -198,6 +197,7 @@ export class ClaudeProcess {
 
     if (this.agentName) env.ANGY_AGENT_NAME = this.agentName;
     if (this.teamId) env.ANGY_TEAM_ID = this.teamId;
+    if (this.workingDir) env.ANGY_WORKSPACE = this.workingDir;
 
     return env;
   }

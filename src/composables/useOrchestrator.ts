@@ -49,14 +49,6 @@ orchestrator.on('failed', (e) => {
   lastEvent.value = `Failed: ${e.reason.substring(0, 80)}`;
 });
 
-orchestrator.on('validationStarted', (e) => {
-  lastEvent.value = `Validating: ${e.command.substring(0, 60)}`;
-});
-
-orchestrator.on('validationResult', (e) => {
-  lastEvent.value = e.passed ? 'Validation passed' : 'Validation failed';
-});
-
 orchestrator.on('checkpointCreated', (e) => {
   lastEvent.value = `Checkpoint: ${e.hash}`;
   engineBus.emit('orchestrator:checkpointCreated', { hash: e.hash, message: e.message });

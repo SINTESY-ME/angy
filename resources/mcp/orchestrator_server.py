@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
 MCP server for C3P2 orchestrator — zero dependencies (stdlib only).
-version: 3.0.0
+version: 4.0.0
 
 Exposes 8 tools over JSON-RPC 2.0 / stdio:
   delegate           — Delegate work to a specialist agent
-  validate           — Run a shell command to check results
+  validate           — Run a shell command to check results (SYNCHRONOUS)
+  diagnose           — Inspect codebase state (SYNCHRONOUS)
   done               — Report goal achieved
   fail               — Report unrecoverable failure
   send_message       — Send a message to a teammate agent
@@ -13,7 +14,8 @@ Exposes 8 tools over JSON-RPC 2.0 / stdio:
   checkpoint         — Create a checkpoint commit of current progress
   spawn_orchestrator — Spawn a sub-orchestrator for a complex sub-task
 
-The C++ app intercepts delegate/validate/done/fail from the stream-json output.
+validate and diagnose execute commands directly and return real results.
+The Tauri app intercepts tool calls from the stream for state tracking.
 send_message and check_inbox do actual file I/O (inbox JSONL files).
 """
 import json
@@ -21,6 +23,7 @@ import sys
 import os
 import time
 import fcntl
+import subprocess
 
 TOOLS = [
     {
@@ -58,28 +61,6 @@ TOOLS = [
                 },
             },
             "required": ["role", "task"],
-            "additionalProperties": False,
-        },
-    },
-    {
-        "name": "validate",
-        "description": (
-            "Run a shell command to validate results (build, test, lint, etc). "
-            "Returns the command output and exit code."
-        ),
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "command": {
-                    "type": "string",
-                    "description": "Shell command to execute (e.g. 'cmake --build build', 'npm test')",
-                },
-                "description": {
-                    "type": "string",
-                    "description": "Human-readable description of what this validates",
-                },
-            },
-            "required": ["command"],
             "additionalProperties": False,
         },
     },
@@ -224,15 +205,14 @@ TOOLS = [
     },
 ]
 
-# Tool call acknowledgments — Claude sees these as tool results
+# Acknowledgments for async tools (delegate, spawn_orchestrator)
 TOOL_ACKS = {
-    "delegate": "Command received. Delegation will be executed and results provided in your next message.",
-    "validate": "Command received. Validation will be executed and results provided in your next message.",
     "done": "Orchestration marked as complete.",
     "fail": "Orchestration marked as failed.",
-    "spawn_orchestrator": "Command received. Sub-orchestrator will be spawned and results provided in your next message.",
-    "diagnose": "Command received. Diagnosis results will be provided in your next message.",
 }
+
+DIAGNOSE_TIMEOUT = 30   # seconds
+MAX_OUTPUT_LEN = 5000
 
 INBOX_BASE = os.path.expanduser("~/.angy/inboxes")
 
@@ -276,6 +256,44 @@ def handle_send_message(args):
         fcntl.flock(f, fcntl.LOCK_UN)
 
     return "Message sent to " + target
+
+
+def handle_diagnose(args):
+    """Execute a diagnose action synchronously and return real output."""
+    action = args.get("action", "")
+    target = args.get("target", "")
+    workspace = os.environ.get("ANGY_WORKSPACE", ".")
+
+    if not action:
+        return "ERROR: diagnose requires an 'action' parameter (git_diff, git_log, git_status, file_contents)."
+
+    try:
+        if action == "git_diff":
+            cmd = 'git diff --stat && echo "---FULL DIFF---" && git diff'
+        elif action == "git_log":
+            count = target if target else "15"
+            cmd = "git log --oneline -%s" % count
+        elif action == "git_status":
+            cmd = "git status"
+        elif action == "file_contents":
+            if not target:
+                return "ERROR: diagnose(action='file_contents') requires a 'target' parameter with the file path."
+            safe_target = target.replace("'", "'\\''")
+            cmd = "head -200 '%s'" % safe_target
+        else:
+            return "ERROR: Unknown diagnose action '%s'. Use: git_diff, git_log, git_status, file_contents." % action
+
+        result = subprocess.run(
+            cmd, shell=True, capture_output=True, text=True,
+            timeout=DIAGNOSE_TIMEOUT, cwd=workspace,
+        )
+        output = (result.stdout + "\n" + result.stderr).strip()[:6000]
+        label = "%s (%s)" % (action, target) if target else action
+        return "## Diagnose: %s\n\n```\n%s\n```" % (label, output)
+    except subprocess.TimeoutExpired:
+        return "Diagnose TIMEOUT: command exceeded %ds limit." % DIAGNOSE_TIMEOUT
+    except Exception as e:
+        return "Diagnose ERROR: %s" % str(e)
 
 
 def handle_check_inbox():
@@ -355,7 +373,7 @@ def main():
             reply(req_id, {
                 "protocolVersion": params.get("protocolVersion", "2025-11-25"),
                 "capabilities": {"tools": {}},
-                "serverInfo": {"name": "c3p2-orchestrator", "version": "3.0.0"},
+                "serverInfo": {"name": "c3p2-orchestrator", "version": "4.0.0"},
             })
 
         elif method in ("notifications/initialized", "notifications/cancelled"):
@@ -371,7 +389,21 @@ def main():
             name = params.get("name", "")
             args = params.get("arguments", {})
 
-            if name == "send_message":
+            if name == "diagnose":
+                result_text = handle_diagnose(args)
+            elif name == "delegate":
+                role = args.get("role", "specialist")
+                result_text = (
+                    "Delegated to %s. The agent will work autonomously. "
+                    "You will receive the agent's results in a follow-up message. "
+                    "When you receive results, respond IMMEDIATELY with your next tool call."
+                ) % role
+            elif name == "spawn_orchestrator":
+                result_text = (
+                    "Sub-orchestrator spawned. Results will arrive in a follow-up message. "
+                    "When you receive results, respond IMMEDIATELY with your next tool call."
+                )
+            elif name == "send_message":
                 result_text = handle_send_message(args)
             elif name == "check_inbox":
                 result_text = handle_check_inbox()
