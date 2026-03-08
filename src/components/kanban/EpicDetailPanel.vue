@@ -85,7 +85,7 @@
           </button>
         </div>
         <p class="mt-1 text-[9px] text-[var(--text-muted)]">
-          {{ draft.pipelineType === 'create' ? 'Architect → Implement → Validate → Review' : 'Diagnose → Debug → Fix → Validate → Review' }}
+          {{ draft.pipelineType === 'create' ? 'Architect → Implement → Test → Review' : 'Diagnose → Debug → Fix → Test → Review' }}
         </p>
       </div>
 

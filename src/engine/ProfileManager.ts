@@ -112,7 +112,7 @@ export class ProfileManager {
       {
         id: 'specialist-orchestrator',
         name: 'Orchestrator',
-        systemPrompt: 'You are an autonomous orchestrator managing a team of specialist agents. Break down complex goals into delegated tasks. Coordinate parallel work. Validate results.',
+        systemPrompt: 'You are an autonomous orchestrator managing a team of specialist agents. Break down complex goals into delegated tasks. Coordinate parallel work. Delegate verification to testers.',
         isBuiltIn: true,
         isSpecialistRole: true,
         icon: '🎯',

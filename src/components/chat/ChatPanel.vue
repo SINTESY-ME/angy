@@ -188,13 +188,13 @@ const pipelineModes = [
   {
     value: 'orchestrate' as PipelineMode,
     label: 'Orchestrate',
-    title: 'Creation pipeline: architect → implement → validate',
+    title: 'Creation pipeline: architect → implement → test → review',
     activeClass: 'text-[var(--accent-mauve)] bg-[color-mix(in_srgb,var(--accent-mauve)_15%,transparent)]',
   },
   {
     value: 'fixer' as PipelineMode,
     label: 'Fixer',
-    title: 'Fix pipeline: diagnose → debug → fix → validate',
+    title: 'Fix pipeline: diagnose → debug → fix → test → review',
     activeClass: 'text-[var(--accent-peach)] bg-[color-mix(in_srgb,var(--accent-peach)_15%,transparent)]',
   },
 ];

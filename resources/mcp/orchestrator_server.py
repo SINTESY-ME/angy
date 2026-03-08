@@ -3,9 +3,8 @@
 MCP server for C3P2 orchestrator — zero dependencies (stdlib only).
 version: 4.0.0
 
-Exposes 8 tools over JSON-RPC 2.0 / stdio:
+Exposes 7 tools over JSON-RPC 2.0 / stdio:
   delegate           — Delegate work to a specialist agent
-  validate           — Run a shell command to check results (SYNCHRONOUS)
   diagnose           — Inspect codebase state (SYNCHRONOUS)
   done               — Report goal achieved
   fail               — Report unrecoverable failure
@@ -14,7 +13,7 @@ Exposes 8 tools over JSON-RPC 2.0 / stdio:
   checkpoint         — Create a checkpoint commit of current progress
   spawn_orchestrator — Spawn a sub-orchestrator for a complex sub-task
 
-validate and diagnose execute commands directly and return real results.
+diagnose executes commands directly and returns real results.
 The Tauri app intercepts tool calls from the stream for state tracking.
 send_message and check_inbox do actual file I/O (inbox JSONL files).
 """
