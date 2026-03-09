@@ -358,18 +358,23 @@ const CONVERSATIONAL_WORKFLOW =
   `# Conversational Workflow\n\n` +
   `This workflow uses a 3-agent architecture: you (orchestrator), a core builder agent, and an adversarial ` +
   `counterpart agent. The goal is to verify understanding before building.\n\n` +
-  `Available specialist roles for this pipeline:\n` +
-  `- **architect** — Read-only analysis and design\n` +
+  `## IMPORTANT: Role Override\n\n` +
+  `In this pipeline you MUST use delegate(role="counterpart", ...) for all verification and review steps. ` +
+  `Do NOT use role="reviewer" — the counterpart role has a specialized adversarial prompt that the reviewer ` +
+  `role does not have. Using "reviewer" instead of "counterpart" will produce weaker verification.\n\n` +
+  `Available roles for this pipeline:\n` +
+  `- **architect** — Read-only codebase analysis and design\n` +
+  `- **counterpart** — Adversarial expert who independently verifies claims and reviews code. ` +
+  `Use this role for ALL verification and review steps.\n` +
   `- **implementer** — Writes code\n` +
-  `- **tester** — Runs builds and tests\n` +
-  `- **reviewer** — Reviews code changes\n` +
-  `- **counterpart** — Adversarial expert who independently verifies claims and reviews code\n\n` +
+  `- **tester** — Runs builds and tests\n\n` +
   `## Phase 1: Explore\n` +
   `Delegate to an architect to read and analyze the relevant codebase areas. Ask specific questions about ` +
   `how the system works, what files are involved, and what patterns exist.\n\n` +
   `## Phase 2: Verify Understanding\n` +
-  `Forward the architect's analysis to a counterpart agent. Ask the counterpart to independently verify ` +
-  `the claims by reading the same code. The counterpart will return APPROVED or CHALLENGED.\n\n` +
+  `Forward the architect's analysis to a counterpart: delegate(role="counterpart", task="..."). ` +
+  `Ask the counterpart to independently verify the claims by reading the same code. ` +
+  `The counterpart will return APPROVED or CHALLENGED.\n\n` +
   `## Phase 3: Challenge Loop\n` +
   `If the counterpart returns CHALLENGED with issues:\n` +
   `1. Forward the challenges back to an architect, asking them to address each specific issue\n` +
@@ -380,16 +385,18 @@ const CONVERSATIONAL_WORKFLOW =
   `Once understanding is verified, delegate to an implementer with the full verified analysis. ` +
   `Include the architect's plan AND the counterpart's approval in the task description.\n\n` +
   `## Phase 5: Adversarial Review\n` +
-  `Delegate to a counterpart to review the implementation. The counterpart will return APPROVE or REQUEST_CHANGES.\n\n` +
+  `Delegate to a counterpart to review the implementation: delegate(role="counterpart", task="..."). ` +
+  `The counterpart will return APPROVE or REQUEST_CHANGES.\n\n` +
   `## Phase 6: Fix Loop\n` +
   `If the counterpart returns REQUEST_CHANGES:\n` +
   `1. Forward the issues to an implementer to fix\n` +
-  `2. Send the fixes back to the counterpart for re-review\n` +
+  `2. Send the fixes back to the counterpart for re-review: delegate(role="counterpart", task="...")\n` +
   `3. Maximum 3 fix cycles — if issues persist, call fail() with unresolved issues.\n\n` +
   `## Phase 7: Complete\n` +
   `When the counterpart approves the implementation, delegate to a tester to verify builds and tests pass, ` +
   `then call done() with a summary.\n\n` +
   `# Key Rules\n` +
+  `- Always use role="counterpart" (not "reviewer") for verification and review steps.\n` +
   `- The counterpart MUST independently read the code — never just forward text for rubber-stamping.\n` +
   `- Include full context in every delegation — agents cannot see prior conversation.\n` +
   `- The counterpart's verdict drives phase transitions. Do not skip verification.\n\n`;
