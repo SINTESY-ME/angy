@@ -36,11 +36,12 @@ TOOLS = [
             "properties": {
                 "role": {
                     "type": "string",
-                    "enum": ["architect", "implementer", "reviewer", "tester", "debugger"],
+                    "enum": ["architect", "implementer", "reviewer", "tester", "debugger", "counterpart"],
                     "description": (
                         "Specialist role: architect (designs/plans), "
                         "implementer (writes code), reviewer (reviews code), "
-                        "tester (writes/runs tests), debugger (diagnoses issues)"
+                        "tester (writes/runs tests), debugger (diagnoses issues), "
+                        "counterpart (adversarial verification)"
                     ),
                 },
                 "task": {

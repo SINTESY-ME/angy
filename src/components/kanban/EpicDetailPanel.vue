@@ -372,6 +372,7 @@ const pipelineTypes: Array<{ value: EpicPipelineType; label: string }> = [
   { value: 'fix', label: 'Fix' },
   { value: 'investigate', label: 'Investigate' },
   { value: 'plan', label: 'Plan' },
+  { value: 'conversational', label: 'Conversational' },
 ];
 
 const pipelineColors: Record<EpicPipelineType, string> = {
@@ -379,6 +380,7 @@ const pipelineColors: Record<EpicPipelineType, string> = {
   fix: 'var(--accent-peach)',
   investigate: 'var(--accent-blue)',
   plan: 'var(--accent-lavender)',
+  conversational: 'var(--accent-mauve)',
 };
 
 const pipelineDescriptions: Record<EpicPipelineType, string> = {
@@ -386,6 +388,7 @@ const pipelineDescriptions: Record<EpicPipelineType, string> = {
   fix: 'Diagnose → Debug → Fix → Test → Review',
   investigate: 'Analyze → Investigate → Report (read-only)',
   plan: 'Analyze → Design → Plan (read-only)',
+  conversational: 'Explore → Verify → Challenge → Build → Review',
 };
 
 function pipelineButtonStyle(ptValue: EpicPipelineType) {

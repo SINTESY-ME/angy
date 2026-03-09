@@ -11,7 +11,7 @@ export type EpicColumn =
   | 'done'
   | 'discarded';
 
-export type EpicPipelineType = 'create' | 'fix' | 'investigate' | 'plan';
+export type EpicPipelineType = 'create' | 'fix' | 'investigate' | 'plan' | 'conversational';
 
 export type PriorityHint =
   | 'critical'

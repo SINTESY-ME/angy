@@ -166,6 +166,29 @@ export const SPECIALIST_PROMPTS: Record<string, string> = {
     '## EVIDENCE\nError messages, log output, or code snippets that confirm your diagnosis.\n\n' +
     '## FIX\nThe specific code changes needed to resolve the issue. Implement the fix directly.\n\n' +
     'Pipeline context: You are called when something is broken. Your diagnosis is passed to an implementer who will apply the fix. Be specific about the root cause and location so the implementer can act on it directly.',
+  counterpart:
+    'You are an adversarial technical expert. Your job is to find flaws, gaps, and incorrect assumptions.\n\n' +
+    '# Core Principles\n\n' +
+    '- **Skepticism by default**: Assume claims are wrong until you verify them by reading the actual code.\n' +
+    '- **Independent verification**: Do NOT rely on what the other agent told you. Read the files yourself.\n' +
+    '- **Specific challenges**: When challenging, ask specific questions that would expose misunderstanding. ' +
+    'Reference exact file paths and line numbers.\n' +
+    '- **No hand-waving**: Do not accept vague or high-level descriptions. Demand specifics: which function, ' +
+    'which data flow, which edge case.\n\n' +
+    '# Output Format\n\n' +
+    '## For Understanding Review\n' +
+    'End your response with one of:\n' +
+    '- `## VERDICT: APPROVED` — if the claims are accurate and complete\n' +
+    '- `## VERDICT: CHALLENGED` — followed by numbered issues that must be addressed\n\n' +
+    '## For Code Review\n' +
+    'End your response with one of:\n' +
+    '- `## VERDICT: APPROVE` — if the implementation is correct\n' +
+    '- `## VERDICT: REQUEST_CHANGES` — followed by issues with severity levels:\n' +
+    '  - **CRITICAL**: Bugs, security issues, data loss risks\n' +
+    '  - **MAJOR**: Logic errors, missing edge cases\n' +
+    '  - **NIT**: Style preferences\n\n' +
+    'Pipeline context: You are called by the orchestrator to independently verify claims or review code. ' +
+    'Your verdict determines whether the workflow proceeds or loops back for corrections.',
 };
 
 // ── Tool restriction sets per specialist role (Phase 4.2: sandboxing) ────
@@ -176,6 +199,7 @@ export const SPECIALIST_TOOLS: Record<string, string> = {
   reviewer: 'Read,Glob,Grep',
   tester: 'Bash,Read,Edit,Write,Glob,Grep,Task',
   debugger: 'Bash,Read,Glob,Grep',
+  counterpart: 'Read,Glob,Grep',
 };
 
 /**
@@ -329,6 +353,48 @@ export const ORCHESTRATOR_FIX_PROMPT = ORCHESTRATOR_PREAMBLE + ORCHESTRATOR_RULE
 
 export const ORCHESTRATOR_INVESTIGATE_PROMPT = ORCHESTRATOR_PREAMBLE + ORCHESTRATOR_RULES + INVESTIGATE_WORKFLOW;
 export const ORCHESTRATOR_PLAN_PROMPT = ORCHESTRATOR_PREAMBLE + ORCHESTRATOR_RULES + PLAN_WORKFLOW;
+
+const CONVERSATIONAL_WORKFLOW =
+  `# Conversational Workflow\n\n` +
+  `This workflow uses a 3-agent architecture: you (orchestrator), a core builder agent, and an adversarial ` +
+  `counterpart agent. The goal is to verify understanding before building.\n\n` +
+  `Available specialist roles for this pipeline:\n` +
+  `- **architect** — Read-only analysis and design\n` +
+  `- **implementer** — Writes code\n` +
+  `- **tester** — Runs builds and tests\n` +
+  `- **reviewer** — Reviews code changes\n` +
+  `- **counterpart** — Adversarial expert who independently verifies claims and reviews code\n\n` +
+  `## Phase 1: Explore\n` +
+  `Delegate to an architect to read and analyze the relevant codebase areas. Ask specific questions about ` +
+  `how the system works, what files are involved, and what patterns exist.\n\n` +
+  `## Phase 2: Verify Understanding\n` +
+  `Forward the architect's analysis to a counterpart agent. Ask the counterpart to independently verify ` +
+  `the claims by reading the same code. The counterpart will return APPROVED or CHALLENGED.\n\n` +
+  `## Phase 3: Challenge Loop\n` +
+  `If the counterpart returns CHALLENGED with issues:\n` +
+  `1. Forward the challenges back to an architect, asking them to address each specific issue\n` +
+  `2. Forward the architect's revised answer to the counterpart for re-verification\n` +
+  `3. Repeat until the counterpart returns APPROVED (maximum 3 cycles)\n` +
+  `If not approved after 3 cycles, proceed with the best understanding available.\n\n` +
+  `## Phase 4: Build\n` +
+  `Once understanding is verified, delegate to an implementer with the full verified analysis. ` +
+  `Include the architect's plan AND the counterpart's approval in the task description.\n\n` +
+  `## Phase 5: Adversarial Review\n` +
+  `Delegate to a counterpart to review the implementation. The counterpart will return APPROVE or REQUEST_CHANGES.\n\n` +
+  `## Phase 6: Fix Loop\n` +
+  `If the counterpart returns REQUEST_CHANGES:\n` +
+  `1. Forward the issues to an implementer to fix\n` +
+  `2. Send the fixes back to the counterpart for re-review\n` +
+  `3. Maximum 3 fix cycles — if issues persist, call fail() with unresolved issues.\n\n` +
+  `## Phase 7: Complete\n` +
+  `When the counterpart approves the implementation, delegate to a tester to verify builds and tests pass, ` +
+  `then call done() with a summary.\n\n` +
+  `# Key Rules\n` +
+  `- The counterpart MUST independently read the code — never just forward text for rubber-stamping.\n` +
+  `- Include full context in every delegation — agents cannot see prior conversation.\n` +
+  `- The counterpart's verdict drives phase transitions. Do not skip verification.\n\n`;
+
+export const ORCHESTRATOR_CONVERSATIONAL_PROMPT = ORCHESTRATOR_PREAMBLE + ORCHESTRATOR_RULES + CONVERSATIONAL_WORKFLOW;
 
 export class Orchestrator {
   private events = mitt<OrchestratorEvents>();
@@ -655,6 +721,10 @@ export class Orchestrator {
         break;
       case 'plan':
         message += `Start by calling delegate(role="architect", task="...") to analyze the codebase and design the solution described above.\n`;
+        break;
+      case 'conversational':
+        message += `Start by calling delegate(role="architect", task="...") to explore and analyze the codebase. ` +
+          `After receiving the analysis, forward it to a counterpart for independent verification before implementing.\n`;
         break;
       default:
         message += `Start by calling delegate(role="architect", task="...") to analyze the codebase and design the solution.\n`;
@@ -1475,6 +1545,9 @@ export class Orchestrator {
         break;
       case 'plan':
         prompt = ORCHESTRATOR_PLAN_PROMPT;
+        break;
+      case 'conversational':
+        prompt = ORCHESTRATOR_CONVERSATIONAL_PROMPT;
         break;
       default:
         prompt = ORCHESTRATOR_SYSTEM_PROMPT;
