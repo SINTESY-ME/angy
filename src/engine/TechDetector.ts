@@ -5,7 +5,7 @@ export interface TechProfile {
   name: string;
   icon: string;
   markerFiles: string[];
-  markerContent: any;
+  markerContent?: { file: string; pattern: string }[];
   systemPrompt: string;
 }
 
