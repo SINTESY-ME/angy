@@ -6,6 +6,7 @@ import { BranchManager } from './BranchManager'
 
 const DEFAULT_MAX_DEPTH = 3
 
+
 /**
  * Factory function that creates and starts a real Orchestrator instance
  * for an epic. Returns the root session ID.
@@ -29,6 +30,7 @@ export class OrchestratorPool {
   private branchManager: BranchManager
   private chatPanel: OrchestratorChatPanelAPI | null = null
   private orchestratorFactory: OrchestratorFactory | null = null
+  private maxDepth = DEFAULT_MAX_DEPTH
 
   private constructor(branchManager: BranchManager) {
     this.branchManager = branchManager
@@ -56,6 +58,10 @@ export class OrchestratorPool {
   setOrchestratorFactory(factory: OrchestratorFactory): void {
     this.orchestratorFactory = factory
     console.log('[OrchestratorPool] Orchestrator factory set')
+  }
+
+  setMaxDepth(depth: number): void {
+    this.maxDepth = depth
   }
 
   // ── spawnRoot ─────────────────────────────────────────────────────────
@@ -231,9 +237,19 @@ export class OrchestratorPool {
     return this.sessionOrchestrators.get(sessionId)?.depth ?? 0
   }
 
-  canSpawnChild(parentSessionId: string, maxDepth: number): boolean {
+  canSpawnChild(parentSessionId: string, maxDepth?: number): boolean {
     const parent = this.sessionOrchestrators.get(parentSessionId)
     if (!parent) return false
-    return parent.depth < maxDepth
+    return parent.depth < (maxDepth ?? this.maxDepth)
+  }
+
+  getChildSessions(parentSessionId: string): string[] {
+    const children: string[] = []
+    for (const [sessionId, meta] of this.sessionOrchestrators) {
+      if (meta.parentSessionId === parentSessionId) {
+        children.push(sessionId)
+      }
+    }
+    return children
   }
 }

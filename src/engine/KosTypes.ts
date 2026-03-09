@@ -99,6 +99,9 @@ export interface SchedulerConfig {
   maxConcurrentEpics: number;
   maxConcurrentPerProject?: number;
   dailyCostBudget: number;
+  maxOrchestratorDepth?: number;        // max depth for spawn_orchestrator (default 3)
+  maxConcurrentChildren?: number;       // max concurrent sub-orchestrators per parent (default 3)
+  subOrchestratorTimeoutMs?: number;    // timeout for sub-orchestrators (default 30 min)
   weights: {
     manualHint: number;
     dependencyDepth: number;
@@ -125,4 +128,6 @@ export interface OrchestratorOptions {
   maxDepth: number;
   parentSessionId: string | null;
   budgetRemaining: number | null;
+  maxConcurrentChildren?: number;  // max concurrent sub-orchestrators per parent (default 3)
+  subOrchestratorTimeoutMs?: number;  // timeout for sub-orchestrators (default 30 min)
 }

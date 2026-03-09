@@ -160,6 +160,8 @@ interface HierarchicalAgent extends AgentSummary {
   depth: number;
   isOrchestratorRoot: boolean;
   childCount: number;
+  isSubOrchestrator: boolean;
+  orchestratorDepth: number;
 }
 
 function buildHierarchicalOrder(flat: AgentSummary[]): HierarchicalAgent[] {
@@ -189,18 +191,34 @@ function buildHierarchicalOrder(flat: AgentSummary[]): HierarchicalAgent[] {
 
   const result: HierarchicalAgent[] = [];
 
+  /** Count how many ancestors in the parent chain have mode === 'orchestrator'. */
+  function computeOrchestratorDepth(id: string): number {
+    let orchDepth = 0;
+    let current = byId.get(id)?.parentSessionId;
+    while (current) {
+      const parent = byId.get(current);
+      if (!parent) break;
+      if (parent.mode === 'orchestrator') orchDepth++;
+      current = parent.parentSessionId;
+    }
+    return orchDepth;
+  }
+
   function visit(id: string, depth: number) {
     const agent = byId.get(id);
     if (!agent) return;
 
     const children = childrenMap.get(id) ?? [];
     const isOrchestratorRoot = depth === 0 && children.length > 0;
+    const isSubOrchestrator = agent.mode === 'orchestrator' && !!agent.parentSessionId;
 
     result.push({
       ...agent,
       depth,
       isOrchestratorRoot,
       childCount: children.length,
+      isSubOrchestrator,
+      orchestratorDepth: isSubOrchestrator ? computeOrchestratorDepth(id) : 0,
     });
 
     // Sort children by updatedAt ascending (oldest first = stable order)

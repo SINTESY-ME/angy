@@ -66,6 +66,14 @@ export interface OrchestratorChatPanelAPI {
   ): string | Promise<string>;
   cancelChild?(sessionId: string): void;
   sessionFinalOutput(sessionId: string): string;
+  // Spawn a full child orchestrator (not a specialist agent)
+  spawnSubOrchestrator?(
+    parentSessionId: string,
+    task: string,
+    childEpicOptions: OrchestratorOptions,
+    agentName: string,
+    workingDir?: string,
+  ): Promise<string>;
 }
 
 // ── Orchestrator ─────────────────────────────────────────────────────────────
@@ -330,6 +338,8 @@ export class Orchestrator {
   static readonly MAX_STEP_ATTEMPTS = 5;
   static readonly MAX_TOTAL_DELEGATIONS = 100;
   static readonly CHILD_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+  private static readonly CHILD_ORCHESTRATOR_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+  private activeChildOrchestrators = new Set<string>();
 
   setChatPanel(panel: OrchestratorChatPanelAPI) { this.chatPanel = panel; }
   setWorkspace(ws: string) { this.workspace = ws; }
@@ -513,6 +523,65 @@ export class Orchestrator {
   }
 
   /**
+   * Start orchestration on a pre-existing session.
+   * Used for sub-orchestrators where the session is created by the parent.
+   */
+  async startOnSession(sessionId: string, goal: string, contextProfileIds: string[] = [], autoCommit = false): Promise<void> {
+    if (!this.chatPanel || this._running) return;
+
+    const mcpOk = await Orchestrator.ensureMcpServerInstalled();
+    if (!mcpOk) {
+      console.warn('[Orchestrator] MCP server installation/update failed');
+    }
+
+    this.autoCommit = autoCommit;
+    if (autoCommit) await this.detectGit();
+
+    this._running = true;
+    this._sessionId = sessionId;
+    this.contextProfileIds = contextProfileIds;
+    this._totalDelegations = 0;
+    this._stepAttempts = 0;
+    this.mcpCommandReceived = false;
+    this.orchestratorTurnDone = false;
+    this.turnResults = [];
+    this.pendingChildren.clear();
+    this.childTimeouts.clear();
+    this.childOutputs = [];
+    this.orchestrationLog = [];
+    this.agentCounter = 0;
+    this.activeChildOrchestrators = new Set<string>();
+    this._currentPhase = 'planning';
+    this.events.emit('phaseChanged', { phase: this._currentPhase });
+
+    this.teamId = crypto.randomUUID();
+
+    try {
+      const { mkdir } = await import('@tauri-apps/plugin-fs');
+      const { homeDir, join } = await import('@tauri-apps/api/path');
+      const home = await homeDir();
+      await mkdir(await join(home, '.angy', 'inboxes', this.teamId), { recursive: true });
+    } catch (e) {
+      console.warn('[Orchestrator] Failed to create inbox directory:', e);
+    }
+
+    // Configure session (already exists, just set mode + profiles)
+    this.chatPanel.configureSession(sessionId, 'orchestrator', ['specialist-orchestrator']);
+
+    this.logEvent('startedOnSession', `session=${sessionId}, team=${this.teamId}, pipelineType=${this._pipelineType}`);
+
+    const initialMessage = Orchestrator.buildInitialMessage(goal, {
+      autoCommit: this.autoCommit,
+      gitAvailable: this.gitAvailable,
+      epicOptions: this.epicOptions,
+      pipelineType: this._pipelineType,
+      epicContext: this.getEpicSystemPromptAddition(),
+    });
+
+    this.chatPanel.sendMessageToSession(sessionId, initialMessage);
+  }
+
+  /**
    * Build the initial user message sent to the orchestrator.
    * Single source of truth — used by both start() and ChatPanel standalone mode.
    */
@@ -619,6 +688,17 @@ export class Orchestrator {
     this.events.emit('phaseChanged', { phase: this._currentPhase });
     for (const timeout of this.childTimeouts.values()) clearTimeout(timeout);
     this.childTimeouts.clear();
+
+    // Cancel all active children (specialist agents + sub-orchestrators)
+    if (this.chatPanel?.cancelChild) {
+      for (const child of this.pendingChildren.values()) {
+        if (!child.completed) {
+          this.chatPanel.cancelChild(child.sessionId);
+        }
+      }
+    }
+    this.activeChildOrchestrators.clear();
+
     this.cleanupInboxes();
     this.logEvent('cancelled');
   }
@@ -751,6 +831,7 @@ export class Orchestrator {
       clearTimeout(timeout);
       this.childTimeouts.delete(childSessionId);
     }
+    this.activeChildOrchestrators.delete(childSessionId);
 
     child.completed = true;
     child.output = output;
@@ -1096,6 +1177,33 @@ export class Orchestrator {
       return;
     }
 
+    // Check budget
+    if (this.epicOptions.budgetRemaining !== null && this.epicOptions.budgetRemaining <= 0) {
+      this.feedResult(
+        `ERROR: Budget exhausted ($${this.epicOptions.budgetRemaining?.toFixed(2)} remaining). ` +
+        `Cannot spawn more sub-orchestrators. Call done() with current progress or fail().`,
+      );
+      return;
+    }
+
+    // Enforce max concurrent children
+    const maxConcurrent = this.epicOptions.maxConcurrentChildren ?? 3;
+    if (this.activeChildOrchestrators.size >= maxConcurrent) {
+      this.feedResult(
+        `ERROR: Maximum concurrent sub-orchestrators (${maxConcurrent}) reached. ` +
+        `Wait for a running sub-orchestrator to complete before spawning another.`,
+      );
+      return;
+    }
+
+    // Check that spawnSubOrchestrator is available
+    if (!this.chatPanel.spawnSubOrchestrator) {
+      this.feedResult(
+        'ERROR: Sub-orchestrator spawning is not available in this context. Use delegate() instead.',
+      );
+      return;
+    }
+
     // Create child orchestrator options inheriting the epic context
     const childEpicOptions: OrchestratorOptions = {
       epicId: this.epicOptions.epicId,
@@ -1105,12 +1213,13 @@ export class Orchestrator {
       maxDepth,
       parentSessionId: this._sessionId,
       budgetRemaining: this.epicOptions.budgetRemaining,
+      maxConcurrentChildren: this.epicOptions.maxConcurrentChildren,
+      subOrchestratorTimeoutMs: this.epicOptions.subOrchestratorTimeoutMs,
     };
 
     this._totalDelegations++;
 
-    const agentName = `sub-orchestrator-${this.agentCounter + 1}`;
-    this.agentCounter++;
+    const agentName = this.generateAgentName('sub-orchestrator');
 
     this._currentPhase = `spawning sub-orchestrator (depth ${childEpicOptions.depth})`;
     this.events.emit('phaseChanged', { phase: this._currentPhase });
@@ -1120,25 +1229,36 @@ export class Orchestrator {
       epicId: this.epicOptions.epicId,
     });
 
-    // Determine working directory for the sub-orchestrator
     const workingDir = cmd.working_dir || undefined;
 
-    // Use the existing delegation mechanism to create the child session
-    // The child runs as an orchestrator (not a specialist agent)
-    const context = this.chatPanel.sessionFinalOutput(this._sessionId);
-    const childId = await this.chatPanel.delegateToChild(
-      this._sessionId,
-      cmd.task,
-      context,
-      'specialist-orchestrator',
-      this.contextProfileIds,
-      agentName,
-      this.teamId,
-      [],
-      workingDir,
-    );
+    try {
+      if (!this._running) return;
 
-    if (childId) {
+      const childId = await this.chatPanel.spawnSubOrchestrator(
+        this._sessionId,
+        cmd.task,
+        childEpicOptions,
+        agentName,
+        workingDir,
+      );
+
+      if (!this._running) {
+        // Cancelled during spawn — clean up the child
+        if (childId) {
+          this.chatPanel?.cancelChild?.(childId);
+        }
+        return;
+      }
+
+      if (!childId) {
+        this.feedResult(
+          'ERROR: Failed to spawn sub-orchestrator — received empty session ID. Use delegate() instead.',
+        );
+        return;
+      }
+
+      this.activeChildOrchestrators.add(childId);
+
       this.pendingChildren.set(childId, {
         sessionId: childId,
         role: 'sub-orchestrator',
@@ -1148,8 +1268,26 @@ export class Orchestrator {
         workingDir,
       });
 
-      console.log(
-        `[Orchestrator] Spawned sub-orchestrator: ${agentName} depth=${childEpicOptions.depth} child=${childId}`,
+      // Start timeout watchdog for sub-orchestrators
+      const timeoutMs = this.epicOptions.subOrchestratorTimeoutMs ?? Orchestrator.CHILD_ORCHESTRATOR_TIMEOUT_MS;
+      const timeout = setTimeout(() => {
+        const child = this.pendingChildren.get(childId);
+        if (child && !child.completed) {
+          this.logEvent('childTimeout', `${agentName} (sub-orchestrator) timed out after ${timeoutMs / 1000}s`);
+          this.chatPanel?.cancelChild?.(childId);
+          this.onDelegateFinished(
+            childId,
+            `ERROR: Sub-orchestrator ${agentName} timed out after ${timeoutMs / (60 * 1000)} minutes. ` +
+            `The task may be too complex. Consider breaking it into smaller tasks and using delegate() directly.`,
+          );
+        }
+      }, timeoutMs);
+      this.childTimeouts.set(childId, timeout);
+
+      this.logEvent('spawnedSubOrchestrator', `${agentName} depth=${childEpicOptions.depth} child=${childId} pending=${this.pendingChildren.size}`);
+    } catch (err) {
+      this.feedResult(
+        `ERROR: Failed to spawn sub-orchestrator: ${err instanceof Error ? err.message : String(err)}. Use delegate() instead.`,
       );
     }
   }

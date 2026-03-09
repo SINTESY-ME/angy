@@ -169,6 +169,83 @@
               </div>
             </div>
           </template>
+
+          <!-- Orchestration tab -->
+          <template v-if="activeTab === 'Orchestration'">
+            <div class="space-y-3">
+              <div class="flex items-center justify-between">
+                <label class="text-xs text-[var(--text-secondary)]">Scheduler Enabled</label>
+                <button
+                  class="relative w-9 h-5 rounded-full transition-colors"
+                  :class="orchestrationSettings.schedulerEnabled ? 'bg-[var(--accent-green)]' : 'bg-[var(--bg-raised)]'"
+                  @click="orchestrationSettings.schedulerEnabled = !orchestrationSettings.schedulerEnabled"
+                >
+                  <div
+                    class="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform"
+                    :class="orchestrationSettings.schedulerEnabled ? 'translate-x-4' : 'translate-x-0.5'"
+                  />
+                </button>
+              </div>
+
+              <div>
+                <label class="text-xs text-[var(--text-secondary)] mb-1 block">Max Orchestrator Depth</label>
+                <input
+                  v-model.number="orchestrationSettings.maxOrchestratorDepth"
+                  type="number"
+                  min="1"
+                  max="5"
+                  class="w-full text-xs bg-[var(--bg-raised)] text-[var(--text-primary)] border border-[var(--border-standard)] rounded px-3 py-2 outline-none focus:border-[var(--accent-mauve)]"
+                />
+                <p class="text-[10px] text-[var(--text-faint)] mt-1">How many levels of sub-orchestrators can be spawned (1-5)</p>
+              </div>
+
+              <div>
+                <label class="text-xs text-[var(--text-secondary)] mb-1 block">Max Concurrent Epics</label>
+                <input
+                  v-model.number="orchestrationSettings.maxConcurrentEpics"
+                  type="number"
+                  min="1"
+                  max="10"
+                  class="w-full text-xs bg-[var(--bg-raised)] text-[var(--text-primary)] border border-[var(--border-standard)] rounded px-3 py-2 outline-none focus:border-[var(--accent-mauve)]"
+                />
+              </div>
+
+              <div>
+                <label class="text-xs text-[var(--text-secondary)] mb-1 block">Max Concurrent Children</label>
+                <input
+                  v-model.number="orchestrationSettings.maxConcurrentChildren"
+                  type="number"
+                  min="1"
+                  max="10"
+                  class="w-full text-xs bg-[var(--bg-raised)] text-[var(--text-primary)] border border-[var(--border-standard)] rounded px-3 py-2 outline-none focus:border-[var(--accent-mauve)]"
+                />
+                <p class="text-[10px] text-[var(--text-faint)] mt-1">Max concurrent sub-orchestrators per parent</p>
+              </div>
+
+              <div>
+                <label class="text-xs text-[var(--text-secondary)] mb-1 block">Daily Cost Budget</label>
+                <div class="relative">
+                  <span class="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-[var(--text-muted)]">$</span>
+                  <input
+                    v-model.number="orchestrationSettings.dailyCostBudget"
+                    type="number"
+                    min="0"
+                    class="w-full text-xs bg-[var(--bg-raised)] text-[var(--text-primary)] border border-[var(--border-standard)] rounded pl-7 pr-3 py-2 outline-none focus:border-[var(--accent-mauve)]"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label class="text-xs text-[var(--text-secondary)] mb-1 block">Tick Interval</label>
+                <select
+                  v-model.number="orchestrationSettings.tickIntervalMs"
+                  class="w-full text-xs bg-[var(--bg-raised)] text-[var(--text-primary)] border border-[var(--border-standard)] rounded px-3 py-2 outline-none"
+                >
+                  <option v-for="opt in tickIntervalOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+                </select>
+              </div>
+            </div>
+          </template>
         </div>
 
         <!-- Footer -->
@@ -191,13 +268,14 @@ import { ref, reactive, onMounted } from 'vue';
 import { useThemeStore } from '../../stores/theme';
 import type { ThemeVariant } from '../../themes/catppuccin';
 import { ProfileManager, type PersonalityProfile } from '../../engine/ProfileManager';
+import { Scheduler } from '../../engine/Scheduler';
 
 defineProps<{ visible: boolean }>();
 const emit = defineEmits<{ close: []; saved: [settings: Record<string, string>] }>();
 
 const themeStore = useThemeStore();
 const activeTab = ref('General');
-const tabs = ['General', 'Theme', 'Keyboard', 'Profiles'];
+const tabs = ['General', 'Theme', 'Keyboard', 'Orchestration', 'Profiles'];
 
 const profileManager = new ProfileManager();
 const profiles = ref<PersonalityProfile[]>([]);
@@ -209,6 +287,22 @@ const settings = reactive({
   defaultModel: 'claude-sonnet-4-6',
   defaultWorkspace: '',
 });
+
+const orchestrationSettings = reactive({
+  schedulerEnabled: true,
+  maxOrchestratorDepth: 3,
+  maxConcurrentChildren: 3,
+  maxConcurrentEpics: 2,
+  dailyCostBudget: 50,
+  tickIntervalMs: 60000,
+});
+
+const tickIntervalOptions = [
+  { label: '15 seconds', value: 15000 },
+  { label: '30 seconds', value: 30000 },
+  { label: '60 seconds', value: 60000 },
+  { label: '120 seconds', value: 120000 },
+];
 
 const themeVariants: ThemeVariant[] = ['mocha', 'mocha-classic', 'macchiato', 'frappe', 'latte', 'cursor'];
 
@@ -242,6 +336,24 @@ async function save() {
     const home = await homeDir();
     await writeTextFile(await join(home, '.angy', 'settings.json'), JSON.stringify(settings, null, 2));
   } catch {}
+
+  // Save orchestration settings via Scheduler
+  try {
+    const scheduler = Scheduler.getInstance();
+    const currentConfig = await scheduler.loadConfig();
+    await scheduler.saveConfig({
+      ...currentConfig,
+      enabled: orchestrationSettings.schedulerEnabled,
+      maxOrchestratorDepth: orchestrationSettings.maxOrchestratorDepth,
+      maxConcurrentChildren: orchestrationSettings.maxConcurrentChildren,
+      maxConcurrentEpics: orchestrationSettings.maxConcurrentEpics,
+      dailyCostBudget: orchestrationSettings.dailyCostBudget,
+      tickIntervalMs: orchestrationSettings.tickIntervalMs,
+    });
+  } catch (e) {
+    console.error('Failed to save orchestration settings:', e);
+  }
+
   emit('saved', { ...settings });
   emit('close');
 }
@@ -294,6 +406,20 @@ onMounted(async () => {
     const content = await readTextFile(await join(home, '.angy', 'settings.json'));
     Object.assign(settings, JSON.parse(content));
   } catch {}
+
+  // Load orchestration settings from Scheduler
+  try {
+    const scheduler = Scheduler.getInstance();
+    const config = await scheduler.loadConfig();
+    orchestrationSettings.schedulerEnabled = config.enabled;
+    orchestrationSettings.maxOrchestratorDepth = config.maxOrchestratorDepth ?? 3;
+    orchestrationSettings.maxConcurrentChildren = config.maxConcurrentChildren ?? 3;
+    orchestrationSettings.maxConcurrentEpics = config.maxConcurrentEpics;
+    orchestrationSettings.dailyCostBudget = config.dailyCostBudget;
+    orchestrationSettings.tickIntervalMs = config.tickIntervalMs;
+  } catch (e) {
+    console.error('Failed to load orchestration settings:', e);
+  }
 
   await profileManager.init();
   profiles.value = profileManager.userProfiles();

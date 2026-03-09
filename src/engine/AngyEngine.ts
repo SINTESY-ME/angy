@@ -58,6 +58,7 @@ export class AngyEngine {
 
   // ── Epic orchestrators ─────────────────────────────────────────────
   private epicOrchestrators = new Map<string, Orchestrator>();
+  private subOrchestrators = new Map<string, Orchestrator>();
 
   private _initialized = false;
 
@@ -128,6 +129,11 @@ export class AngyEngine {
 
   async shutdown(): Promise<void> {
     await this.scheduler.stop();
+    // Cancel all sub-orchestrators
+    for (const subOrch of this.subOrchestrators.values()) {
+      subOrch.cancel();
+    }
+    this.subOrchestrators.clear();
     // Cancel all running processes
     for (const orch of this.epicOrchestrators.values()) {
       orch.cancel();
@@ -412,6 +418,85 @@ export class AngyEngine {
       sessionFinalOutput: (sid: string) => {
         return handle.getLastAssistantContent(sid);
       },
+
+      spawnSubOrchestrator: async (
+        parentSessionId: string,
+        task: string,
+        childEpicOptions: OrchestratorOptions,
+        agentName: string,
+        workingDir?: string,
+      ): Promise<string> => {
+        const resolvedDir = workingDir || workspace;
+
+        // 1. Create child session as an orchestrator
+        const childSid = this.sessions.manager.createChildSession(
+          parentSessionId, resolvedDir, 'orchestrator', task,
+        );
+        const childInfo = this.sessions.getSession(childSid);
+        if (childInfo) {
+          childInfo.title = agentName.charAt(0).toUpperCase() + agentName.slice(1);
+          const epicId = this.pool.getEpicForSession(parentSessionId);
+          if (epicId) {
+            childInfo.epicId = epicId;
+          }
+        }
+        await this.sessions.persistSession(childSid);
+        engineBus.emit('session:created', { sessionId: childSid, parentSessionId });
+
+        // 2. Register in OrchestratorPool
+        this.pool.registerSubOrchestrator(parentSessionId, childSid, childEpicOptions.maxDepth);
+
+        // 3. Create child Orchestrator
+        const childOrch = new Orchestrator();
+        childOrch.setEpicOptions(childEpicOptions);
+        childOrch.setPipelineType(_orch.getPipelineType());
+        childOrch.setWorkspace(resolvedDir);
+        const autoProfiles = _orch.getAutoProfiles();
+        if (autoProfiles.length > 0) {
+          childOrch.setAutoProfiles(autoProfiles);
+        }
+
+        // 4. Create child HeadlessHandle
+        const childHandle = new HeadlessHandle(this.db, this.sessions.manager);
+        childHandle.onDelegateFinished = (delegateChildSid: string, result: string) => {
+          this.sessions.persistSession(delegateChildSid);
+          childOrch.onDelegateFinished(delegateChildSid, result);
+        };
+        childHandle.onPersistSession = (sid: string) => {
+          this.sessions.persistSession(sid);
+        };
+
+        // 5. Build recursive panelAPI for child (enables child to also delegate + spawn)
+        const childPanelAPI = this.buildHeadlessPanelAPI(childHandle, childOrch, resolvedDir, model);
+        childOrch.setChatPanel(childPanelAPI);
+
+        // 6. Track sub-orchestrator for session→orchestrator lookups
+        this.subOrchestrators.set(childSid, childOrch);
+
+        // 7. Wire completion callbacks → parent orchestrator
+        childOrch.on('completed', (e: { summary: string }) => {
+          this.subOrchestrators.delete(childSid);
+          handle.onDelegateFinished?.(childSid, e.summary);
+        });
+        childOrch.on('failed', (e: { reason: string }) => {
+          this.subOrchestrators.delete(childSid);
+          handle.onDelegateFinished?.(childSid, `Sub-orchestrator failed: ${e.reason}`);
+        });
+
+        // 8. Wire child events to engine bus
+        const epicId = childEpicOptions.epicId;
+        childOrch.on('phaseChanged', (e: { phase: string }) => {
+          engineBus.emit('epic:phaseChanged', { epicId, phase: `[${agentName}] ${e.phase}` });
+        });
+        childOrch.on('subOrchestratorSpawned', (e: { task: string; depth: number; epicId: string }) => {
+          engineBus.emit('epic:subOrchestratorSpawned', e);
+        });
+
+        // 9. Start child orchestrator on the pre-created session
+        await childOrch.startOnSession(childSid, task, [], _orch.isAutoCommitEnabled());
+
+        return childSid;
+      },
     };
   }
 
@@ -419,6 +504,10 @@ export class AngyEngine {
 
   /** Find the Orchestrator instance responsible for a given session ID. */
   getOrchestratorForSession(sessionId: string): Orchestrator | null {
+    // Check sub-orchestrators first (most specific)
+    const subOrch = this.subOrchestrators.get(sessionId);
+    if (subOrch) return subOrch;
+
     // Check epic orchestrators
     for (const [_epicId, orch] of this.epicOrchestrators) {
       if (orch.isRunning() && orch.sessionId() === sessionId) {
@@ -439,6 +528,12 @@ export class AngyEngine {
     const sessionIds = this.pool.getSessionsForEpic(epicId);
     for (const sid of sessionIds) {
       this.processes.cancelProcess(sid);
+      // Cancel any sub-orchestrator state machines
+      const subOrch = this.subOrchestrators.get(sid);
+      if (subOrch) {
+        subOrch.cancel();
+        this.subOrchestrators.delete(sid);
+      }
     }
 
     // 2. Cancel the orchestrator state machine
@@ -705,6 +800,16 @@ export class AngyEngine {
               costTotal: (epic.costTotal ?? 0) + data.costUsd,
             });
             this.emitEpicUpdated(epicId);
+          }
+
+          // Decrement budgetRemaining on the root orchestrator so
+          // executeSpawnOrchestrator's existing budget check works
+          const rootOrch = this.epicOrchestrators.get(epicId);
+          if (rootOrch) {
+            const opts = rootOrch.getEpicOptions();
+            if (opts && opts.budgetRemaining !== null) {
+              opts.budgetRemaining = Math.max(0, opts.budgetRemaining - data.costUsd);
+            }
           }
         }
       } catch (err) {

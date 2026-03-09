@@ -185,6 +185,12 @@ export class Scheduler {
         weights: { manualHint: 0.4, dependencyDepth: 0.2, age: 0.15, complexity: 0.15, rejectionPenalty: 0.1 },
       };
     }
+
+    // Sync pool max depth with config
+    if (this.pool) {
+      this.pool.setMaxDepth(this.config.maxOrchestratorDepth ?? 3);
+    }
+
     // Return a clone to prevent Vue reactivity from wrapping the internal config object
     return structuredClone(this.config);
   }
@@ -199,6 +205,11 @@ export class Scheduler {
       await db.saveSchedulerConfig(plain);
     }
     this.config = plain;
+
+    // Sync pool max depth with updated config
+    if (this.pool) {
+      this.pool.setMaxDepth(plain.maxOrchestratorDepth ?? 3);
+    }
 
     // Reconcile running state with new config
     if (plain.enabled && !this.isRunning()) {
@@ -432,9 +443,11 @@ export class Scheduler {
         projectId: epic.projectId,
         repoPaths,
         depth: 0,
-        maxDepth: 3,
+        maxDepth: this.config.maxOrchestratorDepth ?? 3,
         parentSessionId: null,
         budgetRemaining,
+        maxConcurrentChildren: this.config.maxConcurrentChildren ?? 3,
+        subOrchestratorTimeoutMs: this.config.subOrchestratorTimeoutMs ?? 30 * 60 * 1000,
       };
 
       try {

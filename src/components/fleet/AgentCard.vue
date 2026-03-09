@@ -47,6 +47,13 @@
         :style="{ background: `color-mix(in srgb, var(--accent-mauve) ${selected ? '80%' : '55%'}, transparent)` }"
       />
 
+      <!-- Sub-orchestrator: teal accent bar -->
+      <div
+        v-if="isSubOrchestrator && !isOrchestratorRoot"
+        class="absolute left-[2px] top-1 bottom-1 w-[3px] rounded-sm pointer-events-none"
+        :style="{ background: `color-mix(in srgb, var(--accent-teal) ${selected ? '80%' : '55%'}, transparent)` }"
+      />
+
       <!-- Chevron toggle for orchestrator root -->
       <button
         v-if="isOrchestratorRoot"
@@ -103,6 +110,15 @@
           style="background: color-mix(in srgb, var(--accent-mauve) 20%, transparent); color: var(--accent-mauve)"
         >
           Epic {{ shortEpicId }}
+        </span>
+
+        <!-- Sub-orchestrator depth badge -->
+        <span
+          v-if="isSubOrchestrator"
+          class="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full leading-none"
+          style="background: color-mix(in srgb, var(--accent-teal) 20%, transparent); color: var(--accent-teal)"
+        >
+          D{{ orchestratorDepth }}
         </span>
 
         <!-- Unviewed dot -->
@@ -184,6 +200,8 @@ import type { AgentSummary } from '../../engine/types';
 interface HierarchicalAgent extends AgentSummary {
   depth?: number;
   isOrchestratorRoot?: boolean;
+  isSubOrchestrator?: boolean;
+  orchestratorDepth?: number;
   childCount?: number;
 }
 
@@ -224,6 +242,8 @@ const shortEpicId = computed(() => {
 
 const depth = computed(() => (props.agent as HierarchicalAgent).depth ?? 0);
 const isOrchestratorRoot = computed(() => (props.agent as HierarchicalAgent).isOrchestratorRoot ?? false);
+const isSubOrchestrator = computed(() => (props.agent as HierarchicalAgent).isSubOrchestrator ?? false);
+const orchestratorDepth = computed(() => (props.agent as HierarchicalAgent).orchestratorDepth ?? 0);
 const childCount = computed(() => (props.agent as HierarchicalAgent).childCount ?? 0);
 
 // Intensity: based on edit count (proxy for turn count) + recency
