@@ -35,7 +35,10 @@
         v-for="epic in epics"
         :key="epic.id"
         :epic="epic"
+        :selectable="mergeMode"
+        :selected="selectedEpicIds.includes(epic.id)"
         @select="emit('selectEpic', $event)"
+        @toggle-select="emit('toggle-select', $event)"
       />
 
       <!-- Add Epic button (idea column only) -->
@@ -69,16 +72,22 @@ import type { EpicColumn } from '@/engine/KosTypes';
 import { useEpicStore } from '@/stores/epics';
 import EpicCard from './EpicCard.vue';
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   column: EpicColumn;
   projectIds: string[];
   filterText?: string;
-}>();
+  mergeMode?: boolean;
+  selectedEpicIds?: string[];
+}>(), {
+  mergeMode: false,
+  selectedEpicIds: () => [],
+});
 
 const emit = defineEmits<{
   selectEpic: [id: string];
   addEpic: [];
   dropEpic: [payload: { epicId: string; column: EpicColumn }];
+  'toggle-select': [id: string];
 }>();
 
 const isDragOver = ref(false);

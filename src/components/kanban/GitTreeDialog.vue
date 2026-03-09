@@ -16,6 +16,20 @@
               <path d="M18 9a9 9 0 0 1-9 9"/>
             </svg>
             <h2 class="text-sm font-semibold text-[var(--text-primary)]">Git Branch Tree</h2>
+            <!-- Repo selector (only when multiple repos) -->
+            <div v-if="allRepos.length > 1" class="relative ml-2">
+              <select
+                v-model="selectedRepoIdx"
+                class="text-xs pl-2 pr-6 py-1 rounded border border-[var(--border-subtle)] bg-[var(--bg-base)]
+                       text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent-mauve)]
+                       transition-colors appearance-none cursor-pointer"
+              >
+                <option v-for="(repo, idx) in allRepos" :key="repo.id" :value="idx">{{ repo.name }}</option>
+              </select>
+              <svg class="absolute right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-[var(--text-muted)] pointer-events-none" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
           </div>
           <button
             class="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
@@ -83,18 +97,30 @@ const projectsStore = useProjectsStore();
 const ui = useUiStore();
 
 const loading = ref(false);
+const selectedRepoIdx = ref(0);
 const commits = toRef(gitStore, 'commits');
 const { nodes, edges, width: graphWidth, height: graphHeight } = useGitGraph(commits);
 
-const workDir = computed(() => {
+const allRepos = computed(() => {
   const projectId = ui.kanbanProjectIds[0];
-  if (!projectId) return '';
-  const repos = projectsStore.reposByProjectId(projectId);
-  return repos.length > 0 ? repos[0].path : '';
+  if (!projectId) return [];
+  return projectsStore.reposByProjectId(projectId);
+});
+
+const workDir = computed(() => {
+  const repo = allRepos.value[selectedRepoIdx.value];
+  return repo ? repo.path : '';
 });
 
 watch(() => props.visible, (v) => {
   if (v && workDir.value) {
+    loading.value = true;
+    gitStore.fetchLog(workDir.value);
+  }
+});
+
+watch(selectedRepoIdx, () => {
+  if (props.visible && workDir.value) {
     loading.value = true;
     gitStore.fetchLog(workDir.value);
   }

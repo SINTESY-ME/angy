@@ -272,6 +272,7 @@ export const useEpicStore = defineStore('epics', () => {
   return {
     // State
     epics,
+    epicBranches,
     loading,
     // Getters
     epicById,

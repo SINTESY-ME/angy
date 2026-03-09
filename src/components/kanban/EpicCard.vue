@@ -1,14 +1,25 @@
 <template>
   <div
-    draggable="true"
-    class="group rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-2 py-2
-           cursor-grab active:cursor-grabbing transition-all hover:border-[var(--border-standard)]
-           hover:shadow-md hover:shadow-black/20"
+    :draggable="!selectable"
+    class="group rounded-lg border px-2 py-2 transition-all"
+    :class="cardClasses"
     @click="onSingleClick"
     @dblclick="onDoubleClick"
     @dragstart="onDragStart"
     @dragend="onDragEnd"
   >
+    <!-- Selection checkbox -->
+    <div v-if="selectable" class="flex items-center justify-end mb-1">
+      <div
+        class="w-4 h-4 rounded border flex items-center justify-center transition-colors cursor-pointer"
+        :class="selectCheckboxClasses"
+        @click.stop="onToggleSelect"
+      >
+        <svg v-if="selected" class="w-3 h-3 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+        </svg>
+      </div>
+    </div>
     <!-- Title -->
     <div class="text-sm font-medium text-[var(--text-primary)] leading-snug mb-1.5">
       {{ epic.title }}
@@ -111,8 +122,18 @@ import { useEpicStore } from '@/stores/epics';
 import { useSessionsStore } from '@/stores/sessions';
 import { engineBus } from '@/engine/EventBus';
 
-const props = defineProps<{ epic: Epic }>();
-const emit = defineEmits<{ select: [id: string] }>();
+const props = withDefaults(defineProps<{
+  epic: Epic;
+  selectable?: boolean;
+  selected?: boolean;
+}>(), {
+  selectable: false,
+  selected: false,
+});
+const emit = defineEmits<{
+  select: [id: string];
+  'toggle-select': [id: string];
+}>();
 
 const ui = useUiStore();
 const projectsStore = useProjectsStore();
@@ -120,6 +141,38 @@ const epicStore = useEpicStore();
 const sessionsStore = useSessionsStore();
 
 const branchName = computed(() => epicStore.epicBranchName(props.epic.id));
+
+const hasBranch = computed(() => !!branchName.value);
+const selectDisabled = computed(() => props.selectable && !hasBranch.value);
+
+const cardClasses = computed(() => {
+  if (props.selectable && selectDisabled.value) {
+    return 'border-[var(--border-subtle)] bg-[var(--bg-surface)] opacity-40 cursor-not-allowed';
+  }
+  if (props.selectable && props.selected) {
+    return 'border-[var(--accent-teal)] bg-[var(--accent-teal)]/5 cursor-pointer hover:border-[var(--accent-teal)]';
+  }
+  if (props.selectable) {
+    return 'border-[var(--border-subtle)] bg-[var(--bg-surface)] cursor-pointer hover:border-[var(--border-standard)]';
+  }
+  return 'border-[var(--border-subtle)] bg-[var(--bg-surface)] cursor-grab active:cursor-grabbing hover:border-[var(--border-standard)] hover:shadow-md hover:shadow-black/20';
+});
+
+const selectCheckboxClasses = computed(() => {
+  if (selectDisabled.value) {
+    return 'border-[var(--border-subtle)] bg-[var(--bg-raised)] cursor-not-allowed';
+  }
+  if (props.selected) {
+    return 'border-[var(--accent-teal)] bg-[var(--accent-teal)]';
+  }
+  return 'border-[var(--border-standard)] bg-transparent hover:border-[var(--accent-teal)]';
+});
+
+function onToggleSelect() {
+  if (!selectDisabled.value) {
+    emit('toggle-select', props.epic.id);
+  }
+}
 
 const agentCount = computed(() => {
   const rootId = props.epic.rootSessionId;
@@ -137,6 +190,12 @@ const agentCount = computed(() => {
 let clickTimer: ReturnType<typeof setTimeout> | null = null;
 
 function onSingleClick() {
+  if (props.selectable) {
+    if (!selectDisabled.value) {
+      emit('toggle-select', props.epic.id);
+    }
+    return;
+  }
   if (clickTimer) clearTimeout(clickTimer);
   clickTimer = setTimeout(() => {
     clickTimer = null;

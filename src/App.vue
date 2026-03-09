@@ -6,7 +6,9 @@
         @add-epic="kanbanViewRef?.addEpic()"
         @schedule-now="kanbanViewRef?.scheduleNow()"
         @open-git-tree="kanbanViewRef?.openGitTree()"
-        @open-scheduler-config="kanbanViewRef?.openSchedulerConfig()" />
+        @open-scheduler-config="kanbanViewRef?.openSchedulerConfig()"
+        @toggle-git-ops="kanbanViewRef?.toggleGitOps()"
+        @toggle-merge-mode="kanbanViewRef?.toggleMergeMode()" />
       <ManagerActions v-else-if="ui.viewMode === 'manager'"
         @new-agent="onNewChat()"
         @orchestrate="onOrchestrate()"

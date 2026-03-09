@@ -1,5 +1,8 @@
 <template>
   <div class="flex flex-col h-full bg-[var(--bg-base)]">
+    <!-- Git ops panel -->
+    <GitOpsPanel v-if="showGitOps && projectId" ref="gitOpsPanelRef" :projectId="projectId" />
+
     <!-- Board + Detail panel -->
     <div class="flex flex-1 overflow-hidden">
       <!-- Columns -->
@@ -14,9 +17,12 @@
           :column="col"
           :projectIds="ui.kanbanProjectIds"
           :filterText="ui.kanbanFilterText"
+          :mergeMode="mergeMode"
+          :selectedEpicIds="selectedEpicIds"
           @selectEpic="onSelectEpic($event)"
           @addEpic="addEpic"
           @dropEpic="onDropEpic"
+          @toggle-select="onToggleSelect"
         />
       </div>
       </div>
@@ -33,6 +39,29 @@
       </transition>
     </div>
 
+    <!-- Merge mode floating action bar -->
+    <div
+      v-if="mergeMode && selectedEpicIds.length > 0"
+      class="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 px-5 py-2.5 rounded-xl
+             bg-[var(--bg-window)]/90 backdrop-blur-md border border-[var(--border-subtle)] shadow-2xl shadow-black/30"
+    >
+      <span class="text-xs font-medium text-[var(--text-secondary)]">
+        {{ selectedEpicIds.length }} epic{{ selectedEpicIds.length !== 1 ? 's' : '' }} selected
+      </span>
+      <button
+        class="px-3 py-1.5 text-xs rounded-lg font-medium bg-[var(--accent-teal)] text-white hover:opacity-90 transition-opacity"
+        @click="showMergeDialog = true"
+      >
+        Merge Selected
+      </button>
+      <button
+        class="px-3 py-1.5 text-xs rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+        @click="exitMergeMode"
+      >
+        Cancel
+      </button>
+    </div>
+
     <!-- Scheduler config dialog -->
     <SchedulerConfigDialog
       :visible="showSchedulerConfig"
@@ -44,6 +73,15 @@
     <GitTreeDialog
       :visible="showGitTree"
       @close="showGitTree = false"
+    />
+
+    <!-- Merge epics dialog -->
+    <MergeEpicsDialog
+      :visible="showMergeDialog"
+      :projectId="projectId"
+      :selectedEpicIds="selectedEpicIds"
+      @update:visible="showMergeDialog = $event"
+      @close="onMergeComplete"
     />
   </div>
 </template>
@@ -60,14 +98,21 @@ import EpicDetailPanel from './EpicDetailPanel.vue';
 import SectionTip from '@/components/common/SectionTip.vue';
 import SchedulerConfigDialog from './SchedulerConfigDialog.vue';
 import GitTreeDialog from './GitTreeDialog.vue';
+import GitOpsPanel from './GitOpsPanel.vue';
+import MergeEpicsDialog from './MergeEpicsDialog.vue';
 
 const ui = useUiStore();
 const epicStore = useEpicStore();
 
+const gitOpsPanelRef = ref<InstanceType<typeof GitOpsPanel> | null>(null);
 const selectedEpicId = ref<string | null>(null);
 const isNewEpic = ref(false);
 const showSchedulerConfig = ref(false);
 const showGitTree = ref(false);
+const showGitOps = ref(false);
+const mergeMode = ref(false);
+const selectedEpicIds = ref<string[]>([]);
+const showMergeDialog = ref(false);
 
 const columns: EpicColumn[] = ['idea', 'backlog', 'todo', 'in-progress', 'review', 'done'];
 const projectId = computed(() => ui.activeProjectId ?? '');
@@ -102,11 +147,39 @@ async function onSchedulerConfigSaved(config: SchedulerConfig) {
   await Scheduler.getInstance().saveConfig(config);
 }
 
+function onToggleSelect(epicId: string) {
+  const idx = selectedEpicIds.value.indexOf(epicId);
+  if (idx >= 0) {
+    selectedEpicIds.value.splice(idx, 1);
+  } else {
+    selectedEpicIds.value.push(epicId);
+  }
+}
+
+function exitMergeMode() {
+  mergeMode.value = false;
+  selectedEpicIds.value = [];
+}
+
+function onMergeComplete() {
+  showMergeDialog.value = false;
+  mergeMode.value = false;
+  selectedEpicIds.value = [];
+  gitOpsPanelRef.value?.refresh();
+}
+
 defineExpose({
   addEpic,
   scheduleNow: onScheduleNow,
   openGitTree: () => { showGitTree.value = true },
   openSchedulerConfig: () => { showSchedulerConfig.value = true },
+  toggleGitOps: () => { showGitOps.value = !showGitOps.value },
+  toggleMergeMode: () => {
+    mergeMode.value = !mergeMode.value;
+    if (!mergeMode.value) {
+      selectedEpicIds.value = [];
+    }
+  },
 });
 </script>
 

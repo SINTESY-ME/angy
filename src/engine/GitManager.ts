@@ -50,6 +50,13 @@ type GitEvents = {
   'branchesListed': { branches: GitBranchEntry[] };
   'checkoutSucceeded': { branch: string };
   'checkoutFailed': { error: string };
+  'pullSucceeded': { stdout: string };
+  'pullFailed': { error: string };
+  'branchCreated': { name: string };
+  'branchCreateFailed': { name: string; error: string };
+  'mergeSucceeded': { branch: string; output: string };
+  'mergeFailed': { branch: string; error: string; conflicted: boolean };
+  'mergeAborted': Record<string, never>;
   'logReady': { commits: GitCommitEntry[] };
   'errorOccurred': { operation: string; message: string };
 };
@@ -281,6 +288,21 @@ export class GitManager {
     });
   }
 
+  async pull(remote = 'origin', branch?: string) {
+    this.enqueue(async () => {
+      try {
+        const args = ['pull', remote];
+        if (branch) args.push(branch);
+        const stdout = await this.git(...args);
+        this.events.emit('pullSucceeded', { stdout });
+        await this._doRefresh();
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        this.events.emit('pullFailed', { error: msg });
+      }
+    });
+  }
+
   // ── Branches ──────────────────────────────────────────────────────────
 
   async listBranches() {
@@ -318,6 +340,54 @@ export class GitManager {
         this.events.emit('checkoutFailed', { error: msg });
       }
     });
+  }
+
+  async createBranch(name: string, checkout = true, baseBranch?: string) {
+    this.enqueue(async () => {
+      try {
+        const args = checkout ? ['checkout', '-b', name] : ['branch', name];
+        if (baseBranch) args.push(baseBranch);
+        await this.git(...args);
+        this.events.emit('branchCreated', { name });
+        if (checkout) await this._doRefresh();
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        this.events.emit('branchCreateFailed', { name, error: msg });
+      }
+    });
+  }
+
+  async merge(branchName: string, noFf = false) {
+    this.enqueue(async () => {
+      const args = ['merge', branchName];
+      if (noFf) args.push('--no-ff');
+      const cmd = Command.create('git', args, { cwd: this.workDir });
+      const result = await cmd.execute();
+      if (result.code === 0) {
+        this.events.emit('mergeSucceeded', { branch: branchName, output: result.stdout });
+        await this._doRefresh();
+      } else {
+        const conflicted = result.stdout.includes('CONFLICT') || result.stderr.includes('CONFLICT');
+        this.events.emit('mergeFailed', { branch: branchName, error: result.stderr || result.stdout, conflicted });
+      }
+    });
+  }
+
+  async abortMerge() {
+    this.enqueue(async () => {
+      try {
+        await this.git('merge', '--abort');
+        this.events.emit('mergeAborted', {});
+        await this._doRefresh();
+      } catch {
+        // If abort fails (e.g. no merge in progress), silently ignore
+      }
+    });
+  }
+
+  async getCurrentBranch(): Promise<string> {
+    const result = await Command.create('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: this.workDir }).execute();
+    return result.code === 0 ? result.stdout.trim() : '';
   }
 
   // ── Log ─────────────────────────────────────────────────────────────

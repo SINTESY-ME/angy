@@ -76,6 +76,20 @@
     <!-- Separator -->
     <div class="w-px h-4 bg-[var(--border-subtle)]" />
 
+    <!-- Git Status -->
+    <button
+      class="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+      title="Toggle git status panel"
+      @click="$emit('toggle-git-ops')"
+    >
+      <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M6 3v12"/>
+        <circle cx="18" cy="6" r="3"/>
+        <circle cx="6" cy="18" r="3"/>
+        <path d="M18 9a9 9 0 0 1-9 9"/>
+      </svg>
+    </button>
+
     <!-- Git Tree -->
     <button
       class="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
@@ -87,6 +101,21 @@
         <circle cx="18" cy="6" r="3"/>
         <circle cx="6" cy="18" r="3"/>
         <path d="M18 9a9 9 0 0 1-9 9"/>
+      </svg>
+    </button>
+
+    <!-- Merge Epics -->
+    <button
+      class="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+      title="Toggle merge mode"
+      @click="$emit('toggle-merge-mode')"
+    >
+      <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="18" cy="18" r="3"/>
+        <circle cx="6" cy="6" r="3"/>
+        <circle cx="6" cy="18" r="3"/>
+        <path d="M6 9v3a6 6 0 0 0 6 6h3"/>
+        <path d="M6 9v9"/>
       </svg>
     </button>
 
@@ -126,5 +155,7 @@ defineEmits<{
   'schedule-now': [];
   'open-git-tree': [];
   'open-scheduler-config': [];
+  'toggle-git-ops': [];
+  'toggle-merge-mode': [];
 }>();
 </script>
