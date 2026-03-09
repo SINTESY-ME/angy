@@ -114,7 +114,7 @@ const mergeMode = ref(false);
 const selectedEpicIds = ref<string[]>([]);
 const showMergeDialog = ref(false);
 
-const columns: EpicColumn[] = ['idea', 'backlog', 'todo', 'in-progress', 'review', 'done'];
+const columns: EpicColumn[] = ['idea', 'backlog', 'todo', 'in-progress', 'review', 'done', 'discarded'];
 const projectId = computed(() => ui.activeProjectId ?? '');
 
 function onSelectEpic(epicId: string) {
@@ -139,7 +139,12 @@ async function onDropEpic({ epicId, column }: { epicId: string; column: EpicColu
   if (column === 'in-progress') {
     engineBus.emit('epic:requestStart', { epicId });
   } else {
-    await epicStore.moveEpic(epicId, column);
+    // If moving FROM in-progress, stop the orchestrator (but don't let it move to backlog)
+    if (epic.column === 'in-progress') {
+      engineBus.emit('epic:requestStop', { epicId, targetColumn: column });
+    } else {
+      await epicStore.moveEpic(epicId, column);
+    }
   }
 }
 
