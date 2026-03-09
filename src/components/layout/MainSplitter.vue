@@ -60,7 +60,8 @@
             <WorkspaceTree v-if="ui.activeLeftTab === 'files'"
               :rootPath="ui.workspacePath"
               :gitEntries="git.entries"
-              @file-selected="(p: string) => emit('file-clicked', p)" />
+              @file-selected="(p: string) => emit('file-clicked', p)"
+              @file-deleted="(p: string) => emit('file-deleted', p)" />
             <GitPanel v-else-if="ui.activeLeftTab === 'git'"
               @file-clicked="(p: string) => emit('file-clicked', p)" />
             <SearchPanel v-else-if="ui.activeLeftTab === 'search'"
@@ -186,6 +187,7 @@ const emit = defineEmits<{
   'delete-older': [];
   'keep-today': [];
   'file-clicked': [filePath: string];
+  'file-deleted': [filePath: string];
   'turn-clicked': [turnId: number];
   'toggle-view': [];
   'exit-mission-control': [];

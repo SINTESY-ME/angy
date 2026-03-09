@@ -33,6 +33,7 @@
         @delete-older="onDeleteOlder"
         @keep-today="onKeepToday"
         @file-clicked="onFileClicked"
+        @file-deleted="onFileDeleted"
         @turn-clicked="onTurnClicked"
         @toggle-view="ui.toggleViewMode()"
         @exit-mission-control="onExitMissionControl"
@@ -332,6 +333,18 @@ async function onFileClicked(filePath: string) {
   } else {
     ui.currentFile = filePath;
     codeViewerRef.value?.loadFile(filePath);
+  }
+}
+
+function onFileDeleted(filePath: string) {
+  // Close exact match
+  codeViewerRef.value?.closeFile(filePath);
+  // Close all open files under a deleted directory
+  const openFiles = codeViewerRef.value?.openFiles() ?? [];
+  for (const f of openFiles) {
+    if (f.startsWith(filePath + '/')) {
+      codeViewerRef.value?.closeFile(f);
+    }
   }
 }
 

@@ -16,7 +16,47 @@
           {{ repo.name }}
         </button>
       </div>
-      <div class="text-xs text-[var(--text-muted)] truncate">{{ displayPath || 'No workspace' }}</div>
+      <div class="flex items-center justify-between">
+        <div class="text-xs text-[var(--text-muted)] truncate flex-1">{{ displayPath || 'No workspace' }}</div>
+        <div v-if="rootPath" class="flex items-center gap-0.5 shrink-0">
+          <button @click="createAtRoot('file')" title="New File"
+                  class="p-1 rounded text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/[0.06] transition-colors">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V5L9 1z"/>
+              <path d="M9 1v4h4"/>
+              <path d="M8 9v4M6 11h4"/>
+            </svg>
+          </button>
+          <button @click="createAtRoot('folder')" title="New Folder"
+                  class="p-1 rounded text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/[0.06] transition-colors">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 13H2a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h4l2 2h6a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1z"/>
+              <path d="M8 7v4M6 9h4"/>
+            </svg>
+          </button>
+          <button @click="refreshTree" title="Refresh"
+                  class="p-1 rounded text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/[0.06] transition-colors">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M1 1v5h5"/>
+              <path d="M3.51 10a5 5 0 1 0 .49-5.28L1 6"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Root-level create input -->
+    <div v-if="rootCreatingType" class="flex items-center gap-1 py-0.5 text-xs"
+         :style="{ paddingLeft: '8px', paddingRight: '8px' }">
+      <span class="w-3"></span>
+      <span class="text-xs shrink-0">{{ rootCreatingType === 'folder' ? '📁' : '📄' }}</span>
+      <input ref="rootCreateInputRef"
+             v-model="rootCreateName"
+             :placeholder="rootCreatingType === 'folder' ? 'folder name' : 'file name'"
+             class="flex-1 bg-[var(--bg-base)] text-[var(--text-primary)] text-xs px-1 py-0 border border-[var(--accent-green)] rounded outline-none"
+             @keydown.enter.prevent="confirmRootCreate"
+             @keydown.escape.prevent="cancelRootCreate"
+             @blur="cancelRootCreate" />
     </div>
 
     <!-- File tree -->
@@ -27,14 +67,16 @@
       <template v-else>
         <TreeNode v-for="node in tree" :key="node.path" :node="node" :depth="0"
                   :gitEntries="gitEntries" :changedFiles="changedFiles"
-                  @file-selected="(p: string) => emit('file-selected', p)" />
+                  @file-selected="(p: string) => emit('file-selected', p)"
+                  @node-mutated="refreshTree"
+                  @node-deleted="onNodeDeleted" />
       </template>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, nextTick } from 'vue';
 import { readDir } from '@tauri-apps/plugin-fs';
 import TreeNode from './TreeNode.vue';
 import type { FileNode } from './TreeNode.vue';
@@ -55,10 +97,16 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'file-selected': [filePath: string];
+  'file-deleted': [filePath: string];
 }>();
 
 const tree = ref<FileNode[]>([]);
 const activeRepoPath = ref('');
+
+// Root-level create state
+const rootCreatingType = ref<'file' | 'folder' | null>(null);
+const rootCreateName = ref('');
+const rootCreateInputRef = ref<HTMLInputElement | null>(null);
 
 // Compute repos for multi-repo tab switching (project-level or epic-scoped)
 const epicRepos = computed(() => {
@@ -124,6 +172,57 @@ async function loadDirectory(dirPath: string): Promise<FileNode[]> {
   } catch {
     return [];
   }
+}
+
+async function refreshTree() {
+  if (props.rootPath) {
+    tree.value = await loadDirectory(props.rootPath);
+  }
+}
+
+function onNodeDeleted(path: string) {
+  tree.value = tree.value.filter(n => n.path !== path);
+  emit('file-deleted', path);
+}
+
+// Root-level create
+async function createAtRoot(type: 'file' | 'folder') {
+  rootCreatingType.value = type;
+  rootCreateName.value = '';
+  await nextTick();
+  rootCreateInputRef.value?.focus();
+}
+
+async function confirmRootCreate() {
+  const name = rootCreateName.value.trim();
+  if (!name || !props.rootPath || name.includes('/')) {
+    cancelRootCreate();
+    return;
+  }
+  const newPath = `${props.rootPath}/${name}`;
+  try {
+    const { exists } = await import('@tauri-apps/plugin-fs');
+    if (await exists(newPath)) {
+      cancelRootCreate();
+      return;
+    }
+    if (rootCreatingType.value === 'folder') {
+      const { mkdir } = await import('@tauri-apps/plugin-fs');
+      await mkdir(newPath);
+    } else {
+      const { writeTextFile } = await import('@tauri-apps/plugin-fs');
+      await writeTextFile(newPath, '');
+    }
+    cancelRootCreate();
+    await refreshTree();
+  } catch {
+    cancelRootCreate();
+  }
+}
+
+function cancelRootCreate() {
+  rootCreatingType.value = null;
+  rootCreateName.value = '';
 }
 
 watch(() => props.rootPath, async (path) => {
