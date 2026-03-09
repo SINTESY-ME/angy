@@ -265,7 +265,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue';
+import { ref, reactive, watch, onMounted } from 'vue';
 import { useThemeStore } from '../../stores/theme';
 import type { ThemeVariant } from '../../themes/catppuccin';
 import { ProfileManager, type PersonalityProfile } from '../../engine/ProfileManager';
@@ -273,7 +273,7 @@ import { Scheduler } from '../../engine/Scheduler';
 import InfoTip from '@/components/common/InfoTip.vue';
 
 
-defineProps<{ visible: boolean }>();
+const props = defineProps<{ visible: boolean }>();
 const emit = defineEmits<{ close: []; saved: [settings: Record<string, string>] }>();
 
 const themeStore = useThemeStore();
@@ -428,6 +428,22 @@ onMounted(async () => {
   profiles.value = profileManager.userProfiles();
   if (profiles.value.length > 0) {
     selectProfile(profiles.value[0]);
+  }
+});
+
+watch(() => props.visible, async (v) => {
+  if (!v) return;
+  try {
+    const scheduler = Scheduler.getInstance();
+    const config = await scheduler.loadConfig();
+    orchestrationSettings.schedulerEnabled = config.enabled;
+    orchestrationSettings.maxOrchestratorDepth = config.maxOrchestratorDepth ?? 3;
+    orchestrationSettings.maxConcurrentChildren = config.maxConcurrentChildren ?? 3;
+    orchestrationSettings.maxConcurrentEpics = config.maxConcurrentEpics;
+    orchestrationSettings.dailyCostBudget = config.dailyCostBudget;
+    orchestrationSettings.tickIntervalMs = config.tickIntervalMs;
+  } catch (e) {
+    console.error('Failed to reload orchestration settings:', e);
   }
 });
 </script>
