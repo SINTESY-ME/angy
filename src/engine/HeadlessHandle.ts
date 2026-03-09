@@ -106,6 +106,11 @@ export class HeadlessHandle implements AgentHandle {
     return this.sessions.get(sessionId)?.realClaudeSessionId ?? '';
   }
 
+  /** Allow a previously finalized child to trigger onDelegateFinished again. */
+  resetForReuse(sessionId: string): void {
+    this.finalizedChildren.delete(sessionId);
+  }
+
   /**
    * Get the last assistant content for a session.
    * Returns accumulated text if a turn is in progress, otherwise the

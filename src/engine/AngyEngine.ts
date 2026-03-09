@@ -330,6 +330,17 @@ export class AngyEngine {
         await handle.postAssistantMessage(sid, content);
       },
 
+      sendToChild: async (sid: string, msg: string) => {
+        handle.resetForReuse(sid);
+        await handle.prepareForSend(sid, msg);
+        this.processes.sendMessage(sid, msg, handle, {
+          workingDir: workspace,
+          mode: 'agent',
+          model,
+          resumeSessionId: handle.getRealSessionId(sid) || undefined,
+        });
+      },
+
       delegateToChild: async (
         parentSessionId: string,
         task: string,

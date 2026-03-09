@@ -66,6 +66,7 @@ export interface OrchestratorChatPanelAPI {
   ): string | Promise<string>;
   cancelChild?(sessionId: string): void;
   sessionFinalOutput(sessionId: string): string;
+  sendToChild?(sessionId: string, message: string): void | Promise<void>;
   // Spawn a full child orchestrator (not a specialist agent)
   spawnSubOrchestrator?(
     parentSessionId: string,
@@ -189,6 +190,17 @@ export const SPECIALIST_PROMPTS: Record<string, string> = {
     '  - **NIT**: Style preferences\n\n' +
     'Pipeline context: You are called by the orchestrator to independently verify claims or review code. ' +
     'Your verdict determines whether the workflow proceeds or loops back for corrections.',
+  builder:
+    'You are a full-stack builder agent. You explore codebases, design solutions, and implement them.\n\n' +
+    'You operate in two modes depending on the task:\n\n' +
+    '**Exploration mode**: When asked to analyze or explore, read the relevant code thoroughly. ' +
+    'Provide specific, grounded analysis with file paths and code references. ' +
+    'Your analysis will be independently verified, so be precise — do not speculate.\n\n' +
+    '**Implementation mode**: When asked to implement, you already have full context from your ' +
+    'prior exploration. Follow existing codebase patterns. Make minimal, focused changes. ' +
+    'Your code will be adversarially reviewed, so write production-quality code.\n\n' +
+    'You may receive multiple tasks in sequence as part of a conversational workflow. ' +
+    'Your prior context is preserved between tasks — use it.',
 };
 
 // ── Tool restriction sets per specialist role (Phase 4.2: sandboxing) ────
@@ -200,6 +212,7 @@ export const SPECIALIST_TOOLS: Record<string, string> = {
   tester: 'Bash,Read,Edit,Write,Glob,Grep,Task',
   debugger: 'Bash,Read,Glob,Grep',
   counterpart: 'Read,Glob,Grep',
+  builder: 'Bash,Read,Edit,Write,Glob,Grep,Task',
 };
 
 /**
@@ -358,47 +371,56 @@ const CONVERSATIONAL_WORKFLOW =
   `# Conversational Workflow\n\n` +
   `This workflow uses a 3-agent architecture: you (orchestrator), a core builder agent, and an adversarial ` +
   `counterpart agent. The goal is to verify understanding before building.\n\n` +
-  `## IMPORTANT: Role Override\n\n` +
-  `In this pipeline you MUST use delegate(role="counterpart", ...) for all verification and review steps. ` +
-  `Do NOT use role="reviewer" — the counterpart role has a specialized adversarial prompt that the reviewer ` +
-  `role does not have. Using "reviewer" instead of "counterpart" will produce weaker verification.\n\n` +
+  `## IMPORTANT: Role Rules\n\n` +
+  `This pipeline uses two special roles. You MUST use exactly these role names:\n` +
+  `- **builder** — for ALL exploration AND implementation. The builder is a single persistent agent. ` +
+  `Every time you delegate to role="builder", the SAME session is reused, so the builder retains full ` +
+  `context from prior tasks. This is the core advantage of this pipeline — no context is lost between ` +
+  `exploration and implementation.\n` +
+  `- **counterpart** — for ALL verification and review. Do NOT use role="reviewer". ` +
+  `The counterpart has a specialized adversarial prompt.\n\n` +
   `Available roles for this pipeline:\n` +
-  `- **architect** — Read-only codebase analysis and design\n` +
-  `- **counterpart** — Adversarial expert who independently verifies claims and reviews code. ` +
-  `Use this role for ALL verification and review steps.\n` +
-  `- **implementer** — Writes code\n` +
+  `- **builder** — Persistent agent that explores the codebase AND implements changes (same session). ` +
+  `Use for exploration, addressing challenges, and implementation.\n` +
+  `- **counterpart** — Adversarial expert who independently verifies claims and reviews code.\n` +
   `- **tester** — Runs builds and tests\n\n` +
   `## Phase 1: Explore\n` +
-  `Delegate to an architect to read and analyze the relevant codebase areas. Ask specific questions about ` +
-  `how the system works, what files are involved, and what patterns exist.\n\n` +
+  `Delegate to the builder to read and analyze the relevant codebase areas: ` +
+  `delegate(role="builder", task="explore..."). Ask specific questions about how the system works, ` +
+  `what files are involved, and what patterns exist.\n\n` +
   `## Phase 2: Verify Understanding\n` +
-  `Forward the architect's analysis to a counterpart: delegate(role="counterpart", task="..."). ` +
+  `Forward the builder's analysis to a counterpart: delegate(role="counterpart", task="..."). ` +
   `Ask the counterpart to independently verify the claims by reading the same code. ` +
   `The counterpart will return APPROVED or CHALLENGED.\n\n` +
   `## Phase 3: Challenge Loop\n` +
   `If the counterpart returns CHALLENGED with issues:\n` +
-  `1. Forward the challenges back to an architect, asking them to address each specific issue\n` +
-  `2. Forward the architect's revised answer to the counterpart for re-verification\n` +
+  `1. Forward the challenges back to the builder: delegate(role="builder", task="address these challenges..."). ` +
+  `The builder already has context from the exploration — it will refine its understanding.\n` +
+  `2. Forward the builder's revised answer to the counterpart for re-verification\n` +
   `3. Repeat until the counterpart returns APPROVED (maximum 3 cycles)\n` +
   `If not approved after 3 cycles, proceed with the best understanding available.\n\n` +
   `## Phase 4: Build\n` +
-  `Once understanding is verified, delegate to an implementer with the full verified analysis. ` +
-  `Include the architect's plan AND the counterpart's approval in the task description.\n\n` +
+  `Once understanding is verified, tell the builder to implement: ` +
+  `delegate(role="builder", task="implement the changes..."). The builder already has full context ` +
+  `from exploration and challenge resolution — do NOT repeat the analysis. Just describe what to build ` +
+  `and reference the counterpart's approval.\n\n` +
   `## Phase 5: Adversarial Review\n` +
   `Delegate to a counterpart to review the implementation: delegate(role="counterpart", task="..."). ` +
   `The counterpart will return APPROVE or REQUEST_CHANGES.\n\n` +
   `## Phase 6: Fix Loop\n` +
   `If the counterpart returns REQUEST_CHANGES:\n` +
-  `1. Forward the issues to an implementer to fix\n` +
+  `1. Forward the issues to the builder to fix: delegate(role="builder", task="fix these issues...")\n` +
   `2. Send the fixes back to the counterpart for re-review: delegate(role="counterpart", task="...")\n` +
   `3. Maximum 3 fix cycles — if issues persist, call fail() with unresolved issues.\n\n` +
   `## Phase 7: Complete\n` +
   `When the counterpart approves the implementation, delegate to a tester to verify builds and tests pass, ` +
   `then call done() with a summary.\n\n` +
   `# Key Rules\n` +
+  `- Always use role="builder" (not "architect" or "implementer") for exploration and implementation.\n` +
   `- Always use role="counterpart" (not "reviewer") for verification and review steps.\n` +
+  `- The builder session persists — it keeps all context. Do not re-explain what it already knows.\n` +
   `- The counterpart MUST independently read the code — never just forward text for rubber-stamping.\n` +
-  `- Include full context in every delegation — agents cannot see prior conversation.\n` +
+  `- Include full context in counterpart delegations — the counterpart does NOT share the builder's session.\n` +
   `- The counterpart's verdict drives phase transitions. Do not skip verification.\n\n`;
 
 export const ORCHESTRATOR_CONVERSATIONAL_PROMPT = ORCHESTRATOR_PREAMBLE + ORCHESTRATOR_RULES + CONVERSATIONAL_WORKFLOW;
@@ -430,6 +452,7 @@ export class Orchestrator {
   private childOutputs: Array<{ role: string; agentName: string; output: string }> = [];
   private orchestrationLog: Array<{ timestamp: number; event: string; details: string }> = [];
   private autoProfiles: TechProfile[] = [];
+  private persistentSessions = new Map<string, { sessionId: string; agentName: string }>();
 
   static readonly MCP_SERVER_NAME = 'c3p2-orchestrator';
   static readonly MAX_STEP_ATTEMPTS = 5;
@@ -462,6 +485,10 @@ export class Orchestrator {
   }
   getAutoProfiles(): TechProfile[] { return this.autoProfiles; }
   getAutoProfileIds(): string[] { return this.autoProfiles.map(p => p.id); }
+
+  private isPersistentRole(role: string): boolean {
+    return this._pipelineType === 'conversational' && role === 'builder';
+  }
 
   private logEvent(event: string, details: string = '') {
     this.orchestrationLog.push({ timestamp: Date.now(), event, details });
@@ -586,6 +613,7 @@ export class Orchestrator {
     this.childOutputs = [];
     this.orchestrationLog = [];
     this.agentCounter = 0;
+    this.persistentSessions.clear();
     this._currentPhase = 'planning';
     this.events.emit('phaseChanged', { phase: this._currentPhase });
 
@@ -647,6 +675,7 @@ export class Orchestrator {
     this.childOutputs = [];
     this.orchestrationLog = [];
     this.agentCounter = 0;
+    this.persistentSessions.clear();
     this.activeChildOrchestrators = new Set<string>();
     this._currentPhase = 'planning';
     this.events.emit('phaseChanged', { phase: this._currentPhase });
@@ -730,8 +759,9 @@ export class Orchestrator {
         message += `Start by calling delegate(role="architect", task="...") to analyze the codebase and design the solution described above.\n`;
         break;
       case 'conversational':
-        message += `Start by calling delegate(role="architect", task="...") to explore and analyze the codebase. ` +
-          `After receiving the analysis, forward it to a counterpart for independent verification before implementing.\n`;
+        message += `Start by calling delegate(role="builder", task="...") to explore and analyze the codebase. ` +
+          `After receiving the analysis, forward it to a counterpart for independent verification. ` +
+          `The builder session persists — when you delegate to builder again, it keeps all prior context.\n`;
         break;
       default:
         message += `Start by calling delegate(role="architect", task="...") to analyze the codebase and design the solution.\n`;
@@ -799,6 +829,7 @@ export class Orchestrator {
       }
     }
     this.activeChildOrchestrators.clear();
+    this.persistentSessions.clear();
 
     this.cleanupInboxes();
     this.logEvent('cancelled');
@@ -1035,6 +1066,7 @@ export class Orchestrator {
         this.logEvent('completed', cmd.summary || '');
         for (const timeout of this.childTimeouts.values()) clearTimeout(timeout);
         this.childTimeouts.clear();
+        this.persistentSessions.clear();
         this.cleanupInboxes();
         this.events.emit('completed', { summary: cmd.summary || '' });
         break;
@@ -1047,6 +1079,7 @@ export class Orchestrator {
         this.logEvent('failed', cmd.reason || '');
         for (const timeout of this.childTimeouts.values()) clearTimeout(timeout);
         this.childTimeouts.clear();
+        this.persistentSessions.clear();
         this.cleanupInboxes();
         this.events.emit('failed', { reason: cmd.reason || '' });
         break;
@@ -1088,19 +1121,59 @@ export class Orchestrator {
     }
     this._totalDelegations++;
 
+    const roleLower = cmd.role.toLowerCase();
+    const workingDir = cmd.working_dir || undefined;
+
+    // ── Persistent session reuse (conversational pipeline) ──
+    const existing = this.persistentSessions.get(roleLower);
+    if (existing && this.chatPanel.sendToChild) {
+      this._currentPhase = `continuing ${cmd.role}`;
+      this.events.emit('phaseChanged', { phase: this._currentPhase });
+      this.events.emit('delegationStarted', { role: cmd.role, task: cmd.task, parentSessionId: this._sessionId });
+
+      await this.chatPanel.sendToChild(existing.sessionId, cmd.task);
+
+      this.pendingChildren.set(existing.sessionId, {
+        sessionId: existing.sessionId,
+        role: cmd.role,
+        agentName: existing.agentName,
+        completed: false,
+        output: '',
+        workingDir,
+      });
+
+      const oldTimeout = this.childTimeouts.get(existing.sessionId);
+      if (oldTimeout) clearTimeout(oldTimeout);
+      const timeout = setTimeout(() => {
+        const child = this.pendingChildren.get(existing.sessionId);
+        if (child && !child.completed) {
+          this.logEvent('childTimeout', `${existing.agentName} (${cmd.role}) timed out after ${Orchestrator.CHILD_TIMEOUT_MS / 1000}s`);
+          this.chatPanel?.cancelChild?.(existing.sessionId);
+          this.onDelegateFinished(
+            existing.sessionId,
+            `ERROR: Agent ${existing.agentName} timed out after ${Orchestrator.CHILD_TIMEOUT_MS / 1000} seconds. ` +
+            `The task may be too complex or the agent may be stuck. Consider breaking it into smaller tasks.`,
+          );
+        }
+      }, Orchestrator.CHILD_TIMEOUT_MS);
+      this.childTimeouts.set(existing.sessionId, timeout);
+
+      this.logEvent('continuedSession', `${existing.agentName} (${cmd.role}) session=${existing.sessionId}`);
+      return;
+    }
+
+    // ── Normal delegation: create new child session ──
     const agentName = this.generateAgentName(cmd.role);
     this._currentPhase = `delegating to ${cmd.role}`;
     this.events.emit('phaseChanged', { phase: this._currentPhase });
     this.events.emit('delegationStarted', { role: cmd.role, task: cmd.task, parentSessionId: this._sessionId });
 
-    const profileId = `specialist-${cmd.role.toLowerCase()}`;
+    const profileId = `specialist-${roleLower}`;
     const context = this.chatPanel.sessionFinalOutput(this._sessionId);
 
     const teammates = Array.from(this.pendingChildren.values())
       .filter(c => !c.completed)
       .map(c => c.agentName);
-
-    const workingDir = cmd.working_dir || undefined;
 
     const childId = await this.chatPanel.delegateToChild(
       this._sessionId,
@@ -1123,6 +1196,11 @@ export class Orchestrator {
         output: '',
         workingDir,
       });
+
+      // Register as persistent if role warrants it
+      if (this.isPersistentRole(roleLower)) {
+        this.persistentSessions.set(roleLower, { sessionId: childId, agentName });
+      }
 
       // Start timeout watchdog
       const timeout = setTimeout(() => {
