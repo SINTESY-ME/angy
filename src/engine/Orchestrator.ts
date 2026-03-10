@@ -425,6 +425,66 @@ const CONVERSATIONAL_WORKFLOW =
 
 export const ORCHESTRATOR_CONVERSATIONAL_PROMPT = ORCHESTRATOR_PREAMBLE + ORCHESTRATOR_RULES + CONVERSATIONAL_WORKFLOW;
 
+const HYBRID_WORKFLOW =
+  `# Hybrid Workflow\n\n` +
+  `4-phase pipeline: Plan → Parallel Implement → Verify/Fix → Final Test.\n\n` +
+  `## IMPORTANT: Role Rules\n` +
+  `- **architect** — designs the solution (fresh sessions, read-only)\n` +
+  `- **counterpart** — persistent adversarial verifier (same session reused across phases 1-3)\n` +
+  `- **builder** — implements code (fresh sessions, one per module, can run in parallel)\n` +
+  `- **tester** — builds and runs tests (fresh)\n` +
+  `- **reviewer** — final code review (fresh, used for Phase 4 retries)\n\n` +
+  `## Phase 1: Plan\n` +
+  `1. delegate(role="architect", task="...") to analyze the codebase and design the solution.\n` +
+  `   The architect MUST produce a structured plan with:\n` +
+  `   - EXECUTION PLAN: ordered steps grouped by parallelizable modules\n` +
+  `   - FILE OWNERSHIP MATRIX: which module owns which files (no overlaps)\n` +
+  `   - CONVENTIONS DISCOVERED: patterns builders must follow\n` +
+  `   - TRAPS: things builders must NOT do\n` +
+  `   - INTEGRATION CONTRACTS: how modules connect (shared APIs, events, imports)\n\n` +
+  `2. Forward the architect's plan to delegate(role="counterpart", task="...").\n` +
+  `   The counterpart verifies:\n` +
+  `   - Plan covers ALL acceptance criteria\n` +
+  `   - No spec deviations\n` +
+  `   - Module boundaries have no file ownership overlaps\n` +
+  `   - Plan is specific enough for a fresh implementer to follow without ambiguity\n\n` +
+  `3. If counterpart returns CHALLENGED:\n` +
+  `   - delegate(role="architect", task="revise plan addressing: [counterpart feedback]")\n` +
+  `   - Re-verify with counterpart (max 2 revision cycles)\n` +
+  `   - If not approved after 2 cycles, proceed with best available plan\n\n` +
+  `## Phase 2: Implement (parallel)\n` +
+  `Split the approved plan by module boundaries. For each module:\n` +
+  `- delegate(role="builder", task="[module slice of plan + shared conventions/traps section]")\n` +
+  `- Run independent modules IN PARALLEL using multiple delegate() calls in one turn\n` +
+  `- Each builder receives ONLY its module's files and steps, plus the shared conventions/traps\n` +
+  `- Include the full FILE OWNERSHIP MATRIX so builders know their boundaries\n\n` +
+  `Wait for ALL builders to complete before proceeding.\n\n` +
+  `## Phase 3: Verify and Fix Loop\n` +
+  `1. delegate(role="counterpart", task="review all implementations against the approved plan and acceptance criteria. [include builder outputs]")\n` +
+  `   The counterpart is the SAME session that verified the plan — it remembers what was promised.\n\n` +
+  `2. If counterpart returns APPROVE → proceed to Phase 4.\n\n` +
+  `3. If counterpart returns REQUEST_CHANGES:\n` +
+  `   - delegate(role="builder", task="fix: [specific issues from counterpart]") — fresh builder(s)\n` +
+  `   - delegate(role="counterpart", task="re-review the fixes") — SAME session\n` +
+  `   - Max 3 fix cycles. If issues persist after 3 cycles, call fail().\n\n` +
+  `## Phase 4: Final Verification\n` +
+  `1. delegate(role="tester", task="build the project and run all tests")\n` +
+  `   If tester reports FAIL: delegate fixes to a fresh builder, then delegate to\n` +
+  `   role="reviewer" to re-verify, then re-test. Max 2 retry cycles.\n\n` +
+  `2. delegate(role="reviewer", task="final code review against the original requirements")\n` +
+  `   If reviewer returns REQUEST_CHANGES: delegate fixes to a fresh builder,\n` +
+  `   then re-verify with reviewer. Max 2 retry cycles.\n\n` +
+  `3. When tester passes AND reviewer approves → call done(summary).\n\n` +
+  `## Key Rules\n` +
+  `- The architect produces the plan. Builders execute it. The counterpart enforces it.\n` +
+  `- The counterpart session persists — it keeps all context from plan review through implementation review.\n` +
+  `- Builders are ALWAYS fresh sessions. Never reuse a builder session.\n` +
+  `- When splitting work for parallel builders, ensure NO file ownership overlaps.\n` +
+  `- Include the conventions/traps section in EVERY builder delegation.\n` +
+  `- For Phase 4 retries, use role="reviewer" (not counterpart) for fresh verification.\n\n`;
+
+export const ORCHESTRATOR_HYBRID_PROMPT = ORCHESTRATOR_PREAMBLE + ORCHESTRATOR_RULES + ORCHESTRATOR_EXAMPLE + HYBRID_WORKFLOW;
+
 export class Orchestrator {
   private events = mitt<OrchestratorEvents>();
   on = this.events.on.bind(this.events);
@@ -487,6 +547,7 @@ export class Orchestrator {
   getAutoProfileIds(): string[] { return this.autoProfiles.map(p => p.id); }
 
   private isPersistentRole(role: string): boolean {
+    if (this._pipelineType === 'hybrid') return role === 'counterpart';
     return this._pipelineType === 'conversational' && role === 'builder';
   }
 
@@ -762,6 +823,11 @@ export class Orchestrator {
         message += `Start by calling delegate(role="builder", task="...") to explore and analyze the codebase. ` +
           `After receiving the analysis, forward it to a counterpart for independent verification. ` +
           `The builder session persists — when you delegate to builder again, it keeps all prior context.\n`;
+        break;
+      case 'hybrid':
+        message += `Start by calling delegate(role="architect", task="...") to analyze the codebase and design a structured solution plan with module boundaries, conventions, and integration contracts. ` +
+          `After receiving the plan, forward it to a counterpart for adversarial verification against the spec. ` +
+          `The counterpart session persists — it will verify the plan AND later review the implementation.\n`;
         break;
       default:
         message += `Start by calling delegate(role="architect", task="...") to analyze the codebase and design the solution.\n`;
@@ -1124,7 +1190,7 @@ export class Orchestrator {
     const roleLower = cmd.role.toLowerCase();
     const workingDir = cmd.working_dir || undefined;
 
-    // ── Persistent session reuse (conversational pipeline) ──
+    // ── Persistent session reuse (conversational/hybrid pipeline) ──
     const existing = this.persistentSessions.get(roleLower);
     if (existing && this.chatPanel.sendToChild) {
       this._currentPhase = `continuing ${cmd.role}`;
@@ -1633,6 +1699,9 @@ export class Orchestrator {
         break;
       case 'conversational':
         prompt = ORCHESTRATOR_CONVERSATIONAL_PROMPT;
+        break;
+      case 'hybrid':
+        prompt = ORCHESTRATOR_HYBRID_PROMPT;
         break;
       default:
         prompt = ORCHESTRATOR_SYSTEM_PROMPT;
