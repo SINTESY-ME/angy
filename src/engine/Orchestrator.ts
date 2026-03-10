@@ -425,15 +425,47 @@ const CONVERSATIONAL_WORKFLOW =
 
 export const ORCHESTRATOR_CONVERSATIONAL_PROMPT = ORCHESTRATOR_PREAMBLE + ORCHESTRATOR_RULES + CONVERSATIONAL_WORKFLOW;
 
+const HYBRID_EXAMPLE =
+  `# Example Hybrid Delegation Chain\n\n` +
+  `Here is an example of an ideal hybrid workflow:\n\n` +
+  `1. delegate(role="architect", task="Analyze the codebase. Design a solution for adding real-time notifications. ` +
+  `Produce a plan with: EXECUTION PLAN, FILE OWNERSHIP MATRIX, CONVENTIONS DISCOVERED, TRAPS, INTEGRATION CONTRACTS.")\n` +
+  `   → Architect returns: structured plan with 3 modules (database, API, frontend), file ownership, conventions\n\n` +
+  `2. delegate(role="counterpart", task="Verify this plan covers all acceptance criteria and has no spec deviations. ` +
+  `Check module boundaries for file ownership overlaps. Verify the plan is specific enough for a fresh implementer. ` +
+  `[Full architect plan pasted here]")\n` +
+  `   → Counterpart returns: VERDICT: APPROVED (plan is spec-conformant, boundaries clean)\n\n` +
+  `3. Two parallel calls in ONE turn (backend + frontend — do not over-split into many tiny builders):\n` +
+  `   delegate(role="builder", task="Implement backend: database, API server, docker-compose, README. [Backend slice of plan + conventions/traps + integration contracts]")\n` +
+  `   delegate(role="builder", task="Implement frontend: Vue app, stores, components. [Frontend slice of plan + conventions/traps + integration contracts]")\n` +
+  `   → Both builders complete their modules\n\n` +
+  `4. delegate(role="counterpart", task="Review all implementations against the approved plan. ` +
+  `[Include builder outputs]. Check every acceptance criterion.")\n` +
+  `   → SAME counterpart session (remembers the plan). Returns: VERDICT: REQUEST_CHANGES — user routes bypass service layer\n\n` +
+  `5. delegate(role="builder", task="Fix: user routes must import from user-service, not user-repo. Create user-service.js.")\n` +
+  `   → Fresh builder applies the fix\n\n` +
+  `6. delegate(role="counterpart", task="Re-review: verify user routes now go through the service layer.")\n` +
+  `   → SAME counterpart session. Returns: VERDICT: APPROVE\n\n` +
+  `7. delegate(role="tester", task="Build the project and run all tests.")\n` +
+  `   → Tester: BUILD PASS, ALL TESTS PASS\n\n` +
+  `8. done(summary="Added real-time notifications across 3 modules. All ACs met, review approved, tests pass.")\n\n` +
+  `CRITICAL: Notice the roles used above — architect, counterpart, builder, tester. ` +
+  `Do NOT substitute "reviewer" for "counterpart" or "implementer" for "builder".\n\n`;
+
 const HYBRID_WORKFLOW =
   `# Hybrid Workflow\n\n` +
   `4-phase pipeline: Plan → Parallel Implement → Verify/Fix → Final Test.\n\n` +
-  `## IMPORTANT: Role Rules\n` +
-  `- **architect** — designs the solution (fresh sessions, read-only)\n` +
-  `- **counterpart** — persistent adversarial verifier (same session reused across phases 1-3)\n` +
-  `- **builder** — implements code (fresh sessions, one per module, can run in parallel)\n` +
-  `- **tester** — builds and runs tests (fresh)\n` +
-  `- **reviewer** — final code review (fresh, used for Phase 4 retries)\n\n` +
+  `## CRITICAL: Role Rules\n\n` +
+  `You MUST use exactly these role names. Using wrong role names will break the pipeline.\n\n` +
+  `| Role | Purpose | Session |\n` +
+  `|------|---------|--------|\n` +
+  `| architect | Designs the solution plan | Fresh |\n` +
+  `| counterpart | Adversarial verifier for plan AND code | PERSISTENT (same session reused) |\n` +
+  `| builder | Implements code per the plan | Fresh (one per module, parallel) |\n` +
+  `| tester | Builds and runs tests | Fresh |\n\n` +
+  `DO NOT use role="implementer" — use role="builder".\n` +
+  `DO NOT use role="reviewer" — use role="counterpart" for ALL verification and review.\n` +
+  `The only available roles are: architect, counterpart, builder, tester.\n\n` +
   `## Phase 1: Plan\n` +
   `1. delegate(role="architect", task="...") to analyze the codebase and design the solution.\n` +
   `   The architect MUST produce a structured plan with:\n` +
@@ -441,20 +473,30 @@ const HYBRID_WORKFLOW =
   `   - FILE OWNERSHIP MATRIX: which module owns which files (no overlaps)\n` +
   `   - CONVENTIONS DISCOVERED: patterns builders must follow\n` +
   `   - TRAPS: things builders must NOT do\n` +
-  `   - INTEGRATION CONTRACTS: how modules connect (shared APIs, events, imports)\n\n` +
+  `   - INTEGRATION CONTRACTS: for each API endpoint, specify:\n` +
+  `     * HTTP method, path, and purpose\n` +
+  `     * Request body schema with required/optional fields and types\n` +
+  `     * Validation rules (which fields are required, non-empty, constrained)\n` +
+  `     * Response shape for success and error cases (status codes + body)\n` +
+  `     * WebSocket events emitted (event name + payload shape)\n\n` +
   `2. Forward the architect's plan to delegate(role="counterpart", task="...").\n` +
   `   The counterpart verifies:\n` +
   `   - Plan covers ALL acceptance criteria\n` +
   `   - No spec deviations\n` +
   `   - Module boundaries have no file ownership overlaps\n` +
-  `   - Plan is specific enough for a fresh implementer to follow without ambiguity\n\n` +
+  `   - Integration contracts specify request/response schemas and validation\n` +
+  `   - Plan is specific enough for a fresh builder to follow without ambiguity\n\n` +
   `3. If counterpart returns CHALLENGED:\n` +
   `   - delegate(role="architect", task="revise plan addressing: [counterpart feedback]")\n` +
   `   - Re-verify with counterpart (max 2 revision cycles)\n` +
   `   - If not approved after 2 cycles, proceed with best available plan\n\n` +
   `## Phase 2: Implement (parallel)\n` +
-  `Split the approved plan by module boundaries. For each module:\n` +
-  `- delegate(role="builder", task="[module slice of plan + shared conventions/traps section]")\n` +
+  `Split the approved plan by major module boundaries (e.g., backend vs frontend).\n` +
+  `Use 2-3 builders maximum for most projects. Only parallelize genuinely independent, substantial modules.\n` +
+  `Do NOT spawn a builder for a single file (README, docker-compose, config). Include small artifacts\n` +
+  `in the nearest module that owns the surrounding context.\n\n` +
+  `For each module:\n` +
+  `- delegate(role="builder", task="[module slice of plan + shared conventions/traps + integration contracts]")\n` +
   `- Run independent modules IN PARALLEL using multiple delegate() calls in one turn\n` +
   `- Each builder receives ONLY its module's files and steps, plus the shared conventions/traps\n` +
   `- Include the full FILE OWNERSHIP MATRIX so builders know their boundaries\n\n` +
@@ -470,20 +512,22 @@ const HYBRID_WORKFLOW =
   `## Phase 4: Final Verification\n` +
   `1. delegate(role="tester", task="build the project and run all tests")\n` +
   `   If tester reports FAIL: delegate fixes to a fresh builder, then delegate to\n` +
-  `   role="reviewer" to re-verify, then re-test. Max 2 retry cycles.\n\n` +
-  `2. delegate(role="reviewer", task="final code review against the original requirements")\n` +
-  `   If reviewer returns REQUEST_CHANGES: delegate fixes to a fresh builder,\n` +
-  `   then re-verify with reviewer. Max 2 retry cycles.\n\n` +
-  `3. When tester passes AND reviewer approves → call done(summary).\n\n` +
+  `   role="counterpart" to re-verify, then re-test. Max 2 retry cycles.\n\n` +
+  `2. delegate(role="counterpart", task="final review against the original requirements")\n` +
+  `   The counterpart is the SAME session — it has full context from plan verification and code review.\n` +
+  `   If counterpart returns REQUEST_CHANGES: delegate fixes to a fresh builder,\n` +
+  `   then re-verify with counterpart. Max 2 retry cycles.\n\n` +
+  `3. When tester passes AND counterpart approves → call done(summary).\n\n` +
   `## Key Rules\n` +
   `- The architect produces the plan. Builders execute it. The counterpart enforces it.\n` +
-  `- The counterpart session persists — it keeps all context from plan review through implementation review.\n` +
+  `- The counterpart session persists — it keeps all context from plan review through final review.\n` +
   `- Builders are ALWAYS fresh sessions. Never reuse a builder session.\n` +
   `- When splitting work for parallel builders, ensure NO file ownership overlaps.\n` +
   `- Include the conventions/traps section in EVERY builder delegation.\n` +
-  `- For Phase 4 retries, use role="reviewer" (not counterpart) for fresh verification.\n\n`;
+  `- NEVER use role="implementer" — always use role="builder".\n` +
+  `- NEVER use role="reviewer" — always use role="counterpart" for ALL verification.\n\n`;
 
-export const ORCHESTRATOR_HYBRID_PROMPT = ORCHESTRATOR_PREAMBLE + ORCHESTRATOR_RULES + ORCHESTRATOR_EXAMPLE + HYBRID_WORKFLOW;
+export const ORCHESTRATOR_HYBRID_PROMPT = ORCHESTRATOR_PREAMBLE + ORCHESTRATOR_RULES + HYBRID_EXAMPLE + HYBRID_WORKFLOW;
 
 export class Orchestrator {
   private events = mitt<OrchestratorEvents>();
@@ -1166,6 +1210,20 @@ export class Orchestrator {
 
   private async executeDelegation(cmd: OrchestratorCommand) {
     if (!cmd.role || !cmd.task || !this.chatPanel) return;
+
+    // Hybrid pipeline: remap create-pipeline role names to hybrid equivalents.
+    // "implementer" → "builder", "reviewer" → "counterpart".
+    // The hybrid pipeline has no reviewer role — the persistent counterpart handles all verification.
+    if (this._pipelineType === 'hybrid') {
+      const roleLow = cmd.role.toLowerCase();
+      if (roleLow === 'implementer') {
+        this.logEvent('roleRemapped', `${cmd.role} → builder (hybrid pipeline)`);
+        cmd.role = 'builder';
+      } else if (roleLow === 'reviewer') {
+        this.logEvent('roleRemapped', `${cmd.role} → counterpart (hybrid pipeline)`);
+        cmd.role = 'counterpart';
+      }
+    }
 
     if (this.isReadOnly()) {
       const allowedRoles = ['architect', 'debugger'];

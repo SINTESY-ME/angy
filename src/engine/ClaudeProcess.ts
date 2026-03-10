@@ -77,6 +77,10 @@ export class ClaudeProcess {
       args.push('--append-system-prompt', this.systemPrompt);
     }
 
+    if (this.workingDir) {
+      args.push('--add-dir', this.workingDir);
+    }
+
     if (this.mode === 'orchestrator') {
       let orchestratorTools =
         'mcp__c3p2-orchestrator__delegate,' +

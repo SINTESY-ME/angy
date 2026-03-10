@@ -35,6 +35,7 @@ import {
   type ProjectRepository,
 } from './repositories';
 import { detectTechnologies, buildTechPromptPrefix } from './TechDetector';
+import { HybridPipelineRunner } from './HybridPipelineRunner';
 
 // ── Singleton ────────────────────────────────────────────────────────────
 
@@ -59,6 +60,7 @@ export class AngyEngine {
   // ── Epic orchestrators ─────────────────────────────────────────────
   private epicOrchestrators = new Map<string, Orchestrator>();
   private subOrchestrators = new Map<string, Orchestrator>();
+  private hybridRunners = new Map<string, HybridPipelineRunner>();
 
   private _initialized = false;
 
@@ -139,6 +141,10 @@ export class AngyEngine {
       orch.cancel();
     }
     this.epicOrchestrators.clear();
+    for (const runner of this.hybridRunners.values()) {
+      runner.cancel();
+    }
+    this.hybridRunners.clear();
     await this.db.close();
     this._initialized = false;
     console.log('[AngyEngine] Shut down');
@@ -176,6 +182,10 @@ export class AngyEngine {
     repos: ProjectRepo[],
   ): Promise<string> {
     console.log(`[AngyEngine] Spawning orchestrator for epic: ${epicId} ("${epic.title}")`);
+
+    if (epic.pipelineType === 'hybrid' && !(epic.rejectionCount > 0 && epic.rejectionFeedback)) {
+      return this.runHybridPipeline(epicId, options, epic, repos);
+    }
 
     const orch = new Orchestrator();
     orch.setEpicOptions(options);
@@ -653,6 +663,128 @@ export class AngyEngine {
   async deleteEpic(id: string): Promise<void> {
     await this.branchManager.deleteEpicBranches(id);
     await this.epics.deleteEpic(id);
+  }
+
+  // ── Hybrid pipeline (coded state machine) ──────────────────────────
+
+  private async runHybridPipeline(
+    epicId: string,
+    _options: OrchestratorOptions,
+    epic: Epic,
+    repos: ProjectRepo[],
+  ): Promise<string> {
+    console.log(`[AngyEngine] Running hybrid pipeline for epic: ${epicId} ("${epic.title}")`);
+
+    const handle = new HeadlessHandle(this.db, this.sessions.manager);
+    handle.onPersistSession = (sid) => {
+      this.sessions.persistSession(sid);
+    };
+
+    // Compute workspace (same logic as spawnEpicOrchestrator)
+    let workspace: string;
+    if (repos.length === 0) {
+      workspace = '.';
+    } else if (repos.length === 1) {
+      workspace = repos[0].path || '.';
+    } else {
+      const paths = repos.map(r => r.path).filter(Boolean);
+      if (paths.length === 0) {
+        workspace = '.';
+      } else if (paths.length === 1) {
+        workspace = paths[0];
+      } else {
+        const segments = paths.map(p => p.split('/'));
+        const commonParts: string[] = [];
+        for (let i = 0; i < segments[0].length; i++) {
+          const seg = segments[0][i];
+          if (segments.every(s => s[i] === seg)) commonParts.push(seg);
+          else break;
+        }
+        workspace = commonParts.join('/') || '/';
+      }
+    }
+
+    const detectedProfiles = await detectTechnologies(workspace);
+
+    const runner = new HybridPipelineRunner({
+      handle,
+      processes: this.processes,
+      sessions: this.sessions,
+      workspace,
+      model: epic.model || undefined,
+      epicId,
+      autoProfiles: detectedProfiles,
+    });
+
+    // Create a root session for the pipeline
+    const rootSid = await this.sessions.createSession(workspace, 'orchestrator');
+    const rootInfo = this.sessions.getSession(rootSid);
+    if (rootInfo) {
+      rootInfo.epicId = epicId;
+      rootInfo.title = `Hybrid: ${epic.title}`;
+    }
+    await this.sessions.persistSession(rootSid);
+    runner.setRootSessionId(rootSid);
+    engineBus.emit('session:created', { sessionId: rootSid });
+
+    // Wire events (same shape as wireOrchestratorEvents)
+    runner.on('phaseChanged', (e) => {
+      engineBus.emit('epic:phaseChanged', { epicId, phase: e.phase });
+    });
+    runner.on('delegationStarted', (e) => {
+      engineBus.emit('orchestrator:delegationStarted', {
+        role: e.role,
+        task: e.task,
+        parentSessionId: e.parentSessionId,
+      });
+    });
+    runner.on('completed', (e) => {
+      this.hybridRunners.delete(epicId);
+      engineBus.emit('epic:completed', { epicId, summary: e.summary });
+    });
+    runner.on('failed', (e) => {
+      this.hybridRunners.delete(epicId);
+      engineBus.emit('epic:failed', { epicId, reason: e.reason });
+    });
+    runner.on('artifactsCollected', async (e) => {
+      try {
+        const fileSet = new Set<string>();
+        for (const child of e.childOutputs) {
+          const matches = child.output.match(/(?:^|\s)((?:src|lib|app|test|tests)\/[\w/.-]+\.\w+)/gm);
+          if (matches) {
+            for (const m of matches) fileSet.add(m.trim());
+          }
+        }
+        const architectOutput = e.childOutputs.find(c => c.role === 'architect');
+        await this.epics.updateEpic(epicId, {
+          lastAttemptFiles: Array.from(fileSet).slice(0, 50),
+          lastValidationResults: [],
+          lastArchitectPlan: architectOutput?.output || '',
+        });
+        this.emitEpicUpdated(epicId);
+      } catch (err) {
+        console.error(`[AngyEngine] Failed to persist hybrid artifacts for epic ${epicId}:`, err);
+      }
+    });
+
+    this.hybridRunners.set(epicId, runner);
+
+    // Build goal
+    const repoLines = repos.map(r => `- ${r.name}: ${r.path}`).join('\n');
+    const goal =
+      `# Epic: ${epic.title}\n\n` +
+      `## Description\n${epic.description}\n\n` +
+      `## Target Repos\n${repoLines || '(none)'}\n\n` +
+      `**Important:** Only work within the listed repositories above.`;
+
+    // Run in background (don't await — let it run asynchronously)
+    runner.run(goal, epic.acceptanceCriteria).catch(err => {
+      console.error(`[AngyEngine] Hybrid pipeline crashed for ${epicId}:`, err);
+      this.hybridRunners.delete(epicId);
+      engineBus.emit('epic:failed', { epicId, reason: err?.message || String(err) });
+    });
+
+    return rootSid;
   }
 
   // ── Scheduler control ──────────────────────────────────────────────
