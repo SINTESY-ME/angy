@@ -241,28 +241,19 @@ export class HybridPipelineRunner {
           throw new Error(`Circular or unresolvable dependency in modules: ${remaining.map(m => m.name).join(', ')}`);
         }
 
-        this.log(`Running ${ready.length} module(s) in parallel: ${ready.map(m => m.name).join(', ')}`);
+        this.log(`Running ${ready.length} module(s) sequentially: ${ready.map(m => m.name).join(', ')}`);
 
-        const settled = await Promise.allSettled(
-          ready.map(async (m, i) => {
-            if (i > 0) await new Promise(r => setTimeout(r, i * 5000));
+        for (const m of ready) {
+          try {
             const result = await this.delegateAgent('builder', this.builderTask(m));
-            return { name: m.name, result };
-          }),
-        );
-        if (this._cancelled) return;
-
-        for (let i = 0; i < ready.length; i++) {
-          const m = ready[i];
-          const outcome = settled[i];
-          completed.add(m.name);
-          if (outcome.status === 'fulfilled') {
-            moduleResults.set(m.name, outcome.value.result);
-          } else {
-            const errMsg = outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason);
+            moduleResults.set(m.name, result);
+          } catch (err) {
+            const errMsg = err instanceof Error ? err.message : String(err);
             this.log(`Builder for ${m.name} failed: ${errMsg}`);
             moduleResults.set(m.name, `ERROR: Builder for module "${m.name}" failed — ${errMsg}. This module needs to be rebuilt.`);
           }
+          completed.add(m.name);
+          if (this._cancelled) return;
         }
 
         remaining = remaining.filter(m => !completed.has(m.name));
