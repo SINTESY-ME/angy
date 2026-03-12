@@ -54,6 +54,28 @@
             </p>
           </div>
 
+          <!-- Complexity (only active for hybrid/Create pipeline) -->
+          <div>
+            <label class="text-[11px] font-medium text-[var(--text-muted)] uppercase tracking-wider">Complexity</label>
+            <select
+              v-model="draft.complexity"
+              :disabled="draft.pipelineType !== 'hybrid'"
+              class="mt-1 w-full text-sm px-2 py-1.5 rounded border border-[var(--border-subtle)]
+                     bg-[var(--bg-base)] text-[var(--text-primary)]
+                     focus:outline-none focus:border-[var(--accent-mauve)] transition-colors
+                     disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <option value="trivial">Trivial</option>
+              <option value="small">Small</option>
+              <option value="medium">Medium</option>
+              <option value="large">Large</option>
+              <option value="epic">Epic</option>
+            </select>
+            <p class="mt-1 text-[10px] text-[var(--text-muted)]">
+              {{ complexityDescriptions[draft.complexity] }}
+            </p>
+          </div>
+
           <!-- Description -->
           <div>
             <label class="text-[11px] font-medium text-[var(--text-muted)] uppercase tracking-wider">Description</label>
@@ -97,38 +119,21 @@
           Configuration
         </button>
         <div v-show="configOpen" class="space-y-3">
-          <!-- Priority & Complexity row -->
-          <div class="grid grid-cols-2 gap-3">
-            <div>
-              <label class="text-[11px] font-medium text-[var(--text-muted)] uppercase tracking-wider">Priority</label>
-              <select
-                v-model="draft.priorityHint"
-                class="mt-1 w-full text-sm px-2 py-1.5 rounded border border-[var(--border-subtle)]
-                       bg-[var(--bg-base)] text-[var(--text-primary)]
-                       focus:outline-none focus:border-[var(--accent-mauve)] transition-colors"
-              >
-                <option value="critical">Critical</option>
-                <option value="high">High</option>
-                <option value="medium">Medium</option>
-                <option value="low">Low</option>
-                <option value="none">None</option>
-              </select>
-            </div>
-            <div>
-              <label class="text-[11px] font-medium text-[var(--text-muted)] uppercase tracking-wider">Complexity</label>
-              <select
-                v-model="draft.complexity"
-                class="mt-1 w-full text-sm px-2 py-1.5 rounded border border-[var(--border-subtle)]
-                       bg-[var(--bg-base)] text-[var(--text-primary)]
-                       focus:outline-none focus:border-[var(--accent-mauve)] transition-colors"
-              >
-                <option value="trivial">Trivial</option>
-                <option value="small">Small</option>
-                <option value="medium">Medium</option>
-                <option value="large">Large</option>
-                <option value="epic">Epic</option>
-              </select>
-            </div>
+          <!-- Priority -->
+          <div>
+            <label class="text-[11px] font-medium text-[var(--text-muted)] uppercase tracking-wider">Priority</label>
+            <select
+              v-model="draft.priorityHint"
+              class="mt-1 w-full text-sm px-2 py-1.5 rounded border border-[var(--border-subtle)]
+                     bg-[var(--bg-base)] text-[var(--text-primary)]
+                     focus:outline-none focus:border-[var(--accent-mauve)] transition-colors"
+            >
+              <option value="critical">Critical</option>
+              <option value="high">High</option>
+              <option value="medium">Medium</option>
+              <option value="low">Low</option>
+              <option value="none">None</option>
+            </select>
           </div>
 
           <!-- Model -->
@@ -386,6 +391,14 @@ const pipelineDescriptions: Record<EpicPipelineType, string> = {
   fix: 'Diagnose → Debug → Fix → Test → Review',
   investigate: 'Analyze → Investigate → Report (read-only)',
   plan: 'Analyze → Design → Plan (read-only)',
+};
+
+const complexityDescriptions: Record<ComplexityEstimate, string> = {
+  trivial: 'Single builder, no architect. For typo fixes and one-line changes.',
+  small: 'Light architect, one builder pass. For small features or bug fixes.',
+  medium: 'Full architect + scoped builders. For features spanning backend or frontend.',
+  large: 'Multi-turn architect + design system + scoped builders. For large features.',
+  epic: 'Full pipeline with verification protocol + integration testing. For new projects.',
 };
 
 function pipelineButtonStyle(ptValue: EpicPipelineType) {

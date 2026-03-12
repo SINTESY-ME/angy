@@ -23,6 +23,7 @@ import type { OrchestratorEvents } from './Orchestrator';
 import type { HeadlessHandle } from './HeadlessHandle';
 import type { ProcessManager } from './ProcessManager';
 import type { SessionService } from './SessionService';
+import type { ComplexityEstimate } from './KosTypes';
 import type { TechProfile } from './TechDetector';
 import { buildTechPromptPrefix } from './TechDetector';
 import { engineBus } from './EventBus';
@@ -61,8 +62,9 @@ const INCREMENT_SCHEMA = {
           files: { type: 'array', items: { type: 'string' } },
           task: { type: 'string' },
           verification: { type: 'string' },
+          scope: { type: 'string', enum: ['scaffold', 'backend', 'frontend'] },
         },
-        required: ['name', 'description', 'files', 'task', 'verification'],
+        required: ['name', 'description', 'files', 'task', 'verification', 'scope'],
       },
     },
   },
@@ -102,6 +104,7 @@ interface IncrementPlan {
     files: string[];
     task: string;
     verification: string;
+    scope: 'scaffold' | 'backend' | 'frontend';
   }>;
 }
 
@@ -124,6 +127,7 @@ export interface HybridPipelineOptions {
   model?: string;
   epicId: string;
   autoProfiles: TechProfile[];
+  complexity: ComplexityEstimate;
 }
 
 // ── Runner ───────────────────────────────────────────────────────────────
@@ -140,6 +144,7 @@ export class HybridPipelineRunner {
   private model: string | undefined;
   private epicId: string;
   private autoProfiles: TechProfile[];
+  private complexity: ComplexityEstimate;
 
   private _running = false;
   private _cancelled = false;
@@ -152,6 +157,7 @@ export class HybridPipelineRunner {
   private counterpartSessionId: string | null = null;
   private architectSessionId: string | null = null;
   private _goal = '';
+  private approvedPlan = '';
 
   static readonly AGENT_TIMEOUT_MS = 120 * 60 * 1000;
 
@@ -163,6 +169,7 @@ export class HybridPipelineRunner {
     this.model = opts.model;
     this.epicId = opts.epicId;
     this.autoProfiles = opts.autoProfiles;
+    this.complexity = opts.complexity;
 
     this.handle.onDelegateFinished = (childSid, result) => {
       this.sessions.persistSession(childSid);
@@ -204,51 +211,166 @@ export class HybridPipelineRunner {
     this._goal = goal;
 
     try {
+      const features = this.getPipelineFeatures();
+      this.log(`Pipeline features for complexity "${this.complexity}": architectTurns=${features.architectTurns}, useCounterpart=${features.useCounterpart}, useSplitter=${features.useSplitter}, useScopedBuilders=${features.useScopedBuilders}`);
+
+      // ── Trivial: skip architect, single builder + tester ─────────
+      if (this.complexity === 'trivial') {
+        this.setPhase('implementing');
+        this.log('Trivial complexity: direct builder + tester');
+
+        await this.delegateAgent('builder', `Implement the following:\n\n# Goal\n${goal}\n\n# Acceptance Criteria\n${acceptanceCriteria}\n\nThis is a trivial change. Make the minimal fix and verify it compiles.`);
+        if (this._cancelled) return;
+
+        this.setPhase('testing');
+        const testerOutput = await this.delegateAgent('tester', this.testTask());
+        if (this._cancelled) return;
+        const testResult = await this.extractTestResult(testerOutput);
+
+        if (!testResult.buildPassed || !testResult.testsPassed) {
+          const failureText = (testResult.failures || []).join('\n');
+          await this.delegateAgent('builder', this.fixTask(`Test failures:\n${failureText}\n\nFull tester output:\n${testerOutput}`));
+          if (this._cancelled) return;
+        }
+
+        this._running = false;
+        this.setPhase('completed');
+        this.events.emit('artifactsCollected', { childOutputs: this.childOutputs });
+        this.events.emit('completed', { summary: `Trivial pipeline completed for epic ${this.epicId}.` });
+        return;
+      }
+
       // ── Phase 1: Plan ──────────────────────────────────────────
       this.setPhase('planning');
       this.log('Phase 1: Architect planning');
 
-      let plan = await this.delegateArchitect(this.architectTask(goal, acceptanceCriteria));
-      if (this._cancelled) return;
+      let plan: string;
 
-      this.setPhase('verifying plan');
-      let planVerdict = await this.extractVerdict(
-        await this.delegateCounterpart(this.planReviewTask(plan, acceptanceCriteria)),
-      );
-      if (this._cancelled) return;
-
-      let revisionCycles = 0;
-      while (this.isChallenged(planVerdict) && revisionCycles < 5) {
-        revisionCycles++;
-        this.log(`Plan challenged (cycle ${revisionCycles}/2), revising`);
-        this.setPhase(`revising plan (cycle ${revisionCycles})`);
-
-        const issueText = this.formatIssues(planVerdict);
-        const rewrittenPlan = await this.delegateArchitect(this.revisionTask(plan, issueText));
+      if (features.architectTurns === 1) {
+        // Small/medium: single architect turn (structure only)
+        plan = await this.delegateArchitect(this.architectStructureTask(goal, acceptanceCriteria));
+        if (this._cancelled) return;
+      } else {
+        // Large/epic: multi-turn architect (structure → design → verification)
+        const structurePlan = await this.delegateArchitect(this.architectStructureTask(goal, acceptanceCriteria));
         if (this._cancelled) return;
 
-        // Full rewrite replaces the plan — no additive layering.
-        // The architect's persistent session has full context; its output
-        // is a complete, self-contained plan that supersedes the previous one.
-        plan = rewrittenPlan;
+        // Counterpart challenge loop on structural plan
+        if (features.useCounterpart) {
+          this.setPhase('verifying plan');
+          let planVerdict = await this.extractVerdict(
+            await this.delegateCounterpart(this.planReviewTask(structurePlan, acceptanceCriteria)),
+          );
+          if (this._cancelled) return;
 
-        this.setPhase('re-verifying plan');
-        planVerdict = await this.extractVerdict(
+          let revisionCycles = 0;
+          while (this.isChallenged(planVerdict) && revisionCycles < 5) {
+            revisionCycles++;
+            this.log(`Plan challenged (cycle ${revisionCycles}), revising`);
+            this.setPhase(`revising plan (cycle ${revisionCycles})`);
+
+            const issueText = this.formatIssues(planVerdict);
+            plan = await this.delegateArchitect(this.revisionTask(structurePlan, issueText));
+            if (this._cancelled) return;
+
+            this.setPhase('re-verifying plan');
+            planVerdict = await this.extractVerdict(
+              await this.delegateCounterpart(this.planReviewTask(plan, acceptanceCriteria)),
+            );
+            if (this._cancelled) return;
+          }
+        }
+
+        // Use latest plan from architect session (may have been revised)
+        const latestStructurePlan = this.childOutputs
+          .filter(c => c.role === 'architect')
+          .pop()?.output || structurePlan;
+
+        // Turn 2: Design system (only if frontend)
+        const hasFrontend = await this.detectFrontendScope(latestStructurePlan);
+        let designPlan = '';
+        if (hasFrontend && features.useDesignSystem) {
+          this.setPhase('designing UI');
+          this.log('Architect Turn 2: Design system');
+          designPlan = await this.delegateArchitect(this.architectDesignTask(latestStructurePlan));
+          if (this._cancelled) return;
+        }
+
+        // Turn 3: Verification protocol
+        if (features.useVerificationProtocol) {
+          this.setPhase('creating verification protocol');
+          this.log('Architect Turn 3: Verification protocol');
+          const verificationPlan = await this.delegateArchitect(this.architectVerificationTask(latestStructurePlan, designPlan));
+          if (this._cancelled) return;
+
+          plan = this.assembleFullPlan(latestStructurePlan, designPlan, verificationPlan);
+        } else {
+          plan = designPlan ? `${latestStructurePlan}\n\n---\n\n# DESIGN SYSTEM\n\n${designPlan}` : latestStructurePlan;
+        }
+      }
+
+      // Counterpart challenge loop (for small: skip; for medium+: run)
+      if (features.useCounterpart && features.architectTurns === 1) {
+        this.setPhase('verifying plan');
+        let planVerdict = await this.extractVerdict(
           await this.delegateCounterpart(this.planReviewTask(plan, acceptanceCriteria)),
+        );
+        if (this._cancelled) return;
+
+        let revisionCycles = 0;
+        while (this.isChallenged(planVerdict) && revisionCycles < 5) {
+          revisionCycles++;
+          this.log(`Plan challenged (cycle ${revisionCycles}), revising`);
+          this.setPhase(`revising plan (cycle ${revisionCycles})`);
+
+          const issueText = this.formatIssues(planVerdict);
+          plan = await this.delegateArchitect(this.revisionTask(plan, issueText));
+          if (this._cancelled) return;
+
+          this.setPhase('re-verifying plan');
+          planVerdict = await this.extractVerdict(
+            await this.delegateCounterpart(this.planReviewTask(plan, acceptanceCriteria)),
+          );
+          if (this._cancelled) return;
+        }
+      }
+
+      // Light counterpart sanity check on the fully assembled plan (large/epic only)
+      if (features.architectTurns >= 3 && features.useCounterpart) {
+        this.setPhase('final plan validation');
+        this.log('Light counterpart check on assembled plan');
+        await this.extractVerdict(
+          await this.delegateCounterpart(this.fullPlanSanityCheck(plan, acceptanceCriteria)),
         );
         if (this._cancelled) return;
       }
 
-      const approvedPlan = plan;
+      this.approvedPlan = plan;
       this.architectSessionId = null;
-      this.log('Plan approved, splitting into increments');
+      this.log('Plan approved');
 
-      // ── Split plan into sequential increments ──────────────────
-      this.setPhase('splitting plan');
-      const incrementPlan = await this.splitIntoIncrements(approvedPlan);
-      this.validateIncrements(incrementPlan.increments);
-      const increments = incrementPlan.increments;
-      this.log(`Plan split into ${increments.length} increments: ${increments.map(inc => inc.name).join(', ')}`);
+      // ── Split plan into sequential increments (or synthetic single increment) ──
+      let increments: IncrementPlan['increments'];
+
+      if (features.useSplitter) {
+        this.setPhase('splitting plan');
+        this.log('Splitting into increments');
+        const incrementPlan = await this.splitIntoIncrements(this.approvedPlan);
+        this.validateIncrements(incrementPlan.increments);
+        increments = incrementPlan.increments;
+        this.log(`Plan split into ${increments.length} increments: ${increments.map(inc => `${inc.name}[${inc.scope}]`).join(', ')}`);
+      } else {
+        // Small: no splitter, single synthetic fullstack increment
+        increments = [{
+          name: 'implementation',
+          description: `Implement the full plan`,
+          files: [],
+          task: `Implement the following plan:\n\n${plan}`,
+          verification: 'Project compiles cleanly and all tests pass',
+          scope: 'backend' as const,
+        }];
+        this.log('No splitter (small complexity): single synthetic increment');
+      }
 
       // ── Phase 2: Incremental Build ─────────────────────────────
       this.setPhase('implementing');
@@ -258,17 +380,20 @@ export class HybridPipelineRunner {
 
       for (let i = 0; i < increments.length; i++) {
         const inc = increments[i];
-        this.setPhase(`building increment ${i + 1}/${increments.length}: ${inc.name}`);
-        this.log(`Increment ${i + 1}/${increments.length}: ${inc.name}`);
+        this.setPhase(`building increment ${i + 1}/${increments.length}: ${inc.name} [${inc.scope}]`);
+        this.log(`Increment ${i + 1}/${increments.length}: ${inc.name} [${inc.scope}]`);
         if (this._cancelled) return;
 
+        const builderRole = features.useScopedBuilders ? `builder-${inc.scope}` : 'builder';
+        const testerRole = features.useScopedBuilders ? `tester-${inc.scope}` : 'tester';
+
         // 2a. Builder implements this increment
-        let builderOutput = await this.delegateAgent('builder', this.incrementTask(inc, i, increments.length));
+        let builderOutput = await this.delegateAgent(builderRole, this.incrementTask(inc, i, increments.length));
         if (this._cancelled) return;
 
         // 2b. Verify (compile check / smoke test)
         this.setPhase(`verifying increment ${i + 1}/${increments.length}: ${inc.name}`);
-        let verifyResult = await this.verifyIncrement(inc);
+        let verifyResult = await this.verifyIncrementWithRole(inc, testerRole);
         if (this._cancelled) return;
 
         // 2c. Fix loop if verification fails (max 3 cycles per increment)
@@ -279,13 +404,13 @@ export class HybridPipelineRunner {
           this.setPhase(`fixing increment ${i + 1}: ${inc.name} (cycle ${incrementFixCycles})`);
 
           const fixIssues = (verifyResult.errors || []).join('\n') || 'Verification failed — see above.';
-          builderOutput = await this.delegateAgent('builder', this.fixTask(
+          builderOutput = await this.delegateAgent(builderRole, this.fixTask(
             `Increment "${inc.name}" failed verification.\n\n## Errors\n${fixIssues}\n\n## Verification criteria\n${inc.verification}\n\n## Files involved\n${inc.files.join('\n')}`,
           ));
           if (this._cancelled) return;
 
           this.setPhase(`re-verifying increment ${i + 1}: ${inc.name} (cycle ${incrementFixCycles})`);
-          verifyResult = await this.verifyIncrement(inc);
+          verifyResult = await this.verifyIncrementWithRole(inc, testerRole);
           if (this._cancelled) return;
         }
 
@@ -293,7 +418,7 @@ export class HybridPipelineRunner {
           this.log(`Increment "${inc.name}" still failing after ${incrementFixCycles} fix cycles — continuing to next increment`);
         }
 
-        incrementResults.push(`## Increment ${i + 1}: ${inc.name}\n\n${builderOutput}`);
+        incrementResults.push(`## Increment ${i + 1}: ${inc.name} [${inc.scope}]\n\n${builderOutput}`);
       }
 
       const allBuilderOutput = incrementResults.join('\n\n---\n\n');
@@ -303,14 +428,14 @@ export class HybridPipelineRunner {
       this.log('Phase 3: Counterpart review');
 
       let codeVerdict = await this.extractVerdict(
-        await this.delegateCounterpart(this.codeReviewTask(approvedPlan, allBuilderOutput, acceptanceCriteria)),
+        await this.delegateCounterpart(this.codeReviewTask(this.approvedPlan, allBuilderOutput, acceptanceCriteria)),
       );
       if (this._cancelled) return;
 
       let fixCycles = 0;
       while (this.hasChangesRequested(codeVerdict) && fixCycles < 20) {
         fixCycles++;
-        this.log(`Changes requested (cycle ${fixCycles}/3), fixing`);
+        this.log(`Changes requested (cycle ${fixCycles}), fixing`);
         this.setPhase(`fixing (cycle ${fixCycles})`);
 
         const fixIssues = this.formatIssues(codeVerdict);
@@ -325,93 +450,91 @@ export class HybridPipelineRunner {
       }
 
       // ── Phase 4: Final Verification (test → review → fix loop) ──
-      this.setPhase('testing');
-      this.log('Phase 4: Testing');
+      if (features.usePhase4Test) {
+        this.setPhase('testing');
+        this.log('Phase 4: Testing');
 
-      let phase4Cycles = 0;
-      const MAX_PHASE4_CYCLES = 20;
+        let phase4Cycles = 0;
+        const MAX_PHASE4_CYCLES = 20;
 
-      // Step 1: Initial test
-      let lastTesterOutput = await this.delegateAgent('tester', this.testTask());
-      if (this._cancelled) return;
-      let lastTestResult = await this.extractTestResult(lastTesterOutput);
-
-      // Fix test failures if needed
-      while ((!lastTestResult.buildPassed || !lastTestResult.testsPassed) && phase4Cycles < MAX_PHASE4_CYCLES) {
-        phase4Cycles++;
-        this.log(`Tests failed (cycle ${phase4Cycles}/${MAX_PHASE4_CYCLES}), fixing`);
-        this.setPhase(`fixing test failures (cycle ${phase4Cycles})`);
-
-        const failureText = (lastTestResult.failures || []).join('\n');
-        await this.delegateAgent('builder', this.fixTask(`Test failures:\n${failureText}\n\nFull tester output:\n${lastTesterOutput}`));
+        let lastTesterOutput = await this.delegateAgent('tester', this.testTask());
         if (this._cancelled) return;
+        let lastTestResult = await this.extractTestResult(lastTesterOutput);
 
-        lastTesterOutput = await this.delegateAgent('tester', this.testTask());
-        if (this._cancelled) return;
-        lastTestResult = await this.extractTestResult(lastTesterOutput);
-      }
+        while ((!lastTestResult.buildPassed || !lastTestResult.testsPassed) && phase4Cycles < MAX_PHASE4_CYCLES) {
+          phase4Cycles++;
+          this.log(`Tests failed (cycle ${phase4Cycles}/${MAX_PHASE4_CYCLES}), fixing`);
+          this.setPhase(`fixing test failures (cycle ${phase4Cycles})`);
 
-      if (!lastTestResult.buildPassed || !lastTestResult.testsPassed) {
-        this._running = false;
-        this.setPhase('failed');
-        this.events.emit('failed', { reason: `Tests still failing after ${phase4Cycles} fix cycles` });
-        return;
-      }
-
-      // Step 2: Counterpart final review + fix loop (same pattern as Phase 3)
-      this.setPhase('final review');
-      this.log('Phase 4: Final counterpart review');
-
-      let finalVerdict = await this.extractVerdict(
-        await this.delegateCounterpart(this.finalReviewTask(goal, acceptanceCriteria)),
-      );
-      if (this._cancelled) return;
-
-      while (this.hasChangesRequested(finalVerdict) && phase4Cycles < MAX_PHASE4_CYCLES) {
-        phase4Cycles++;
-        this.log(`Final review requested changes (cycle ${phase4Cycles}/${MAX_PHASE4_CYCLES}), fixing`);
-        this.setPhase(`final fixes (cycle ${phase4Cycles})`);
-
-        const finalIssues = this.formatIssues(finalVerdict);
-        const fixResult = await this.delegateAgent('builder', this.fixTask(finalIssues));
-        if (this._cancelled) return;
-
-        // Re-test after fix
-        this.setPhase(`re-testing (cycle ${phase4Cycles})`);
-        const retestOutput = await this.delegateAgent('tester', this.testTask());
-        if (this._cancelled) return;
-        const retestResult = await this.extractTestResult(retestOutput);
-
-        if (!retestResult.buildPassed || !retestResult.testsPassed) {
-          this.log(`Tests failed after fix cycle ${phase4Cycles}, fixing tests`);
-          const failureText = (retestResult.failures || []).join('\n');
-          await this.delegateAgent('builder', this.fixTask(`Test failures after review fix:\n${failureText}\n\nFull tester output:\n${retestOutput}`));
+          const failureText = (lastTestResult.failures || []).join('\n');
+          await this.delegateAgent('builder', this.fixTask(`Test failures:\n${failureText}\n\nFull tester output:\n${lastTesterOutput}`));
           if (this._cancelled) return;
 
-          const reRetestOutput = await this.delegateAgent('tester', this.testTask());
+          lastTesterOutput = await this.delegateAgent('tester', this.testTask());
           if (this._cancelled) return;
-          const reRetestResult = await this.extractTestResult(reRetestOutput);
-          if (!reRetestResult.buildPassed || !reRetestResult.testsPassed) {
-            this._running = false;
-            this.setPhase('failed');
-            this.events.emit('failed', { reason: `Tests failing after final review fix cycle ${phase4Cycles}` });
-            return;
-          }
+          lastTestResult = await this.extractTestResult(lastTesterOutput);
         }
 
-        // Counterpart re-verifies the fixes
-        this.setPhase(`counterpart re-verifying (cycle ${phase4Cycles})`);
-        finalVerdict = await this.extractVerdict(
-          await this.delegateCounterpart(this.recheckTask(finalIssues, fixResult)),
+        if (!lastTestResult.buildPassed || !lastTestResult.testsPassed) {
+          this._running = false;
+          this.setPhase('failed');
+          this.events.emit('failed', { reason: `Tests still failing after ${phase4Cycles} fix cycles` });
+          return;
+        }
+
+        // Counterpart final review + fix loop
+        this.setPhase('final review');
+        this.log('Phase 4: Final counterpart review');
+
+        let finalVerdict = await this.extractVerdict(
+          await this.delegateCounterpart(this.finalReviewTask(goal, acceptanceCriteria)),
         );
         if (this._cancelled) return;
-      }
 
-      if (this.hasChangesRequested(finalVerdict)) {
-        this._running = false;
-        this.setPhase('failed');
-        this.events.emit('failed', { reason: `Counterpart still requesting changes after ${phase4Cycles} Phase 4 cycles` });
-        return;
+        while (this.hasChangesRequested(finalVerdict) && phase4Cycles < MAX_PHASE4_CYCLES) {
+          phase4Cycles++;
+          this.log(`Final review requested changes (cycle ${phase4Cycles}/${MAX_PHASE4_CYCLES}), fixing`);
+          this.setPhase(`final fixes (cycle ${phase4Cycles})`);
+
+          const finalIssues = this.formatIssues(finalVerdict);
+          const fixResult = await this.delegateAgent('builder', this.fixTask(finalIssues));
+          if (this._cancelled) return;
+
+          this.setPhase(`re-testing (cycle ${phase4Cycles})`);
+          const retestOutput = await this.delegateAgent('tester', this.testTask());
+          if (this._cancelled) return;
+          const retestResult = await this.extractTestResult(retestOutput);
+
+          if (!retestResult.buildPassed || !retestResult.testsPassed) {
+            this.log(`Tests failed after fix cycle ${phase4Cycles}, fixing tests`);
+            const failureText = (retestResult.failures || []).join('\n');
+            await this.delegateAgent('builder', this.fixTask(`Test failures after review fix:\n${failureText}\n\nFull tester output:\n${retestOutput}`));
+            if (this._cancelled) return;
+
+            const reRetestOutput = await this.delegateAgent('tester', this.testTask());
+            if (this._cancelled) return;
+            const reRetestResult = await this.extractTestResult(reRetestOutput);
+            if (!reRetestResult.buildPassed || !reRetestResult.testsPassed) {
+              this._running = false;
+              this.setPhase('failed');
+              this.events.emit('failed', { reason: `Tests failing after final review fix cycle ${phase4Cycles}` });
+              return;
+            }
+          }
+
+          this.setPhase(`counterpart re-verifying (cycle ${phase4Cycles})`);
+          finalVerdict = await this.extractVerdict(
+            await this.delegateCounterpart(this.recheckTask(finalIssues, fixResult)),
+          );
+          if (this._cancelled) return;
+        }
+
+        if (this.hasChangesRequested(finalVerdict)) {
+          this._running = false;
+          this.setPhase('failed');
+          this.events.emit('failed', { reason: `Counterpart still requesting changes after ${phase4Cycles} Phase 4 cycles` });
+          return;
+        }
       }
 
       // ── Done ───────────────────────────────────────────────────
@@ -419,7 +542,7 @@ export class HybridPipelineRunner {
       this.setPhase('completed');
       this.events.emit('artifactsCollected', { childOutputs: this.childOutputs });
 
-      const summary = `Hybrid pipeline completed for epic ${this.epicId}. ` +
+      const summary = `Hybrid pipeline completed for epic ${this.epicId} (complexity: ${this.complexity}). ` +
         `${increments.length} increments built, ` +
         `${fixCycles} fix cycle(s), tests passed, counterpart approved.`;
 
@@ -434,6 +557,21 @@ export class HybridPipelineRunner {
       this.events.emit('failed', { reason });
       console.error('[HybridPipeline] Fatal error:', reason);
     }
+  }
+
+  // ── Pipeline feature flags based on complexity ───────────────────────
+
+  private getPipelineFeatures() {
+    const c = this.complexity;
+    return {
+      architectTurns: (c === 'trivial') ? 0 : (c === 'small' || c === 'medium') ? 1 : 3,
+      useCounterpart: c !== 'trivial' && c !== 'small',
+      useSplitter: c !== 'trivial' && c !== 'small',
+      useScopedBuilders: c !== 'trivial' && c !== 'small',
+      useDesignSystem: c === 'large' || c === 'epic',
+      useVerificationProtocol: c === 'large' || c === 'epic',
+      usePhase4Test: c !== 'trivial',
+    };
   }
 
   // ── Agent delegation ────────────────────────────────────────────────
@@ -601,29 +739,35 @@ export class HybridPipelineRunner {
 
 # Rules
 
-1. Increments are ORDERED — each builds on the codebase state left by the previous increment.
-2. Each increment MUST be independently verifiable: after building it, we run a check (compile, smoke test, curl, etc.) to confirm it works before moving on.
-3. Increments CAN mix backend and frontend. Group by feature slice, not tech layer. E.g. "Add user auth" = backend JWT middleware + frontend login page.
-4. Use 4-8 increments for typical projects. Start with scaffold/foundation, end with polish/integration.
-5. Increment names must be short, lowercase, dash-separated identifiers (e.g. "scaffold", "data-layer", "core-api", "auth", "frontend-shell", "dashboard").
-6. The "verification" field describes the specific check to run: "project compiles with no errors", "server starts and GET /health returns 200", "POST /api/users returns 201 with valid body", etc. Be concrete.
-7. The "files" field lists files this increment will CREATE or MODIFY. Later increments may modify files from earlier ones — that is expected.
-8. Small artifacts (README, docker-compose, config) belong in the earliest increment that needs them (usually "scaffold").
+1. Each increment MUST have a "scope": "scaffold", "backend", or "frontend".
+   - "scaffold" = infrastructure (containerization, configs, build files, integration test script). Always first if needed.
+   - "backend" = server-side (routes, services, data layer, jobs, realtime). No UI files.
+   - "frontend" = client-side (views, components, state, routing, styles). No server files.
+2. Do NOT mix backend and frontend files in the same increment.
+3. Ordering: scaffold first (if needed), then all backend, then all frontend. This ensures the frontend builder can read the completed backend code.
+4. Number of increments depends on task size: 1 for a small change (single scope), 2-3 for a medium feature, 3-6 for a large build. Do NOT artificially split a small fix into multiple scopes.
+5. Only include scaffold scope if the task requires infrastructure changes (new project setup, containerization, CI config). For tasks on existing projects that just add features, skip scaffold.
+6. Increments are ORDERED — each builds on the codebase state left by the previous increment.
+7. Each increment MUST be independently verifiable: after building it, we run a check (compile, smoke test, curl, etc.) to confirm it works before moving on.
+8. Increment names must be short, lowercase, dash-separated identifiers (e.g. "scaffold", "data-layer", "core-api", "auth", "frontend-shell", "dashboard").
+9. The "verification" field describes the specific check to run. Be concrete. Use the VERIFICATION PROTOCOL section to inform verification criteria.
+10. The "files" field lists files this increment will CREATE or MODIFY.
+11. Use the DESIGN SYSTEM section (if present) to inform frontend increment task descriptions.
 
 # Example
 
-Increment 1: "scaffold" — project structure, configs, Dockerfile, docker-compose
-  verification: "docker compose build succeeds with no errors"
-Increment 2: "data-layer" — database schema, models, migrations
+Increment 1: "scaffold" (scope: scaffold) — project structure, configs, Dockerfile, docker-compose, integration test script
+  verification: "docker compose build succeeds, integration test script runs clean-slate check"
+Increment 2: "data-layer" (scope: backend) — database schema, models, migrations
   verification: "migrations run clean, server starts without errors"
-Increment 3: "core-api" — CRUD endpoints for main entities
-  verification: "POST /api/items returns 201, GET /api/items returns list"
-Increment 4: "auth" — JWT middleware, login/register endpoints, protected routes
+Increment 3: "core-api" (scope: backend) — CRUD endpoints for main entities
+  verification: "POST /api/items returns 201, GET /api/items returns list with exact response envelope"
+Increment 4: "auth" (scope: backend) — JWT middleware, login/register endpoints, protected routes
   verification: "POST /api/auth/register returns 201, POST /api/auth/login returns token"
-Increment 5: "frontend-shell" — app skeleton, routing, layout, auth pages
-  verification: "npm run build succeeds, app serves without errors"
-Increment 6: "frontend-features" — dashboard, data views, forms wired to API
-  verification: "full build succeeds, app renders main views"
+Increment 5: "frontend-shell" (scope: frontend) — app skeleton, routing, layout, auth pages with design system applied
+  verification: "npm run build succeeds, app serves with styled content (not raw markup)"
+Increment 6: "frontend-features" (scope: frontend) — dashboard, data views, forms wired to API, loading/empty/error states
+  verification: "full build succeeds, app renders main views with styled data"
 
 # Plan to split
 
@@ -643,22 +787,27 @@ ${plan}`,
     return result;
   }
 
-  private async verifyIncrement(
+  private async verifyIncrementWithRole(
     increment: IncrementPlan['increments'][0],
+    testerRole: string,
   ): Promise<VerifyResult> {
     this.emitInternalCall('verifyIncrement', 'started');
 
-    const testerOutput = await this.delegateAgent('tester',
+    const planContext = this.approvedPlan
+      ? `\n\n## Approved Plan (for reference)\n${this.approvedPlan}`
+      : '';
+
+    const testerOutput = await this.delegateAgent(testerRole,
       `Verify this increment works. Run ONLY the verification described below — do not run the full test suite or do a comprehensive review. This is a quick smoke test.
 
-## Increment: ${increment.name}
+## Increment: ${increment.name} [${increment.scope}]
 ${increment.description}
 
 ## Verification to perform
 ${increment.verification}
 
 ## Files changed
-${increment.files.join('\n')}
+${increment.files.join('\n')}${planContext}
 
 Report whether verification passed or failed, with specific errors if any.`,
     );
@@ -737,10 +886,16 @@ Report whether verification passed or failed, with specific errors if any.`,
 
   // ── Task templates ──────────────────────────────────────────────────
 
-  private architectTask(goal: string, acceptanceCriteria: string): string {
+  private architectStructureTask(goal: string, acceptanceCriteria: string): string {
     return `Analyze the codebase and design a solution for this epic.
 
 IMPORTANT: Assess the specification's completeness before planning. If the input already contains detailed schemas, API contracts, state machines, and component definitions, your plan should reorganize the spec into module-scoped builder tasks rather than redesign from scratch. Preserve the spec's terminology, field names, and structure — do not reinterpret or rename things. Minimize your interpretation layer. If the input is a vague goal, design the full solution as you normally would.
+
+IMPORTANT: Assess whether this is a new project or an existing project. If existing, read the codebase first, respect existing conventions, and only include scopes that the task actually requires (do not force scaffold/backend/frontend if only one is needed).
+
+The plan will be executed by three specialized builder types — scaffold (infrastructure), backend (server-side), and frontend (client-side). Structure file ownership so that each file is owned by exactly one scope.
+
+Integration contracts MUST specify the EXACT response envelope structure including nesting depth so frontend and backend builders agree on the wire format without needing to read each other's code.
 
 # Goal
 ${goal}
@@ -748,16 +903,14 @@ ${goal}
 # Acceptance Criteria
 ${acceptanceCriteria}
 
-# Required Plan Structure
-
-Produce a structured plan with ALL of these sections:
+# Required Output (produce ONLY these sections)
 
 ## EXECUTION PLAN
-Ordered steps grouped by parallelizable modules.
+Ordered steps grouped by scope (scaffold, backend, frontend). Mark each step with its scope.
 
 ## FILE OWNERSHIP MATRIX
-Which module owns which files. No overlaps between modules.
-Small artifacts (README, docker-compose, config files) belong to the nearest substantial module.
+Which scope owns which files. No overlaps between scopes.
+Small artifacts (README, docker-compose, config files) belong to the scaffold scope.
 
 ## CONVENTIONS DISCOVERED
 Patterns that all builders must follow (naming, imports, error handling, etc.).
@@ -770,10 +923,67 @@ For each API endpoint, specify:
 - HTTP method, path, and purpose
 - Request body schema with required/optional fields and types
 - Validation rules (which fields are required, non-empty, constrained)
-- Response shape for success and error cases (status codes + body)
+- Response shape for success and error cases — specify EXACT envelope structure including nesting depth, field names, and status codes
 - WebSocket events emitted (event name + payload shape)
 
-Be specific and actionable. A fresh builder with no prior context must be able to implement their module from this plan alone.`;
+Be specific and actionable. A fresh builder with no prior context must be able to implement their scope from this plan alone.`;
+  }
+
+  private architectDesignTask(structurePlan: string): string {
+    return `You already have the structural plan in context from your previous turn. Now produce the DESIGN SYSTEM section.
+
+This section will be given to frontend builders to ensure a cohesive visual identity.
+
+If this is an existing project, read existing views/components and describe the existing design language rather than inventing a new one.
+
+# Structural Plan (for reference)
+${structurePlan}
+
+# Required Output (produce ONLY the DESIGN SYSTEM section)
+
+## DESIGN SYSTEM
+
+- **Color palette**: As CSS custom properties or framework utility classes
+- **Typography**: Font family, heading scale, body size, weight conventions
+- **Component patterns**: Card style, form layout, table/list style, button variants, badge/chip style
+- **Layout structure**: Sidebar/topbar, responsive breakpoints, page structure
+- **Visual tone**: Description of the overall aesthetic
+- **Loading states**: Skeleton vs spinner, placement
+- **Empty states**: Icon + text pattern
+- **Error states**: Inline field errors, toast notifications, full-page errors, API error banners`;
+  }
+
+  private architectVerificationTask(structurePlan: string, designPlan: string): string {
+    const designContext = designPlan ? `\n# Design Plan (for reference)\n${designPlan}` : '';
+    return `You already have the structural plan in context from your previous turns. Now produce the VERIFICATION PROTOCOL section.
+
+This section will be used by testers to verify the complete implementation works end-to-end.
+
+# Structural Plan (for reference)
+${structurePlan}${designContext}
+
+# Required Output (produce ONLY the VERIFICATION PROTOCOL section)
+
+## VERIFICATION PROTOCOL
+
+- **Start commands**: Exact commands to build and start all services from clean state
+- **Health checks**: For each service: endpoint/command + expected response
+- **Data setup**: Migration + seed commands, what seed data is created with counts
+- **Test credentials**: Email + password for test users
+- **Smoke steps**: Numbered list — each step: what to do, what to verify, expected data. Must cover at minimum: login flow, main data list, create flow, and (if applicable) real-time update verification
+- **Teardown**: Exact commands to stop and clean up`;
+  }
+
+  private assembleFullPlan(structure: string, design: string, verification: string): string {
+    const parts = [`# SYSTEM ARCHITECTURE\n\n${structure}`];
+    if (design) parts.push(`# DESIGN SYSTEM\n\n${design}`);
+    parts.push(`# VERIFICATION PROTOCOL\n\n${verification}`);
+    return parts.join('\n\n---\n\n');
+  }
+
+  private async detectFrontendScope(plan: string): Promise<boolean> {
+    const frontendKeywords = /frontend|\.vue|\.tsx|\.jsx|\.svelte|component|view|UI|user interface|tailwind|CSS/i;
+    return frontendKeywords.test(plan);
   }
 
   private planReviewTask(plan: string, acceptanceCriteria: string): string {
@@ -792,13 +1002,38 @@ Verify ALL of the following:
 2. No spec deviations — the plan implements exactly what is required
 3. Module boundaries have no file ownership overlaps
 4. Integration contracts specify request/response schemas with validation rules
-5. Plan is specific enough for a fresh builder to follow without ambiguity
-6. No missing modules or endpoints
-7. Error handling and edge cases are addressed
+5. Integration contracts specify the EXACT response envelope structure (nesting depth, field names, status codes) so frontend and backend builders agree on the wire format
+6. Response shapes are unambiguous — a frontend builder reading them must produce stores that destructure correctly WITHOUT reading backend code
+7. File ownership has no cross-scope conflicts (e.g., scaffold-owned file that backend needs to modify)
+8. Plan is specific enough for a fresh builder to follow without ambiguity
+9. No missing modules or endpoints
+10. Error handling and edge cases are addressed
 
 End with:
 - VERDICT: APPROVED — if the plan passes all checks
 - VERDICT: CHALLENGED — followed by numbered issues with severity (CRITICAL/MAJOR/NIT)`;
+  }
+
+  private fullPlanSanityCheck(plan: string, acceptanceCriteria: string): string {
+    return `Quick validation of the fully assembled plan (structure + design + verification).
+
+# Acceptance Criteria
+${acceptanceCriteria}
+
+# Assembled Plan
+${plan}
+
+# Quick Checks (this is a lightweight validation, not a full challenge)
+
+Verify:
+1. Verification Protocol is present with all required fields (start commands, health checks, data setup, test credentials, smoke steps, teardown)
+2. Design System is present if the plan includes frontend work
+3. Smoke steps cover at minimum: login flow, main data view, create flow
+4. No contradictions between the structural plan and the verification protocol
+
+End with:
+- VERDICT: APPROVED — if the plan is internally consistent
+- VERDICT: CHALLENGED — if critical fields are missing or contradictory`;
   }
 
   private revisionTask(_originalPlan: string, issues: string): string {
@@ -825,7 +1060,38 @@ The result must have zero internal contradictions.`;
     index: number,
     total: number,
   ): string {
-    return `## Increment ${index + 1} of ${total}: ${increment.name}
+    let scopeGuidance = '';
+
+    if (increment.scope === 'scaffold') {
+      scopeGuidance = `\n## Scope: Infrastructure (scaffold)
+
+You MUST produce an integration test script that starts all services from zero, waits for health checks, runs data setup, verifies connectivity, and tears down cleanly.
+
+Self-check: verify services start from a clean state (no leftover containers, volumes, or data).`;
+    } else if (increment.scope === 'backend') {
+      scopeGuidance = `\n## Scope: Backend
+
+Follow integration contracts EXACTLY — response envelope shapes, field names, and status codes must match the documented structure so frontend builders can depend on them without reading your code.
+
+Self-check: compilation must be clean before finishing.`;
+    } else if (increment.scope === 'frontend') {
+      scopeGuidance = `\n## Scope: Frontend — UI Quality Requirements
+
+- Apply the Design System section (if present in the plan) for a cohesive visual identity. For existing projects, match the existing visual style and component patterns.
+- Every data view MUST have loading, empty, and error states.
+- Use icons for visual richness. Create visual hierarchy (headings, spacing, color accents).
+- Ensure the style pipeline is fully wired (CSS entry point exists and is imported).
+- READ the actual backend code to verify response shapes before writing stores/API calls.
+- "Minimal" does NOT mean "visually sparse" — minimal means clean and focused, not bare.
+
+Self-check: start the dev server and confirm styled content renders (not raw unstyled markup).`;
+    }
+
+    const planContext = this.approvedPlan
+      ? `\n\n## Full Approved Plan\n${this.approvedPlan}`
+      : '';
+
+    return `## Increment ${index + 1} of ${total}: ${increment.name} [${increment.scope}]
 
 ${increment.task}
 
@@ -834,6 +1100,7 @@ ${increment.files.join('\n')}
 
 ## Verification Criteria
 After implementing, this will be verified by: ${increment.verification}
+${scopeGuidance}
 
 ## Self-Check (REQUIRED before finishing)
 
@@ -843,7 +1110,7 @@ After implementing all files, you MUST verify your work:
 3. If a Dockerfile exists, verify it builds: docker compose build <service>
 4. Confirm the verification criteria above would pass
 
-Do NOT finish until your increment compiles cleanly.`;
+Do NOT finish until your increment compiles cleanly.${planContext}`;
   }
 
   private codeReviewTask(plan: string, builderOutputs: string, acceptanceCriteria: string): string {
@@ -891,18 +1158,31 @@ End with:
   }
 
   private testTask(): string {
+    const planSection = this.approvedPlan
+      ? `\n# Approved Plan (includes Verification Protocol)\n${this.approvedPlan}`
+      : '';
+
     return `Verify this project works end-to-end at ${this.workspace}.
 
 # Full Specification
 ${this._goal}
+${planSection}
 
 # Procedure
 
-1. START: Launch the application using its standard method (look for docker-compose.yml, Makefile, package.json scripts, etc.). Wait for all services to be healthy.
+1. START: Launch the application using its standard method (look for docker-compose.yml, Makefile, package.json scripts, etc.). If the Verification Protocol above specifies start commands, use those. Wait for all services to be healthy.
 2. VERIFY REQUIREMENTS: Read the specification above and identify every testable requirement. For each one, verify it by actually interacting with the running application — hit endpoints, open URLs, send data, check responses.
-3. ADVERSARIAL: Send malformed inputs, missing fields, boundary values to every endpoint and input surface. Check for crashes, unhandled errors, security issues.
-4. LOGS: Check all container/process logs for errors, warnings, stack traces.
-5. CLEANUP: Stop the application when done.
+3. BROWSER VERIFICATION: For smoke steps that involve UI, open the URL in a browser, verify styled content renders (not raw markup), attempt login with test credentials from the Verification Protocol, navigate to listed pages.
+4. ADVERSARIAL: Send malformed inputs, missing fields, boundary values to every endpoint and input surface. Check for crashes, unhandled errors, security issues.
+5. REGRESSION: If this is an existing project, also verify previously working functionality has not regressed.
+6. LOGS: Check all container/process logs for errors, warnings, stack traces.
+7. CLEANUP: Stop the application when done.
+
+# Critical Rules
+
+- NEVER mock, stub, or intercept backend APIs in integration or E2E tests. If a test fails because the backend is unreachable, report that as the failure — do not work around it.
+- NEVER modify existing tests to make them pass — report the failure instead.
+- If the Verification Protocol includes smoke steps, follow them exactly and report each step's result.
 
 For each requirement, report PASS or FAIL with evidence (actual HTTP responses, log output, screenshots of terminal output).
 

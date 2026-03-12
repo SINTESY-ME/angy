@@ -714,6 +714,7 @@ export class AngyEngine {
       model: epic.model || undefined,
       epicId,
       autoProfiles: detectedProfiles,
+      complexity: epic.complexity,
     });
 
     // Create a root session for the pipeline
