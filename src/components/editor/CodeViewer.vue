@@ -1,7 +1,7 @@
 <template>
   <div class="flex flex-col h-full bg-[var(--bg-base)]">
-    <!-- Tab bar (hidden when no files open) -->
-    <div v-if="tabs.length > 0"
+    <!-- Tab bar (hidden when no files open, or when hideChrome is true) -->
+    <div v-if="tabs.length > 0 && !hideChrome"
          class="flex items-center border-b border-[var(--border-subtle)] bg-[var(--bg-surface)] overflow-x-auto">
       <div v-for="tab in tabs" :key="tab.filePath"
            class="group tab flex items-center gap-1 px-3 py-1.5 text-xs cursor-pointer border-r border-[var(--border-subtle)] whitespace-nowrap select-none"
@@ -16,7 +16,7 @@
     </div>
 
     <!-- Breadcrumb bar -->
-    <div v-if="activeFile" class="flex items-center border-b border-[var(--border-subtle)]">
+    <div v-if="activeFile && !hideChrome" class="flex items-center border-b border-[var(--border-subtle)]">
       <BreadcrumbBar :filePath="activeFile" :rootPath="rootPath" class="flex-1" />
       <button
         v-if="isMarkdownFile"
@@ -69,6 +69,14 @@ import { getMonacoTheme, detectLanguage } from './monacoSetup';
 import { useEditorStore } from '../../stores/editor';
 
 const md = new MarkdownIt({ html: false, linkify: true, breaks: false });
+
+// ── Props ─────────────────────────────────────────────────────────────────
+
+withDefaults(defineProps<{
+  hideChrome?: boolean;
+}>(), {
+  hideChrome: false,
+});
 
 // ── Emits ─────────────────────────────────────────────────────────────────
 
@@ -546,6 +554,8 @@ defineExpose({
   selectedText: selectedTextFn,
   openFiles: openFilesList,
   setRootPath,
+  tabs,        // reactive ref<EditorTab[]> — lets CodeEditorPane render its own tab bar
+  activeFile,  // reactive ref<string> — lets CodeEditorPane watch active file
 });
 </script>
 

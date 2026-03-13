@@ -23,6 +23,11 @@
       @enter-mission-control="onEnterMissionControl"
     />
 
+    <!-- Code view: standalone 3-panel layout -->
+    <CodeView
+      v-else-if="ui.viewMode === 'code' && ui.workspacePath"
+    />
+
     <!-- Workspace-dependent views: show selector until a workspace is chosen -->
     <WorkspaceSelector v-else-if="!ui.workspacePath" />
 
@@ -98,6 +103,7 @@ import TerminalPanel from './components/terminal/TerminalPanel.vue';
 import SettingsDialog from './components/settings/SettingsDialog.vue';
 import NotificationToast from './components/home/NotificationToast.vue';
 import AgentsView from './components/agents/AgentsView.vue';
+import CodeView from './components/code/CodeView.vue';
 import { useUiStore } from './stores/ui';
 import { useThemeStore } from './stores/theme';
 import { useSessionsStore, getDatabase, initSessionEngines } from './stores/sessions';
@@ -579,7 +585,7 @@ function onGitFileDiffReady({ filePath, staged, diff }: { filePath: string; stag
   ui.showDiffView(filePath, diff.oldContent, diff.newContent, 'HEAD', rightLabel);
   // Ensure code pane is visible in editor mode
   if (ui.viewMode === 'code') {
-    // diff will show in Panel 2 via MainSplitter
+    // TODO: handle diff view in CodeView — currently a no-op for code mode
   } else {
     // In agents mode, show as inline preview
     ui.inlinePreviewFile = filePath;
