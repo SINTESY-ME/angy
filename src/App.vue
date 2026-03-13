@@ -9,7 +9,7 @@
         @open-scheduler-config="kanbanViewRef?.openSchedulerConfig()"
         @toggle-git-ops="kanbanViewRef?.toggleGitOps()"
         @toggle-merge-mode="kanbanViewRef?.toggleMergeMode()" />
-      <ManagerActions v-else-if="ui.viewMode === 'manager'"
+      <ManagerActions v-else-if="ui.viewMode === 'agents'"
         @new-agent="onNewChat()"
         @enter-mission-control="onEnterMissionControl()" />
       <MissionControlActions v-else-if="ui.viewMode === 'mission-control'"
@@ -319,7 +319,7 @@ function onKeepToday() {
 
 async function onFileClicked(filePath: string) {
   // In manager mode, show inline preview instead of switching to editor
-  if (ui.viewMode === 'manager') {
+  if (ui.viewMode === 'agents') {
     ui.inlinePreviewFile = filePath;
     ui.currentFile = filePath;
     await nextTick();
@@ -575,10 +575,10 @@ function onGitFileDiffReady({ filePath, staged, diff }: { filePath: string; stag
   const rightLabel = staged ? 'Staged' : 'Working Tree';
   ui.showDiffView(filePath, diff.oldContent, diff.newContent, 'HEAD', rightLabel);
   // Ensure code pane is visible in editor mode
-  if (ui.viewMode === 'editor') {
+  if (ui.viewMode === 'code') {
     // diff will show in Panel 2 via MainSplitter
   } else {
-    // In manager mode, show as inline preview
+    // In agents mode, show as inline preview
     ui.inlinePreviewFile = filePath;
   }
 }

@@ -202,8 +202,8 @@ const graphStore = useGraphStore();
 
 // ── Computed ──────────────────────────────────────────────────────────────
 
-const inManager = computed(() => ui.viewMode === 'manager');
-const inEditor = computed(() => ui.viewMode === 'editor');
+const inManager = computed(() => ui.viewMode === 'agents');
+const inEditor = computed(() => ui.viewMode === 'code');
 const showCodePane = computed(() => inEditor.value || (inManager.value && (!!ui.inlinePreviewFile || !!ui.diffView)));
 
 // Pane constraints — allow collapse when panel is toggled off
@@ -248,7 +248,7 @@ const MANAGER_PREVIEW       = [21, 0, 58,  0, 21];
 const panelSizes = ref([...MANAGER_DEFAULTS]);
 
 function computeDefaults(): number[] {
-  if (ui.viewMode === 'manager') {
+  if (ui.viewMode === 'agents') {
     if (ui.inlinePreviewFile || ui.diffView) return [...MANAGER_PREVIEW];
     return ui.effectsPanelVisible ? [...MANAGER_DEFAULTS] : [...MANAGER_NO_EFFECTS];
   }

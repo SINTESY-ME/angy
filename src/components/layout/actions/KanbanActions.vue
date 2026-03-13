@@ -47,7 +47,7 @@
              text-[var(--text-secondary)] hover:text-[var(--text-primary)]
              hover:border-[var(--border-standard)] transition-colors"
       title="Go to Agent Fleet"
-      @click="goToMode('manager')"
+      @click="goToMode('agents')"
     >
       <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
@@ -64,7 +64,7 @@
              text-[var(--text-secondary)] hover:text-[var(--text-primary)]
              hover:border-[var(--border-standard)] transition-colors"
       title="Go to Code Editor"
-      @click="goToMode('editor')"
+      @click="goToMode('code')"
     >
       <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <polyline points="16 18 22 12 16 6" />
@@ -140,7 +140,7 @@ import { useProjectsStore } from '@/stores/projects';
 const ui = useUiStore();
 const projectsStore = useProjectsStore();
 
-function goToMode(mode: 'manager' | 'editor') {
+function goToMode(mode: 'agents' | 'code') {
   if (ui.activeProjectId) {
     const repos = projectsStore.reposByProjectId(ui.activeProjectId);
     if (repos.length > 0) {

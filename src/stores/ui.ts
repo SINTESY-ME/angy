@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 
-export type ViewMode = 'home' | 'kanban' | 'manager' | 'editor' | 'mission-control';
+export type ViewMode = 'home' | 'kanban' | 'agents' | 'code' | 'mission-control';
 
 export interface AppNotification {
   id: string
@@ -55,7 +55,7 @@ export const useUiStore = defineStore('ui', () => {
   }
 
   function toggleViewMode() {
-    switchToMode(viewMode.value === 'manager' ? 'editor' : 'manager');
+    switchToMode(viewMode.value === 'agents' ? 'code' : 'agents');
   }
 
   function toggleTerminal() {
@@ -87,7 +87,7 @@ export const useUiStore = defineStore('ui', () => {
   }
 
   function exitMissionControl() {
-    viewMode.value = 'manager';
+    viewMode.value = 'agents';
     missionControlFilter.value = null;
   }
 
@@ -149,7 +149,7 @@ export const useUiStore = defineStore('ui', () => {
   function navigateToEpic(epicId: string, projectId: string) {
     activeProjectId.value = projectId;
     activeEpicId.value = epicId;
-    viewMode.value = 'manager';
+    viewMode.value = 'agents';
   }
 
   function navigateToKanban(projectId: string) {

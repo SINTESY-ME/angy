@@ -97,7 +97,7 @@ const ui = useUiStore();
 function onOpenWorkspace() {
   ui.activeProjectId = null;
   ui.workspacePath = '';
-  ui.switchToMode('manager');
+  ui.switchToMode('agents');
 }
 
 const showNewProject = ref(false);

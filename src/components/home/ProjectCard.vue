@@ -158,7 +158,7 @@ function goToCode() {
   if (repos.length > 0) {
     ui.workspacePath = repos[0].path;
   }
-  ui.switchToMode('editor');
+  ui.switchToMode('code');
 }
 
 function goToFleet() {
@@ -167,6 +167,6 @@ function goToFleet() {
   if (repos.length > 0) {
     ui.workspacePath = repos[0].path;
   }
-  ui.switchToMode('manager');
+  ui.switchToMode('agents');
 }
 </script>

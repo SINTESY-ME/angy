@@ -18,9 +18,9 @@ export function useKeyboard() {
       if (ui.inlinePreviewFile) {
         e.preventDefault();
         ui.inlinePreviewFile = null;
-      } else if (ui.viewMode === 'editor') {
+      } else if (ui.viewMode === 'code') {
         e.preventDefault();
-        ui.switchToMode('manager');
+        ui.switchToMode('agents');
       }
     }
 
@@ -40,6 +40,41 @@ export function useKeyboard() {
     if (meta && e.key === ',') {
       e.preventDefault();
       window.dispatchEvent(new CustomEvent('angy:open-settings'));
+    }
+
+    // Cmd+1: Projects (home)
+    if (meta && e.key === '1') {
+      e.preventDefault();
+      ui.navigateHome();
+      return;
+    }
+
+    // Cmd+2: Kanban board
+    if (meta && e.key === '2') {
+      e.preventDefault();
+      if (ui.activeProjectId) ui.switchToMode('kanban');
+      return;
+    }
+
+    // Cmd+3: Agents view
+    if (meta && e.key === '3') {
+      e.preventDefault();
+      if (ui.activeProjectId) ui.switchToMode('agents');
+      return;
+    }
+
+    // Cmd+4: Code view
+    if (meta && e.key === '4') {
+      e.preventDefault();
+      if (ui.activeProjectId) ui.switchToMode('code');
+      return;
+    }
+
+    // Cmd+K: Command palette
+    if (meta && e.key === 'k') {
+      e.preventDefault();
+      window.dispatchEvent(new CustomEvent('angy:command-palette'));
+      return;
     }
   }
 

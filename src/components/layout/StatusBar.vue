@@ -2,53 +2,6 @@
   <div class="flex items-center justify-between h-7 px-4 bg-[var(--bg-surface)] border-t border-[var(--border-subtle)] text-[10px]">
     <!-- Left side -->
     <div class="flex items-center gap-3">
-      <!-- Navigation buttons -->
-      <div class="flex items-center gap-0.5">
-        <button
-          @click="ui.navigateHome()"
-          class="px-2 py-0.5 rounded text-[10px] font-medium transition-colors"
-          :class="ui.viewMode === 'home'
-            ? 'text-[var(--accent-mauve)] bg-[color-mix(in_srgb,var(--accent-mauve)_15%,transparent)]'
-            : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'"
-        >Projects</button>
-
-        <button
-          @click="goToKanban"
-          :disabled="!ui.activeProjectId"
-          class="px-2 py-0.5 rounded text-[10px] font-medium transition-colors"
-          :class="!ui.activeProjectId
-            ? 'text-[var(--text-faint)] opacity-40 cursor-not-allowed'
-            : ui.viewMode === 'kanban'
-              ? 'text-[var(--accent-mauve)] bg-[color-mix(in_srgb,var(--accent-mauve)_15%,transparent)]'
-              : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'"
-        >Kanban</button>
-
-        <button
-          @click="goToAgents"
-          :disabled="!ui.activeProjectId"
-          class="px-2 py-0.5 rounded text-[10px] font-medium transition-colors"
-          :class="!ui.activeProjectId
-            ? 'text-[var(--text-faint)] opacity-40 cursor-not-allowed'
-            : (ui.viewMode === 'manager' || ui.viewMode === 'mission-control')
-              ? 'text-[var(--accent-mauve)] bg-[color-mix(in_srgb,var(--accent-mauve)_15%,transparent)]'
-              : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'"
-        >Agents</button>
-
-        <button
-          @click="goToCode"
-          :disabled="!ui.activeProjectId"
-          class="px-2 py-0.5 rounded text-[10px] font-medium transition-colors"
-          :class="!ui.activeProjectId
-            ? 'text-[var(--text-faint)] opacity-40 cursor-not-allowed'
-            : ui.viewMode === 'editor'
-              ? 'text-[var(--accent-mauve)] bg-[color-mix(in_srgb,var(--accent-mauve)_15%,transparent)]'
-              : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'"
-        >Code</button>
-      </div>
-
-      <!-- Separator -->
-      <div class="w-px h-3 bg-[var(--border-primary)] mx-1.5" v-if="ui.activeProjectId"></div>
-
       <!-- Contextual info -->
       <template v-if="ui.viewMode === 'home'">
         <span class="text-[var(--text-muted)]">{{ projectsStore.projects.length }} project{{ projectsStore.projects.length !== 1 ? 's' : '' }}</span>
@@ -87,11 +40,11 @@
     <!-- Right side -->
     <div class="flex items-center gap-3">
       <!-- Model: only in manager/editor where agents run -->
-      <span v-if="ui.viewMode === 'manager' || ui.viewMode === 'editor'" class="text-[var(--text-faint)]">{{ ui.currentModel }}</span>
+      <span v-if="ui.viewMode === 'agents' || ui.viewMode === 'code'" class="text-[var(--text-faint)]">{{ ui.currentModel }}</span>
 
       <!-- Panel toggles: only in manager/editor -->
       <button
-        v-if="ui.viewMode === 'manager'"
+        v-if="ui.viewMode === 'agents'"
         @click="ui.toggleEffectsPanel()"
         class="flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-medium transition-colors"
         :class="ui.effectsPanelVisible
@@ -106,7 +59,7 @@
         Effects
       </button>
       <button
-        v-else-if="ui.viewMode === 'editor'"
+        v-else-if="ui.viewMode === 'code'"
         @click="ui.toggleEditorChat()"
         class="flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-medium transition-colors"
         :class="ui.editorChatVisible
@@ -155,32 +108,6 @@ const currentFileName = computed(() => {
   if (!ui.currentFile) return '';
   return ui.currentFile.split('/').pop() || ui.currentFile;
 });
-
-function ensureWorkspace() {
-  if (ui.activeProjectId) {
-    const repos = projectsStore.reposByProjectId(ui.activeProjectId);
-    if (repos.length > 0 && !ui.workspacePath) {
-      ui.workspacePath = repos[0].path;
-    }
-  }
-}
-
-function goToKanban() {
-  if (!ui.activeProjectId) return;
-  ui.navigateToKanban(ui.activeProjectId);
-}
-
-function goToAgents() {
-  if (!ui.activeProjectId) return;
-  ensureWorkspace();
-  ui.switchToMode('manager');
-}
-
-function goToCode() {
-  if (!ui.activeProjectId) return;
-  ensureWorkspace();
-  ui.switchToMode('editor');
-}
 
 async function openFolder() {
   const selected = await open({
