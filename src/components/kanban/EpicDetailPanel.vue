@@ -1,7 +1,7 @@
 <template>
-  <div class="h-full w-[480px] flex flex-col border-l border-[var(--border-subtle)] bg-[var(--bg-window)]">
+  <div class="h-full w-[480px] flex flex-col border-l border-[var(--border-subtle)] bg-[var(--bg-window)]" style="box-shadow: var(--shadow-lg)">
     <!-- Header -->
-    <div class="flex items-center justify-between px-5 py-3 border-b border-[var(--border-subtle)]">
+    <div class="flex items-center justify-between px-5 h-10 border-b border-[var(--border-subtle)]">
       <span class="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider">
         {{ isNew ? 'New Epic' : 'Epic Details' }}
       </span>
@@ -19,10 +19,10 @@
 
       <!-- SECTION 1: Definition (always open, no collapse) -->
       <section class="space-y-3">
-        <h3 class="text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">Definition</h3>
+        <h3 class="text-[var(--text-xs)] font-semibold text-[var(--text-muted)] uppercase tracking-wider">Definition</h3>
           <!-- Title -->
           <div>
-            <label class="text-[11px] font-medium text-[var(--text-muted)] uppercase tracking-wider">Title</label>
+            <label class="text-[var(--text-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wider">Title</label>
             <input
               ref="titleInput"
               v-model="draft.title"
@@ -34,12 +34,12 @@
 
           <!-- Pipeline Type -->
           <div>
-            <label class="text-[11px] font-medium text-[var(--text-muted)] uppercase tracking-wider">Pipeline</label>
+            <label class="text-[var(--text-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wider">Pipeline</label>
             <div class="mt-1 flex items-center gap-1">
               <button
                 v-for="pt in pipelineTypes"
                 :key="pt.value"
-                class="flex-1 text-[10px] py-1.5 rounded border font-medium transition-colors"
+                class="flex-1 text-[var(--text-xs)] py-2 rounded border font-medium transition-colors"
                 :class="draft.pipelineType !== pt.value
                   ? 'text-[var(--text-muted)] bg-[var(--bg-base)] border-[var(--border-subtle)] hover:text-[var(--text-secondary)]'
                   : ''"
@@ -49,14 +49,14 @@
                 {{ pt.label }}
               </button>
             </div>
-            <p class="mt-1 text-[10px] text-[var(--text-muted)]">
+            <p class="mt-1 text-[var(--text-xs)] text-[var(--text-muted)]">
               {{ pipelineDescriptions[draft.pipelineType] }}
             </p>
           </div>
 
           <!-- Complexity (only active for hybrid/Create pipeline) -->
           <div>
-            <label class="text-[11px] font-medium text-[var(--text-muted)] uppercase tracking-wider">Complexity</label>
+            <label class="text-[var(--text-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wider">Complexity</label>
             <select
               v-model="draft.complexity"
               :disabled="draft.pipelineType !== 'hybrid'"
@@ -71,14 +71,14 @@
               <option value="large">Large</option>
               <option value="epic">Epic</option>
             </select>
-            <p class="mt-1 text-[10px] text-[var(--text-muted)]">
+            <p class="mt-1 text-[var(--text-xs)] text-[var(--text-muted)]">
               {{ complexityDescriptions[draft.complexity] }}
             </p>
           </div>
 
           <!-- Description -->
           <div>
-            <label class="text-[11px] font-medium text-[var(--text-muted)] uppercase tracking-wider">Description</label>
+            <label class="text-[var(--text-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wider">Description</label>
             <textarea
               v-model="draft.description"
               rows="6"
@@ -91,7 +91,7 @@
 
           <!-- Acceptance Criteria -->
           <div>
-            <label class="text-[11px] font-medium text-[var(--text-muted)] uppercase tracking-wider">Acceptance Criteria</label>
+            <label class="text-[var(--text-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wider">Acceptance Criteria</label>
             <textarea
               v-model="draft.acceptanceCriteria"
               rows="4"
@@ -106,7 +106,7 @@
       <!-- SECTION 2: Configuration (collapsible, default expanded) -->
       <section class="border-t border-[var(--border-subtle)] pt-4 space-y-3">
         <button
-          class="w-full flex items-center gap-1.5 text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider hover:text-[var(--text-secondary)] transition-colors"
+          class="w-full flex items-center gap-1.5 text-[var(--text-xs)] font-semibold text-[var(--text-muted)] uppercase tracking-wider hover:text-[var(--text-secondary)] transition-colors"
           @click="configOpen = !configOpen"
         >
           <svg
@@ -121,7 +121,7 @@
         <div v-show="configOpen" class="space-y-3">
           <!-- Priority -->
           <div>
-            <label class="text-[11px] font-medium text-[var(--text-muted)] uppercase tracking-wider">Priority</label>
+            <label class="text-[var(--text-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wider">Priority</label>
             <select
               v-model="draft.priorityHint"
               class="mt-1 w-full text-sm px-2 py-1.5 rounded border border-[var(--border-subtle)]
@@ -138,7 +138,7 @@
 
           <!-- Model -->
           <div>
-            <label class="text-[11px] font-medium text-[var(--text-muted)] uppercase tracking-wider">Model</label>
+            <label class="text-[var(--text-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wider">Model</label>
             <select
               v-model="draft.model"
               class="mt-1 w-full text-sm px-2 py-1.5 rounded border border-[var(--border-subtle)]
@@ -154,7 +154,7 @@
 
           <!-- Target Repos -->
           <div>
-            <label class="text-[11px] font-medium text-[var(--text-muted)] uppercase tracking-wider">Target Repos</label>
+            <label class="text-[var(--text-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wider">Target Repos</label>
             <div class="mt-1">
               <RepoScopeSelector
                 :projectId="epic.projectId"
@@ -166,7 +166,7 @@
           <!-- Auto branch -->
           <div>
             <div class="flex items-center justify-between">
-              <label class="text-[11px] font-medium text-[var(--text-muted)] uppercase tracking-wider">Auto branch</label>
+              <label class="text-[var(--text-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wider">Auto branch</label>
               <button
                 class="relative w-7 h-4 rounded-full transition-colors"
                 :class="draft.useGitBranch ? 'bg-[var(--accent-green)]' : 'bg-[var(--bg-raised)]'"
@@ -178,14 +178,14 @@
                 />
               </button>
             </div>
-            <p class="text-[10px] text-[var(--text-muted)] mt-1">
+            <p class="text-[var(--text-xs)] text-[var(--text-muted)] mt-1">
               {{ draft.useGitBranch ? 'Creates a branch for this epic, restores default when done' : 'Agents work on the current branch' }}
             </p>
           </div>
 
           <!-- Working branch -->
           <div v-if="branchName" class="flex items-center gap-2">
-            <label class="text-[11px] font-medium text-[var(--text-muted)] uppercase tracking-wider">Branch</label>
+            <label class="text-[var(--text-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wider">Branch</label>
             <span class="text-xs font-mono text-[var(--accent-green)] bg-[var(--bg-raised)] px-2 py-0.5 rounded select-all" :title="branchName">
               {{ branchName }}
             </span>
@@ -196,7 +196,7 @@
       <!-- SECTION 3: Scheduling (collapsible, default collapsed) -->
       <section class="border-t border-[var(--border-subtle)] pt-4 space-y-3">
         <button
-          class="w-full flex items-center gap-1.5 text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider hover:text-[var(--text-secondary)] transition-colors"
+          class="w-full flex items-center gap-1.5 text-[var(--text-xs)] font-semibold text-[var(--text-muted)] uppercase tracking-wider hover:text-[var(--text-secondary)] transition-colors"
           @click="schedOpen = !schedOpen"
         >
           <svg
@@ -211,7 +211,7 @@
         <div v-show="schedOpen" class="space-y-3">
           <!-- Column -->
           <div>
-            <label class="text-[11px] font-medium text-[var(--text-muted)] uppercase tracking-wider">Column</label>
+            <label class="text-[var(--text-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wider">Column</label>
             <select
               v-model="draft.column"
               class="mt-1 w-full text-sm px-2 py-1.5 rounded border border-[var(--border-subtle)]
@@ -226,7 +226,7 @@
 
           <!-- Run after -->
           <div>
-            <label class="text-[11px] font-medium text-[var(--text-muted)] uppercase tracking-wider">Run after</label>
+            <label class="text-[var(--text-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wider">Run after</label>
             <div class="mt-1">
               <div
                 v-if="draft.runAfter"
@@ -264,7 +264,7 @@
 
           <!-- Dependencies -->
           <div>
-            <label class="text-[11px] font-medium text-[var(--text-muted)] uppercase tracking-wider">Dependencies</label>
+            <label class="text-[var(--text-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wider">Dependencies</label>
             <div class="mt-1 space-y-1">
               <div
                 v-for="depId in draft.dependsOn"
@@ -381,14 +381,14 @@
         >
           {{ prLoading ? 'Pushing & Opening PR...' : 'Create Pull Request' }}
         </button>
-        <p v-if="prError" class="text-[10px] text-red-400">{{ prError }}</p>
+        <p v-if="prError" class="text-[var(--text-xs)] text-red-400">{{ prError }}</p>
       </div>
     </div>
 
     <!-- Footer actions -->
     <div v-if="epic" class="flex items-center gap-2 px-5 py-3 border-t border-[var(--border-subtle)]">
       <button
-        class="flex-1 text-xs py-1.5 rounded bg-[var(--accent-mauve)] text-[var(--bg-base)] font-medium
+        class="flex-1 text-[var(--text-sm)] py-2 rounded bg-[var(--accent-mauve)] text-[var(--bg-base)] font-medium
                hover:opacity-90 transition-opacity"
         @click="save"
       >
@@ -396,7 +396,7 @@
       </button>
       <button
         v-if="!isNew"
-        class="text-xs py-1.5 px-3 rounded border border-red-500/30 text-red-400
+        class="text-[var(--text-sm)] py-2 px-3 rounded border border-red-500/30 text-red-400
                hover:bg-red-500/10 transition-colors"
         @click="remove"
       >

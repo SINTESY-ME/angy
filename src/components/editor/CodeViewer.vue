@@ -41,7 +41,7 @@
       <!-- Empty state when no files -->
       <div v-if="tabs.length === 0"
            class="flex flex-col items-center justify-center h-full">
-        <div class="text-3xl mb-3 opacity-30">📄</div>
+        <svg class="w-10 h-10 mb-3 opacity-20 text-[var(--text-muted)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z"/><path d="M14 2v6h6"/></svg>
         <div class="text-sm text-[var(--text-muted)]">No file open</div>
         <div class="text-xs text-[var(--text-faint)] mt-1">Click a file in the Effects panel to view it</div>
       </div>

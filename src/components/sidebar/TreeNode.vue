@@ -1,18 +1,20 @@
 <template>
   <div>
     <div class="flex items-center gap-1 py-0.5 cursor-pointer hover:bg-white/[0.03] text-xs"
-         :style="{ paddingLeft: `${8 + depth * 12}px`, paddingRight: '8px' }"
+         :style="{ paddingLeft: `${8 + depth * 16}px`, paddingRight: '8px' }"
          @click="onClick"
          @dblclick="onDblClick"
          @contextmenu.prevent="showContextMenu">
       <!-- Expand arrow for directories -->
-      <span v-if="node.isDir" class="w-3 text-[var(--text-faint)] text-[10px] select-none">
-        {{ expanded ? '&#x25be;' : '&#x25b8;' }}
+      <span v-if="node.isDir" class="w-3 flex items-center justify-center text-[var(--text-faint)] select-none">
+        <svg v-if="expanded" class="w-2.5 h-2.5" viewBox="0 0 8 8" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 3L4 5L6 3"/></svg>
+        <svg v-else class="w-2.5 h-2.5" viewBox="0 0 8 8" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 2L5 4L3 6"/></svg>
       </span>
       <span v-else class="w-3"></span>
 
       <!-- Icon -->
-      <span class="text-xs shrink-0">{{ node.isDir ? '📁' : fileIcon }}</span>
+      <svg v-if="node.isDir" class="w-3.5 h-3.5 shrink-0 text-[var(--accent-yellow)]" viewBox="0 0 24 24" fill="currentColor"><path d="M10 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8l-2-2z"/></svg>
+      <svg v-else class="w-3.5 h-3.5 shrink-0" :class="fileIconColor" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z"/><path d="M14 2v6h6"/></svg>
 
       <!-- Name (or inline rename input) -->
       <input v-if="isRenaming" ref="renameInputRef"
@@ -25,18 +27,19 @@
       <span v-else class="flex-1 truncate" :class="nameClass">{{ node.name }}</span>
 
       <!-- Git status badge -->
-      <span v-if="gitStatus" class="text-[10px] font-bold shrink-0" :class="gitStatusColor">{{ gitStatus }}</span>
+      <span v-if="gitStatus" class="text-[var(--text-xs)] font-bold shrink-0" :class="gitStatusColor">{{ gitStatus }}</span>
 
       <!-- Change badge from DiffEngine -->
-      <span v-if="changeType" class="text-[10px] font-bold px-1 rounded shrink-0" :class="changeBadgeClass">{{ changeType }}</span>
+      <span v-if="changeType" class="text-[var(--text-xs)] font-bold px-1 rounded shrink-0" :class="changeBadgeClass">{{ changeType }}</span>
     </div>
 
     <!-- Inline create input (shown at top of children when creating) -->
     <div v-if="node.isDir && expanded && creatingType"
          class="flex items-center gap-1 py-0.5 text-xs"
-         :style="{ paddingLeft: `${8 + (depth + 1) * 12}px`, paddingRight: '8px' }">
+         :style="{ paddingLeft: `${8 + (depth + 1) * 16}px`, paddingRight: '8px' }">
       <span class="w-3"></span>
-      <span class="text-xs shrink-0">{{ creatingType === 'folder' ? '📁' : '📄' }}</span>
+      <svg v-if="creatingType === 'folder'" class="w-3.5 h-3.5 shrink-0 text-[var(--accent-yellow)]" viewBox="0 0 24 24" fill="currentColor"><path d="M10 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8l-2-2z"/></svg>
+      <svg v-else class="w-3.5 h-3.5 shrink-0 text-[var(--text-muted)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z"/><path d="M14 2v6h6"/></svg>
       <input ref="createInputRef"
              v-model="createName"
              :placeholder="creatingType === 'folder' ? 'folder name' : 'file name'"
@@ -59,23 +62,23 @@
     <!-- Context menu -->
     <Teleport to="body">
       <div v-if="contextMenuVisible"
-           class="fixed z-50 bg-[var(--bg-raised)] border border-[var(--border-standard)] rounded-md py-1 shadow-lg min-w-[160px]"
+           class="fixed z-50 bg-[var(--bg-raised)] border border-[var(--border-standard)] rounded-[var(--radius-md)] py-1 shadow-[var(--shadow-md)] min-w-[160px]"
            :style="{ left: `${contextMenuPos.x}px`, top: `${contextMenuPos.y}px` }"
            @click="contextMenuVisible = false">
         <!-- Directory-only actions -->
         <template v-if="node.isDir">
-          <button class="w-full text-left px-3 py-1.5 text-xs text-[var(--text-primary)] hover:bg-white/[0.06] transition-colors"
+          <button class="w-full text-left px-4 py-2 text-[var(--text-sm)] text-[var(--text-primary)] hover:bg-white/[0.06] transition-colors"
                   @click="startCreate('file')">New File</button>
-          <button class="w-full text-left px-3 py-1.5 text-xs text-[var(--text-primary)] hover:bg-white/[0.06] transition-colors"
+          <button class="w-full text-left px-4 py-2 text-[var(--text-sm)] text-[var(--text-primary)] hover:bg-white/[0.06] transition-colors"
                   @click="startCreate('folder')">New Folder</button>
           <div class="h-px bg-[var(--border-subtle)] my-1" />
         </template>
-        <button class="w-full text-left px-3 py-1.5 text-xs text-[var(--text-primary)] hover:bg-white/[0.06] transition-colors"
+        <button class="w-full text-left px-4 py-2 text-[var(--text-sm)] text-[var(--text-primary)] hover:bg-white/[0.06] transition-colors"
                 @click="startRename">Rename</button>
-        <button class="w-full text-left px-3 py-1.5 text-xs text-[var(--text-primary)] hover:bg-white/[0.06] transition-colors"
+        <button class="w-full text-left px-4 py-2 text-[var(--text-sm)] text-[var(--text-primary)] hover:bg-white/[0.06] transition-colors"
                 @click="copyPath">Copy Path</button>
         <div class="h-px bg-[var(--border-subtle)] my-1" />
-        <button class="w-full text-left px-3 py-1.5 text-xs text-[var(--accent-red)] hover:bg-white/[0.06] transition-colors"
+        <button class="w-full text-left px-4 py-2 text-[var(--text-sm)] text-[var(--accent-red)] hover:bg-white/[0.06] transition-colors"
                 @click="deleteNode">Delete</button>
       </div>
     </Teleport>
@@ -165,15 +168,19 @@ const nameClass = computed(() => {
   return 'text-[var(--text-primary)]';
 });
 
-const fileIcon = computed(() => {
+const fileIconColor = computed(() => {
   const ext = props.node.name.split('.').pop()?.toLowerCase();
-  const iconMap: Record<string, string> = {
-    ts: '🔷', tsx: '🔷', js: '🟡', jsx: '🟡',
-    vue: '💚', py: '🐍', rs: '🦀', go: '🔵',
-    json: '📋', md: '📝', css: '🎨', html: '🌐',
-    sh: '⚙️', yml: '⚙️', yaml: '⚙️', toml: '⚙️',
+  const colorMap: Record<string, string> = {
+    ts: 'text-[var(--accent-blue)]', tsx: 'text-[var(--accent-blue)]',
+    js: 'text-[var(--accent-yellow)]', jsx: 'text-[var(--accent-yellow)]',
+    vue: 'text-[var(--accent-green)]', py: 'text-[var(--accent-blue)]',
+    rs: 'text-[var(--accent-peach)]', go: 'text-[var(--accent-teal)]',
+    json: 'text-[var(--accent-yellow)]', md: 'text-[var(--text-muted)]',
+    css: 'text-[var(--accent-mauve)]', html: 'text-[var(--accent-peach)]',
+    sh: 'text-[var(--text-muted)]', yml: 'text-[var(--text-muted)]',
+    yaml: 'text-[var(--text-muted)]', toml: 'text-[var(--text-muted)]',
   };
-  return iconMap[ext || ''] || '📄';
+  return colorMap[ext || ''] || 'text-[var(--text-faint)]';
 });
 
 const SKIP_DIRS = new Set(['node_modules', 'target', 'build', 'dist', '.git', '__pycache__']);

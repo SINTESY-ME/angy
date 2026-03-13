@@ -55,7 +55,7 @@
     <!-- Tooltip overlay -->
     <div
       v-if="tooltip"
-      class="absolute z-20 pointer-events-none px-2.5 py-1.5 rounded bg-[var(--bg-raised)] border border-[var(--border-standard)] shadow-lg max-w-[220px]"
+      class="absolute z-20 pointer-events-none px-2.5 py-1.5 rounded-[var(--radius-sm)] bg-[var(--bg-raised)] border border-[var(--border-standard)] shadow-[var(--shadow-md)] max-w-[220px]"
       :style="{ left: tooltip.x + 'px', top: tooltip.y + 'px' }"
     >
       <div class="text-[11px] font-medium text-[var(--text-primary)]">{{ tooltip.title }}</div>

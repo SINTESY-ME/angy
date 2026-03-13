@@ -1,7 +1,7 @@
 <template>
   <div
     ref="popupEl"
-    class="absolute bottom-full left-4 mb-1 w-80 max-h-60 overflow-y-auto bg-[var(--bg-raised)] border border-[var(--border-standard)] rounded-lg shadow-lg z-50"
+    class="absolute bottom-full left-4 mb-1 w-80 max-h-60 overflow-y-auto bg-[var(--bg-raised)] border border-[var(--border-standard)] rounded-[var(--radius-md)] shadow-[var(--shadow-md)] z-50"
     @keydown="onKeydown"
   >
     <div class="p-2 border-b border-[var(--border-subtle)]">

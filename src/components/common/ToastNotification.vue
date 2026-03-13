@@ -4,7 +4,7 @@
       <div
         v-for="toast in toasts"
         :key="toast.id"
-        class="flex items-center gap-2 px-4 py-2.5 rounded-lg shadow-lg border max-w-sm"
+        class="flex items-center gap-2 px-4 py-2.5 rounded-[var(--radius-md)] shadow-[var(--shadow-md)] border max-w-sm"
         :class="toastClass(toast.type)"
       >
         <span class="text-xs">{{ toastIcon(toast.type) }}</span>

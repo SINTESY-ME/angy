@@ -1,12 +1,12 @@
 <template>
-  <div class="flex items-center justify-between h-7 px-4 bg-[var(--bg-surface)] border-t border-[var(--border-subtle)] text-[10px]">
+  <div class="flex items-center justify-between h-8 px-4 bg-[var(--bg-surface)] border-t border-[var(--border-subtle)] text-[var(--text-xs)]">
     <!-- Left side -->
     <div class="flex items-center gap-3">
       <!-- Navigation buttons -->
-      <div class="flex items-center gap-0.5">
+      <div class="flex items-center gap-4">
         <button
           @click="ui.navigateHome()"
-          class="px-2 py-0.5 rounded text-[10px] font-medium transition-colors"
+          class="px-2.5 py-1 rounded text-[var(--text-xs)] font-medium transition-colors"
           :class="ui.viewMode === 'home'
             ? 'text-[var(--accent-mauve)] bg-[color-mix(in_srgb,var(--accent-mauve)_15%,transparent)]'
             : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'"
@@ -15,7 +15,7 @@
         <button
           @click="goToKanban"
           :disabled="!ui.activeProjectId"
-          class="px-2 py-0.5 rounded text-[10px] font-medium transition-colors"
+          class="px-2.5 py-1 rounded text-[var(--text-xs)] font-medium transition-colors"
           :class="!ui.activeProjectId
             ? 'text-[var(--text-faint)] opacity-40 cursor-not-allowed'
             : ui.viewMode === 'kanban'
@@ -26,7 +26,7 @@
         <button
           @click="goToAgents"
           :disabled="!ui.activeProjectId"
-          class="px-2 py-0.5 rounded text-[10px] font-medium transition-colors"
+          class="px-2.5 py-1 rounded text-[var(--text-xs)] font-medium transition-colors"
           :class="!ui.activeProjectId
             ? 'text-[var(--text-faint)] opacity-40 cursor-not-allowed'
             : (ui.viewMode === 'manager' || ui.viewMode === 'mission-control')
@@ -37,7 +37,7 @@
         <button
           @click="goToCode"
           :disabled="!ui.activeProjectId"
-          class="px-2 py-0.5 rounded text-[10px] font-medium transition-colors"
+          class="px-2.5 py-1 rounded text-[var(--text-xs)] font-medium transition-colors"
           :class="!ui.activeProjectId
             ? 'text-[var(--text-faint)] opacity-40 cursor-not-allowed'
             : ui.viewMode === 'editor'
@@ -45,9 +45,6 @@
               : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'"
         >Code</button>
       </div>
-
-      <!-- Separator -->
-      <div class="w-px h-3 bg-[var(--border-primary)] mx-1.5" v-if="ui.activeProjectId"></div>
 
       <!-- Contextual info -->
       <template v-if="ui.viewMode === 'home'">
@@ -87,13 +84,13 @@
     <!-- Right side -->
     <div class="flex items-center gap-3">
       <!-- Model: only in manager/editor where agents run -->
-      <span v-if="ui.viewMode === 'manager' || ui.viewMode === 'editor'" class="text-[var(--text-faint)]">{{ ui.currentModel }}</span>
+      <span v-if="ui.viewMode === 'manager' || ui.viewMode === 'editor'" class="text-[var(--text-xs)] text-[var(--text-faint)]">{{ ui.currentModel }}</span>
 
       <!-- Panel toggles: only in manager/editor -->
       <button
         v-if="ui.viewMode === 'manager'"
         @click="ui.toggleEffectsPanel()"
-        class="flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-medium transition-colors"
+        class="flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[var(--text-xs)] font-medium transition-colors"
         :class="ui.effectsPanelVisible
           ? 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
           : 'text-[var(--text-faint)] hover:text-[var(--text-secondary)]'"
@@ -108,7 +105,7 @@
       <button
         v-else-if="ui.viewMode === 'editor'"
         @click="ui.toggleEditorChat()"
-        class="flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-medium transition-colors"
+        class="flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[var(--text-xs)] font-medium transition-colors"
         :class="ui.editorChatVisible
           ? 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
           : 'text-[var(--text-faint)] hover:text-[var(--text-secondary)]'"

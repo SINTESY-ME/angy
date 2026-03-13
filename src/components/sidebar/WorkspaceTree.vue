@@ -7,7 +7,7 @@
         <button
           v-for="repo in epicRepos"
           :key="repo.id"
-          class="text-[10px] px-1.5 py-0.5 rounded transition-colors"
+          class="text-[var(--text-xs)] px-1.5 py-0.5 rounded transition-colors"
           :class="activeRepoPath === repo.path
             ? 'bg-[var(--accent-mauve)]/20 text-[var(--accent-mauve)] font-semibold'
             : 'bg-[var(--bg-raised)] text-[var(--text-muted)] hover:text-[var(--text-secondary)]'"
@@ -49,7 +49,8 @@
     <div v-if="rootCreatingType" class="flex items-center gap-1 py-0.5 text-xs"
          :style="{ paddingLeft: '8px', paddingRight: '8px' }">
       <span class="w-3"></span>
-      <span class="text-xs shrink-0">{{ rootCreatingType === 'folder' ? '📁' : '📄' }}</span>
+      <svg v-if="rootCreatingType === 'folder'" class="w-3.5 h-3.5 shrink-0 text-[var(--accent-yellow)]" viewBox="0 0 24 24" fill="currentColor"><path d="M10 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8l-2-2z"/></svg>
+      <svg v-else class="w-3.5 h-3.5 shrink-0 text-[var(--text-muted)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z"/><path d="M14 2v6h6"/></svg>
       <input ref="rootCreateInputRef"
              v-model="rootCreateName"
              :placeholder="rootCreatingType === 'folder' ? 'folder name' : 'file name'"

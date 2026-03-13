@@ -1,15 +1,15 @@
 <template>
   <Teleport to="body">
-    <div v-if="visible" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60" @click.self="$emit('close')">
-      <div class="w-[640px] max-h-[80vh] bg-[var(--bg-window)] border border-[var(--border-standard)] rounded-xl shadow-2xl overflow-hidden flex flex-col">
+    <div v-if="visible" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" @click.self="$emit('close')">
+      <div class="w-[640px] max-w-[640px] max-h-[80vh] bg-[var(--bg-window)] border border-[var(--border-subtle)] rounded-[var(--radius-lg)] overflow-hidden flex flex-col" style="box-shadow: var(--shadow-lg)">
         <!-- Header -->
-        <div class="flex items-center justify-between px-5 py-3 border-b border-[var(--border-subtle)]">
+        <div class="flex items-center justify-between px-6 py-4 border-b border-[var(--border-subtle)]">
           <span class="text-sm font-medium text-[var(--text-primary)]">Settings</span>
           <button @click="$emit('close')" class="text-[var(--text-muted)] hover:text-[var(--text-secondary)]">✕</button>
         </div>
 
         <!-- Tabs -->
-        <div class="flex border-b border-[var(--border-subtle)]">
+        <div class="flex border-b border-[var(--border-subtle)] px-6">
           <button
             v-for="tab in tabs"
             :key="tab"
@@ -99,7 +99,7 @@
         </div>
 
         <!-- Other tabs: padded content wrapper -->
-        <div v-else class="flex-1 overflow-y-auto p-5 space-y-4">
+        <div v-else class="flex-1 overflow-y-auto p-6 space-y-4">
           <!-- General tab -->
           <template v-if="activeTab === 'General'">
             <div class="space-y-3">
@@ -250,7 +250,7 @@
         </div>
 
         <!-- Footer -->
-        <div class="flex justify-end gap-2 px-5 py-3 border-t border-[var(--border-subtle)]">
+        <div class="flex justify-end gap-2 px-6 py-4 border-t border-[var(--border-subtle)]">
           <template v-if="activeTab === 'Profiles'">
             <button @click="$emit('close')" class="text-xs px-4 py-1.5 rounded bg-[var(--accent-mauve)] text-[var(--bg-base)] font-medium">Close</button>
           </template>

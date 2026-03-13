@@ -7,7 +7,7 @@
     <div class="flex flex-1 overflow-hidden">
       <!-- Columns -->
       <div class="flex-1 flex flex-col overflow-hidden">
-        <SectionTip tipId="kanban-intro" title="Epic Board" icon="📋">
+        <SectionTip tipId="kanban-intro" title="Epic Board">
           <p>Drag epics across columns to manage their lifecycle. Move an epic to <strong>In Progress</strong> to start an AI orchestration pipeline. Epics in <strong>Review</strong> need your approval before completing.</p>
         </SectionTip>
         <div class="flex-1 flex gap-2 p-2 overflow-x-auto">
@@ -43,19 +43,19 @@
     <div
       v-if="mergeMode && selectedEpicIds.length > 0"
       class="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 px-5 py-2.5 rounded-xl
-             bg-[var(--bg-window)]/90 backdrop-blur-md border border-[var(--border-subtle)] shadow-2xl shadow-black/30"
+             bg-[var(--bg-window)]/90 backdrop-blur-md border border-[var(--border-subtle)] shadow-[var(--shadow-lg)]"
     >
       <span class="text-xs font-medium text-[var(--text-secondary)]">
         {{ selectedEpicIds.length }} epic{{ selectedEpicIds.length !== 1 ? 's' : '' }} selected
       </span>
       <button
-        class="px-3 py-1.5 text-xs rounded-lg font-medium bg-[var(--accent-teal)] text-white hover:opacity-90 transition-opacity"
+        class="px-3 py-1.5 text-xs rounded-[var(--radius-md)] font-medium bg-[var(--accent-teal)] text-white hover:opacity-90 transition-opacity"
         @click="showMergeDialog = true"
       >
         Merge Selected
       </button>
       <button
-        class="px-3 py-1.5 text-xs rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+        class="px-3 py-1.5 text-xs rounded-[var(--radius-md)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
         @click="exitMergeMode"
       >
         Cancel

@@ -1,6 +1,6 @@
 <template>
   <div
-    class="rounded-lg border-l-[3px] border-l-[var(--accent-yellow)] bg-[var(--bg-raised)] px-4 py-3 my-1"
+    class="rounded-[var(--radius-md)] border-l-[3px] border-l-[var(--accent-yellow)] bg-[var(--bg-raised)] px-4 py-3 my-1"
     :class="answered ? 'opacity-60' : ''"
   >
     <div class="text-[9px] font-bold tracking-widest text-[var(--accent-yellow)] uppercase mb-2">

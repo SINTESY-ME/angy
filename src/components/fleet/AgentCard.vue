@@ -1,8 +1,12 @@
 <template>
   <div
-    class="agent-card relative cursor-pointer rounded-md transition-colors group"
+    class="agent-card relative cursor-pointer rounded-[var(--radius-md)] group"
     :class="[
-      selected ? 'bg-[var(--bg-raised)]' : 'hover:bg-white/[0.03]',
+      selected
+        ? 'bg-[var(--bg-raised)] border-l-2 border-[var(--accent-mauve)]'
+        : agent.status === 'working'
+          ? 'bg-[color-mix(in_srgb,var(--accent-green)_6%,transparent)] hover:bg-white/[0.03]'
+          : 'hover:bg-white/[0.03]',
       collapsed ? 'flex items-center justify-center h-9' : 'py-2',
     ]"
     :style="{
@@ -26,20 +30,6 @@
 
     <!-- Expanded mode -->
     <template v-else>
-      <!-- Intensity wash background -->
-      <div
-        v-if="intensity > 0.01 && !selected"
-        class="absolute inset-x-[2px] inset-y-[1px] rounded-md pointer-events-none"
-        :style="{ background: intensityWashColor }"
-      />
-
-      <!-- Selection teal border -->
-      <div
-        v-if="selected"
-        class="absolute inset-x-[2px] inset-y-[1px] rounded-md border pointer-events-none"
-        style="border-color: var(--accent-teal); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-teal) 40%, transparent)"
-      />
-
       <!-- Orchestrator root: green accent bar -->
       <div
         v-if="isOrchestratorRoot"
@@ -72,7 +62,7 @@
         class="absolute pointer-events-none"
         :style="connectorStyle"
       >
-        <div class="absolute top-0 bottom-0 w-px bg-[var(--border-standard)]" style="left: 4px" />
+        <div class="absolute top-0 bottom-0 w-[1.5px] bg-[var(--border-standard)]" style="left: 4px" />
         <div class="absolute w-[10px] h-px bg-[var(--border-standard)]" style="left: 4px; top: 50%" />
       </div>
 
@@ -100,27 +90,27 @@
         />
 
         <!-- Favorite star -->
-        <span v-if="agent.favorite" class="shrink-0 text-[var(--accent-yellow)] text-[10px] leading-none">&#9733;</span>
+        <span v-if="agent.favorite" class="shrink-0 text-[var(--accent-yellow)] text-[var(--text-xs)] leading-none">&#9733;</span>
 
         <!-- Title (inline editable) -->
         <input
           v-if="isEditing"
           ref="editInput"
           v-model="editText"
-          class="text-[13px] font-medium truncate bg-transparent border border-[var(--accent-teal)] rounded px-1 outline-none text-[var(--text-primary)] w-full min-w-0"
+          class="text-[var(--text-base)] font-medium truncate bg-transparent border border-[var(--accent-teal)] rounded px-1 outline-none text-[var(--text-primary)] w-full min-w-0"
           @keydown.enter="commitRename"
           @keydown.escape="cancelRename"
           @blur="commitRename"
           @click.stop
         />
-        <span v-else class="text-[13px] font-medium truncate" :class="selected ? 'text-[var(--text-primary)]' : 'text-[var(--text-secondary)]'">
+        <span v-else class="text-[var(--text-base)] font-medium truncate" :class="selected ? 'text-[var(--text-primary)]' : 'text-[var(--text-secondary)]'">
           {{ agent.title || 'New Agent' }}
         </span>
 
         <!-- Epic pipeline badge -->
         <span
           v-if="agent.epicId"
-          class="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full leading-none"
+          class="shrink-0 text-[var(--text-xs)] px-1.5 py-0.5 rounded-full leading-none"
           style="background: color-mix(in srgb, var(--accent-green) 20%, transparent); color: var(--accent-green)"
         >
           Pipeline
@@ -129,7 +119,7 @@
         <!-- Sub-orchestrator depth badge -->
         <span
           v-if="isSubOrchestrator"
-          class="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full leading-none"
+          class="shrink-0 text-[var(--text-xs)] px-1.5 py-0.5 rounded-full leading-none"
           style="background: color-mix(in srgb, var(--accent-teal) 20%, transparent); color: var(--accent-teal)"
         >
           D{{ orchestratorDepth }}
@@ -157,20 +147,20 @@
       <!-- Second line: activity or timestamp -->
       <div class="flex items-center gap-1.5 min-w-0 h-4 mt-0.5" :style="{ paddingLeft: agent.favorite ? '22px' : '14px' }">
         <!-- Collapsed badge for orchestrator roots -->
-        <span v-if="isOrchestratorRoot && childrenCollapsed && childCount > 0" class="text-[11px] text-[var(--accent-green)]">
+        <span v-if="isOrchestratorRoot && childrenCollapsed && childCount > 0" class="text-[var(--text-xs)] text-[var(--accent-green)]">
           {{ childCount }} agent{{ childCount > 1 ? 's' : '' }}
         </span>
         <!-- Activity text when working -->
-        <span v-else-if="agent.status === 'working' && agent.activity" class="text-[11px] text-[var(--accent-green)] truncate">
+        <span v-else-if="agent.status === 'working' && agent.activity" class="text-[var(--text-xs)] text-[var(--accent-green)] truncate">
           {{ agent.activity }}
         </span>
         <!-- Relative timestamp when idle -->
-        <span v-else-if="agent.updatedAt > 0" class="text-[11px] text-[var(--text-muted)]">
+        <span v-else-if="agent.updatedAt > 0" class="text-[var(--text-xs)] text-[var(--text-muted)]">
           {{ relativeTime }}
         </span>
 
         <!-- Cost badge -->
-        <span v-if="agent.costUsd > 0" class="text-[11px] text-[var(--text-faint)] ml-auto">
+        <span v-if="agent.costUsd > 0" class="text-[var(--text-xs)] text-[var(--text-faint)] ml-auto">
           ${{ agent.costUsd.toFixed(2) }}
         </span>
       </div>
@@ -180,24 +170,24 @@
     <Teleport to="body">
       <div
         v-if="contextMenuVisible"
-        class="fixed z-50 bg-[var(--bg-raised)] border border-[var(--border-standard)] rounded-md py-1 shadow-lg min-w-[140px]"
+        class="fixed z-50 bg-[var(--bg-raised)] border border-[var(--border-standard)] rounded-[var(--radius-md)] py-1 shadow-[var(--shadow-md)] min-w-[140px]"
         :style="{ left: `${contextMenuPos.x}px`, top: `${contextMenuPos.y}px` }"
         @click="contextMenuVisible = false"
       >
-        <button class="w-full text-left px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-surface)]" @click="startRename()">
+        <button class="w-full text-left px-4 py-2 text-[var(--text-sm)] text-[var(--text-secondary)] hover:bg-[var(--bg-surface)]" @click="startRename()">
           Rename...
         </button>
-        <button class="w-full text-left px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-surface)]" @click="$emit('favorite-toggle', agent.sessionId)">
+        <button class="w-full text-left px-4 py-2 text-[var(--text-sm)] text-[var(--text-secondary)] hover:bg-[var(--bg-surface)]" @click="$emit('favorite-toggle', agent.sessionId)">
           {{ agent.favorite ? 'Unfavorite' : 'Favorite' }}
         </button>
-        <button class="w-full text-left px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-surface)]" @click="copySessionId()">
+        <button class="w-full text-left px-4 py-2 text-[var(--text-sm)] text-[var(--text-secondary)] hover:bg-[var(--bg-surface)]" @click="copySessionId()">
           Copy Session ID
         </button>
-        <button class="w-full text-left px-3 py-1.5 text-xs text-[var(--accent-mauve)] hover:bg-[var(--bg-surface)]" @click="$emit('transform-to-epic', agent.sessionId)">
+        <button class="w-full text-left px-4 py-2 text-[var(--text-sm)] text-[var(--accent-mauve)] hover:bg-[var(--bg-surface)]" @click="$emit('transform-to-epic', agent.sessionId)">
           Transform into Epic
         </button>
         <div class="h-px bg-[var(--border-subtle)] my-1" />
-        <button class="w-full text-left px-3 py-1.5 text-xs text-[var(--accent-red)] hover:bg-[var(--bg-surface)]" @click="$emit('delete', agent.sessionId)">
+        <button class="w-full text-left px-4 py-2 text-[var(--text-sm)] text-[var(--accent-red)] hover:bg-[var(--bg-surface)]" @click="$emit('delete', agent.sessionId)">
           Delete
         </button>
       </div>
@@ -268,12 +258,6 @@ const intensity = computed(() => {
   return Math.min(1, turnIntensity + recencyBoost);
 });
 
-const intensityWashColor = computed(() => {
-  const alpha = Math.round(intensity.value * 100);
-  const color = props.agent.status === 'working' ? 'var(--accent-green)' : 'var(--accent-teal)';
-  return `color-mix(in srgb, ${color} ${Math.round((alpha / 255) * 100)}%, transparent)`;
-});
-
 // Status dot styling
 const statusDotClass = computed(() => {
   if (props.agent.status === 'blocked') return 'bg-[var(--accent-yellow)]';
@@ -284,8 +268,8 @@ const statusDotClass = computed(() => {
 const statusDotStyle = computed(() => {
   const isActive = props.agent.status === 'working' || props.agent.status === 'blocked';
   return {
-    width: isActive ? '8px' : '6px',
-    height: isActive ? '8px' : '6px',
+    width: isActive ? '9px' : '7px',
+    height: isActive ? '9px' : '7px',
   };
 });
 
@@ -384,5 +368,13 @@ onUnmounted(() => {
 
 .animate-pulse-dot {
   animation: pulse-dot 1.6s ease-in-out infinite;
+}
+
+.agent-card {
+  transition: all var(--transition-fast);
+}
+
+.agent-card:hover {
+  transform: translateY(-1px);
 }
 </style>

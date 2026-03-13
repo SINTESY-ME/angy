@@ -18,12 +18,12 @@ const show = ref(false)
     @focusout="show = false"
     tabindex="0"
   >
-    <span class="text-[11px] text-[var(--text-faint)] hover:text-[var(--text-muted)] cursor-help select-none transition-colors">ⓘ</span>
+    <svg class="w-3 h-3 text-[var(--text-faint)] hover:text-[var(--text-muted)] cursor-help transition-colors" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 7v4M8 5.5v.5"/></svg>
     <Transition name="fade">
       <div
         v-if="show"
         role="tooltip"
-        class="absolute z-50 max-w-[280px] text-[11px] leading-relaxed text-[var(--text-secondary)] bg-[var(--bg-raised)] border border-[var(--border)] rounded-lg shadow-lg px-3 py-2 pointer-events-none whitespace-normal"
+        class="absolute z-50 max-w-[280px] text-[11px] leading-relaxed text-[var(--text-secondary)] bg-[var(--bg-raised)] border border-[var(--border-standard)] rounded-[var(--radius-md)] shadow-[var(--shadow-md)] px-3 py-2 pointer-events-none whitespace-normal"
         :class="{
           'bottom-full left-1/2 -translate-x-1/2 mb-1.5': position === 'top' || !position,
           'top-full left-1/2 -translate-x-1/2 mt-1.5': position === 'bottom',

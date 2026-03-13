@@ -1,5 +1,5 @@
 <template>
-  <div class="relative flex items-center h-10 px-3 bg-[var(--bg-surface)] border-b border-[var(--border-subtle)] text-xs select-none">
+  <div class="relative flex items-center h-9 px-3 bg-[var(--bg-surface)] border-b border-[var(--border-subtle)] text-xs select-none">
     <!-- Left: Logo + Breadcrumbs -->
     <div class="flex items-center gap-1.5 min-w-0 z-10">
       <!-- Logo — always visible, clickable when not on home -->
@@ -15,7 +15,7 @@
 
       <!-- Breadcrumb: Project -->
       <template v-if="projectName">
-        <span class="text-[var(--text-faint)] mx-0.5">›</span>
+        <span class="text-[var(--text-faint)] text-[var(--text-xs)] mx-0.5">›</span>
         <component
           :is="activeEpic ? 'button' : 'span'"
           class="truncate max-w-[140px]"
@@ -28,16 +28,9 @@
 
       <!-- Breadcrumb: Epic -->
       <template v-if="activeEpic">
-        <span class="text-[var(--text-faint)] mx-0.5">›</span>
+        <span class="text-[var(--text-faint)] text-[var(--text-xs)] mx-0.5">›</span>
         <span class="text-[var(--text-secondary)] truncate max-w-[160px]">{{ activeEpic.title }}</span>
       </template>
-    </div>
-
-    <!-- Center: contextual actions slot (absolute center of the bar) -->
-    <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
-      <div class="pointer-events-auto">
-        <slot name="actions" />
-      </div>
     </div>
 
     <!-- Spacer to push right controls -->
@@ -45,20 +38,23 @@
 
     <!-- Right: persistent controls -->
     <div class="flex items-center gap-2.5 shrink-0">
+      <!-- Contextual actions -->
+      <slot name="actions" />
+
       <!-- Scheduler status badge -->
       <div class="flex items-center gap-1" title="Scheduler status">
         <span
           class="w-1.5 h-1.5 rounded-full"
           :class="schedulerRunning ? 'bg-emerald-400' : 'bg-gray-500'"
         />
-        <span class="text-[10px] text-[var(--text-muted)]">{{ schedulerRunning ? 'On' : 'Off' }}</span>
+        <span class="text-[var(--text-xs)] text-[var(--text-muted)]">{{ schedulerRunning ? 'On' : 'Off' }}</span>
       </div>
 
       <!-- Mode toggle (Manager ↔ Editor) — only in manager/editor views -->
       <button
         v-if="ui.viewMode === 'manager' || ui.viewMode === 'editor'"
         @click="ui.toggleViewMode()"
-        class="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium transition-colors"
+        class="flex items-center gap-1 px-2 py-0.5 rounded text-[var(--text-xs)] font-medium transition-colors"
         :class="ui.viewMode === 'manager'
           ? 'bg-[color-mix(in_srgb,var(--accent-mauve)_15%,transparent)] text-[var(--accent-mauve)] hover:bg-[color-mix(in_srgb,var(--accent-mauve)_25%,transparent)]'
           : 'bg-[color-mix(in_srgb,var(--accent-teal)_15%,transparent)] text-[var(--accent-teal)] hover:bg-[color-mix(in_srgb,var(--accent-teal)_25%,transparent)]'"

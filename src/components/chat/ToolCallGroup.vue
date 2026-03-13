@@ -1,25 +1,22 @@
 <template>
-  <div
-    class="my-1"
-    style="background: var(--bg-raised); border-left: 2px solid var(--accent-teal); border-radius: 12px; padding: 10px 14px;"
-  >
+  <div class="tool-group my-1 rounded-[var(--radius-md)]">
     <!-- Header: expand/collapse arrow + summary -->
     <div
       class="flex items-center gap-1.5 cursor-pointer select-none"
       @click="isExpanded = !isExpanded"
     >
-      <span class="text-[10px] text-[var(--text-muted)] w-3 flex-shrink-0">
-        {{ isExpanded ? '▼' : '▶' }}
+      <span class="text-[var(--text-xs)] text-[var(--text-muted)] w-3 flex-shrink-0 flex items-center justify-center">
+        <svg v-if="isExpanded" width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 3L4 5L6 3"/></svg>
+        <svg v-else width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 2L5 4L3 6"/></svg>
       </span>
-      <span class="text-[11px] leading-snug" v-html="summaryHtml" />
+      <span class="text-[var(--text-xs)] leading-snug" v-html="summaryHtml" />
     </div>
 
     <!-- Expanded detail view -->
     <div v-if="isExpanded" class="mt-2 space-y-2 ml-4">
       <div v-for="(call, idx) in calls" :key="idx">
-        <!-- Tool icon + name + file path / summary -->
-        <div class="flex items-center gap-1.5 text-[11px] flex-wrap">
-          <span class="text-[var(--text-muted)]">{{ getToolIcon(call.toolName) }}</span>
+        <!-- Tool name + file path / summary -->
+        <div class="flex items-center gap-1.5 text-[var(--text-xs)] flex-wrap">
           <span class="font-bold text-[var(--accent-green)]">{{ call.toolName }}</span>
           <span
             v-if="call.filePath"
@@ -35,7 +32,7 @@
         <!-- Diff view for edit tools -->
         <div
           v-if="call.isEdit && (call.oldString || call.newString)"
-          class="mt-1 rounded overflow-hidden font-mono text-[11px] max-h-48 overflow-y-auto"
+          class="mt-1 rounded overflow-hidden font-mono text-[var(--text-xs)] max-h-48 overflow-y-auto"
         >
           <template v-if="call.oldString">
             <div
@@ -85,26 +82,6 @@ defineEmits<{
 
 const isExpanded = ref(props.expandedByDefault);
 
-const toolIconMap: Record<string, string> = {
-  Edit: '✎',
-  StrReplace: '✎',
-  Write: '✐',
-  NotebookEdit: '✐',
-  Read: '◧',
-  Bash: '⌘',
-  Glob: '⊛',
-  Grep: '⊚',
-  WebFetch: '⊕',
-  WebSearch: '⊕',
-  TodoWrite: '☐',
-  Agent: '◎',
-  AskUserQuestion: '?',
-};
-
-function getToolIcon(toolName: string): string {
-  return toolIconMap[toolName] ?? '✦';
-}
-
 const toolCounts = computed(() => {
   const counts: Record<string, number> = {};
   for (const call of props.calls) {
@@ -117,10 +94,9 @@ const editCount = computed(() => props.calls.filter(c => c.isEdit).length);
 
 const summaryHtml = computed(() => {
   const parts = Object.entries(toolCounts.value).map(([name, count]) => {
-    const icon = getToolIcon(name);
     return count > 1
-      ? `${icon} <b>${name}</b> x${count}`
-      : `${icon} <b>${name}</b>`;
+      ? `<b>${name}</b> x${count}`
+      : `<b>${name}</b>`;
   });
   const editNote = editCount.value > 0
     ? ` &mdash; <span style="color:var(--accent-green)">${editCount.value} file(s) modified</span>`
@@ -129,3 +105,12 @@ const summaryHtml = computed(() => {
   return `<span style="color:var(--text-muted)">${n} tool call${n !== 1 ? 's' : ''}:</span> ${parts.join(', ')}${editNote}`;
 });
 </script>
+
+<style scoped>
+.tool-group {
+  background: var(--bg-raised);
+  border-left: 2px solid var(--accent-teal);
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+}
+</style>

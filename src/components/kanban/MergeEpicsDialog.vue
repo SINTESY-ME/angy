@@ -2,12 +2,12 @@
   <Teleport to="body">
     <div
       v-if="visible"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
       @click.self="onClose"
     >
-      <div class="w-[720px] max-h-[85vh] bg-[var(--bg-window)] border border-[var(--border-subtle)] rounded-xl shadow-2xl flex flex-col overflow-hidden">
+      <div class="w-[480px] max-w-[480px] max-h-[85vh] bg-[var(--bg-window)] border border-[var(--border-subtle)] rounded-[var(--radius-lg)] flex flex-col overflow-hidden" style="box-shadow: var(--shadow-lg)">
         <!-- Header -->
-        <div class="flex items-center justify-between px-5 py-3 border-b border-[var(--border-subtle)]">
+        <div class="flex items-center justify-between px-6 py-4 border-b border-[var(--border-subtle)]">
           <div class="flex items-center gap-2">
             <svg class="w-4 h-4 text-[var(--accent-teal)]" viewBox="0 0 16 16" fill="currentColor">
               <path fill-rule="evenodd" d="M5.22 14.78a.75.75 0 001.06-.22l.22-.36a1.5 1.5 0 012.5 0l.22.36a.75.75 0 001.06.22l.36-.22a.75.75 0 00.22-1.06l-.22-.36a1.5 1.5 0 010-2.5l.36-.22a.75.75 0 00.22-1.06l-.22-.36a1.5 1.5 0 01-2.5 0l-.22-.36a.75.75 0 00-1.06-.22l-.36.22a.75.75 0 00-.22 1.06l.22.36a1.5 1.5 0 010 2.5l-.36.22a.75.75 0 00-.22 1.06l.22.36z"/>
@@ -25,7 +25,7 @@
         </div>
 
         <!-- Body -->
-        <div class="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+        <div class="flex-1 overflow-y-auto px-6 py-4 space-y-4">
           <!-- Setup phase -->
           <template v-if="phase === 'setup'">
             <!-- Selected epics list -->
@@ -35,7 +35,7 @@
                 <div
                   v-for="info in epicBranchInfos"
                   :key="info.epicId"
-                  class="flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--bg-surface)] border border-[var(--border-subtle)]"
+                  class="flex items-center gap-2 px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-surface)] border border-[var(--border-subtle)]"
                 >
                   <span class="text-xs text-[var(--text-primary)] flex-1 truncate">{{ info.epicName }}</span>
                   <span class="text-[9px] px-1.5 py-0.5 rounded bg-[var(--bg-raised)] text-[var(--accent-green)] font-mono truncate max-w-[200px]">
@@ -55,7 +55,7 @@
                 <div
                   v-for="repo in repoBreakdown"
                   :key="repo.repoId"
-                  class="px-3 py-2 rounded-lg bg-[var(--bg-surface)] border border-[var(--border-subtle)]"
+                  class="px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-surface)] border border-[var(--border-subtle)]"
                 >
                   <div class="text-xs font-medium text-[var(--text-primary)] mb-1">{{ repo.repoName }}</div>
                   <div class="flex flex-wrap gap-1">
@@ -78,7 +78,7 @@
                 v-model="targetBranch"
                 type="text"
                 placeholder="e.g. merge/sprint-42"
-                class="w-full px-3 py-2 text-xs rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-teal)] transition-colors"
+                class="w-full px-3 py-2 text-xs rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-teal)] transition-colors"
               />
             </div>
 
@@ -89,7 +89,7 @@
                 v-model="baseBranch"
                 type="text"
                 placeholder="master"
-                class="w-full px-3 py-2 text-xs rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-teal)] transition-colors"
+                class="w-full px-3 py-2 text-xs rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-teal)] transition-colors"
               />
             </div>
           </template>
@@ -106,7 +106,7 @@
               <div
                 v-for="(result, idx) in mergeResults"
                 :key="idx"
-                class="flex items-start gap-2 px-3 py-2 rounded-lg border"
+                class="flex items-start gap-2 px-3 py-2 rounded-[var(--radius-md)] border"
                 :class="resultRowClass(result)"
               >
                 <!-- Status icon -->
@@ -137,7 +137,7 @@
             </div>
 
             <!-- Summary -->
-            <div v-if="phase === 'done'" class="px-3 py-2 rounded-lg bg-[var(--bg-surface)] border border-[var(--border-subtle)]">
+            <div v-if="phase === 'done'" class="px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-surface)] border border-[var(--border-subtle)]">
               <div class="flex items-center gap-2">
                 <span class="text-xs text-[var(--text-secondary)]">
                   {{ successCount }} succeeded, {{ conflictCount }} conflicts, {{ failedCount }} failed
@@ -148,17 +148,17 @@
         </div>
 
         <!-- Footer -->
-        <div class="flex items-center justify-end gap-2 px-5 py-3 border-t border-[var(--border-subtle)]">
+        <div class="flex items-center justify-end gap-2 px-6 py-4 border-t border-[var(--border-subtle)]">
           <template v-if="phase === 'setup'">
             <button
-              class="px-3 py-1.5 text-xs rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+              class="px-3 py-1.5 text-xs rounded-[var(--radius-md)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
               @click="onClose"
             >
               Cancel
             </button>
             <button
               :disabled="!canMerge"
-              class="px-3 py-1.5 text-xs rounded-lg font-medium transition-colors"
+              class="px-3 py-1.5 text-xs rounded-[var(--radius-md)] font-medium transition-colors"
               :class="canMerge
                 ? 'bg-[var(--accent-teal)] text-white hover:opacity-90'
                 : 'bg-[var(--bg-raised)] text-[var(--text-muted)] cursor-not-allowed'"
@@ -169,7 +169,7 @@
           </template>
           <template v-else>
             <button
-              class="px-3 py-1.5 text-xs rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+              class="px-3 py-1.5 text-xs rounded-[var(--radius-md)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
               :disabled="phase === 'merging'"
               @click="onClose"
             >

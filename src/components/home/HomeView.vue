@@ -4,7 +4,7 @@
     <div class="flex-1 overflow-y-auto">
       <div class="max-w-[900px] mx-auto px-8 py-12">
         <!-- Welcome tip -->
-        <SectionTip tipId="home-welcome" title="Welcome to Angy" icon="🚀">
+        <SectionTip tipId="home-welcome" title="Welcome to Angy">
           Angy helps you orchestrate AI coding agents. Start by creating a
           <strong class="text-[var(--text-primary)]">Project</strong> — a collection of repos your agents work on.
           Then use the <strong class="text-[var(--text-primary)]">Kanban</strong> board to plan epics, and the
@@ -12,20 +12,15 @@
         </SectionTip>
 
         <!-- Header with Open Workspace CTA -->
-        <div class="flex items-center justify-between mb-8">
-          <div />
+        <div class="flex items-center justify-start mb-8">
           <button
             @click="onOpenWorkspace"
-            class="flex items-center gap-3 px-4 py-2.5 text-xs text-[var(--text-secondary)] bg-[var(--bg-surface)] border border-[var(--border-standard)] rounded-lg hover:border-[var(--accent-teal)] hover:brightness-110 transition-all"
+            class="flex items-center gap-2 px-4 py-2.5 text-[var(--text-sm)] text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded-[var(--radius-md)] transition-all"
           >
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
             </svg>
-            <div class="text-left">
-              <div class="font-medium">Open Workspace</div>
-              <div class="text-[10px] text-[var(--text-muted)]">Agent fleet without a project</div>
-            </div>
-            <InfoTip text="Opens a folder directly without a project. Best for quick one-off tasks. For organized multi-repo work, create a Project instead." position="bottom" />
+            Open Workspace
           </button>
         </div>
 
@@ -42,7 +37,7 @@
           <p class="text-sm text-[var(--text-muted)] mb-4">Create a project to organize your repos, plan work in Kanban, and let AI agents build your code.</p>
           <button
             @click="showNewProject = true"
-            class="px-4 py-2 text-xs bg-[var(--accent-mauve)] text-white rounded-lg hover:brightness-110 transition-all"
+            class="px-4 py-2 text-xs bg-[var(--accent-mauve)] text-white rounded-[var(--radius-md)] hover:brightness-110 transition-all"
           >
             Create Project
           </button>
@@ -61,12 +56,12 @@
             <!-- New project card -->
             <button
               @click="showNewProject = true"
-              class="flex flex-col items-center justify-center gap-2 min-h-[120px] border border-dashed border-[var(--border-subtle)] rounded-lg text-[var(--text-faint)] hover:text-[var(--accent-teal)] hover:border-[var(--accent-teal)] transition-colors cursor-pointer"
+              class="flex flex-col items-center justify-center gap-2 min-h-[120px] border border-dashed border-[var(--border-subtle)] rounded-[var(--radius-md)] text-[var(--text-faint)] hover:text-[var(--accent-mauve)] hover:border-[var(--accent-mauve)] transition-colors cursor-pointer"
             >
               <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
               </svg>
-              <span class="text-xs">New Project</span>
+              <span class="text-[var(--text-sm)]">New Project</span>
             </button>
           </div>
 
@@ -89,7 +84,7 @@ import ProjectCard from './ProjectCard.vue';
 import NewProjectDialog from './NewProjectDialog.vue';
 import ProjectSettingsDialog from './ProjectSettingsDialog.vue';
 import SectionTip from '@/components/common/SectionTip.vue';
-import InfoTip from '@/components/common/InfoTip.vue';
+
 
 const projectsStore = useProjectsStore();
 const ui = useUiStore();

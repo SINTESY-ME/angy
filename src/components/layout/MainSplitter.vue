@@ -32,10 +32,10 @@
       <Pane :size="panelSizes[1]" :min-size="inEditor ? 10 : 0" :max-size="inEditor ? 25 : 0">
         <div v-if="inEditor" class="h-full flex flex-col bg-[var(--bg-surface)]">
           <!-- Header with back button + compact tab switcher -->
-          <div class="flex items-center justify-between px-3 h-11 border-b border-[var(--border-subtle)]">
+          <div class="flex items-center justify-between px-3 h-10 border-b border-[var(--border-subtle)]">
             <button
               @click="$emit('toggle-view')"
-              class="flex items-center gap-1.5 text-[11px] text-[var(--accent-teal)] hover:text-[var(--text-primary)] transition-colors"
+              class="flex items-center gap-1.5 text-[11px] text-[var(--accent-mauve)] hover:text-[var(--text-primary)] transition-colors"
             >
               <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5">
                 <path d="M8 2L4 6L8 10" />
@@ -47,7 +47,7 @@
                 v-for="tab in leftTabs"
                 :key="tab.id"
                 @click="ui.activeLeftTab = tab.id"
-                class="text-[10px] px-2 py-0.5 transition-colors"
+                class="text-[var(--text-xs)] px-2 py-0.5 transition-colors"
                 :class="ui.activeLeftTab === tab.id
                   ? 'text-[var(--text-primary)] bg-[var(--bg-raised)]'
                   : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'"
@@ -80,7 +80,7 @@
             class="flex items-center h-8 px-3 border-b border-[var(--border-subtle)] bg-[var(--bg-surface)] cursor-pointer"
             @click="closeCenterPane"
           >
-            <span class="text-[11px] text-[var(--accent-teal)]">← Back to Chat</span>
+            <span class="text-[11px] text-[var(--accent-mauve)]">← Back to Chat</span>
             <span class="text-[11px] text-[var(--text-faint)] mx-2">·</span>
             <span class="text-[11px] text-[var(--text-primary)] font-medium">{{ previewFileName }}</span>
           </div>
@@ -113,11 +113,11 @@
       <Pane :size="panelSizes[4]" :min-size="effectsPaneMin" :max-size="effectsPaneMax">
         <div v-show="inManager && ui.effectsPanelVisible" class="h-full flex flex-col">
           <!-- Tab switcher -->
-          <div class="flex items-center px-3 h-8 border-b border-[var(--border-subtle)] bg-[var(--bg-surface)]">
+          <div class="flex items-center px-3 h-10 border-b border-[var(--border-subtle)] bg-[var(--bg-surface)]">
             <div class="flex border rounded border-[var(--border-subtle)] overflow-hidden">
               <button
                 @click="ui.setRightPanelMode('effects')"
-                class="text-[10px] px-2 py-0.5 transition-colors"
+                class="text-[var(--text-xs)] px-2 py-0.5 transition-colors"
                 :class="ui.rightPanelMode === 'effects'
                   ? 'text-[var(--text-primary)] bg-[var(--bg-raised)]'
                   : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'"
@@ -126,7 +126,7 @@
               </button>
               <button
                 @click="ui.setRightPanelMode('graph')"
-                class="text-[10px] px-2 py-0.5 transition-colors"
+                class="text-[var(--text-xs)] px-2 py-0.5 transition-colors"
                 :class="ui.rightPanelMode === 'graph'
                   ? 'text-[var(--text-primary)] bg-[var(--bg-raised)]'
                   : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'"

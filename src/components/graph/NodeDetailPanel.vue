@@ -1,6 +1,6 @@
 <template>
   <div
-    class="absolute top-2 right-2 z-30 w-80 max-h-[70%] flex flex-col rounded-lg bg-[var(--bg-raised)] border border-[var(--border-standard)] shadow-xl overflow-hidden"
+    class="absolute top-2 right-2 z-30 w-80 max-h-[70%] flex flex-col rounded-[var(--radius-md)] bg-[var(--bg-raised)] border border-[var(--border-standard)] shadow-[var(--shadow-lg)] overflow-hidden"
   >
     <!-- Header -->
     <div class="flex items-center justify-between px-3 py-2 border-b border-[var(--border-subtle)]">

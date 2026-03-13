@@ -1,19 +1,19 @@
 <template>
-  <div class="flex flex-col flex-1 min-w-[160px] h-full">
+  <div class="flex flex-col flex-1 min-w-[200px] h-full">
     <!-- Column header -->
     <div
-      class="flex items-center gap-2 px-3 py-2 rounded-t-lg border-b-2"
-      :style="{ borderColor: headerColor }"
+      class="flex items-center gap-2 px-3 py-2 rounded-t-lg"
     >
+      <div class="w-1 h-4 rounded-full" :style="{ background: headerColor }" />
       <span class="text-xs font-semibold text-[var(--text-primary)]">{{ columnLabel }}</span>
       <span
-        class="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-[var(--bg-raised)] text-[var(--text-muted)]"
+        class="text-[var(--text-xs)] font-medium px-1.5 py-0.5 rounded-full bg-[var(--bg-raised)] text-[var(--text-muted)]"
       >
         {{ epics.length }}
       </span>
       <button
         v-if="(column === 'done' || column === 'discarded') && epics.length > 0"
-        class="ml-auto text-[10px] text-[var(--text-muted)] hover:text-[var(--accent-red)] transition-colors"
+        class="ml-auto text-[var(--text-xs)] text-[var(--text-muted)] hover:text-[var(--accent-red)] transition-colors"
         :title="`Clear all ${column} epics`"
         @click="clearAll"
       >
@@ -45,7 +45,7 @@
       <button
         v-if="column === 'idea'"
         class="w-full flex items-center justify-center gap-1 text-xs text-[var(--text-muted)]
-               py-2 rounded-lg border border-dashed border-[var(--border-subtle)]
+               py-2 rounded-[var(--radius-md)] border border-dashed border-[var(--border-subtle)]
                hover:text-[var(--text-secondary)] hover:border-[var(--border-standard)]
                transition-colors"
         @click="emit('addEpic')"
@@ -58,7 +58,7 @@
 
       <p
         v-if="epics.length === 0 && column !== 'idea'"
-        class="text-[10px] text-[var(--text-muted)] text-center py-4 italic"
+        class="text-[var(--text-xs)] text-[var(--text-muted)] text-center py-4"
       >
         {{ emptyText }}
       </p>
@@ -146,13 +146,13 @@ const emptyText = computed(() => emptyDescriptions[props.column]);
 
 const headerColor = computed(() => {
   const map: Record<EpicColumn, string> = {
-    idea: 'var(--accent-mauve)',
-    backlog: 'var(--accent-blue)',
-    todo: 'var(--accent-teal)',
-    'in-progress': 'var(--accent-yellow)',
-    review: 'var(--accent-peach)',
-    done: 'var(--accent-green)',
-    discarded: 'var(--accent-red)',
+    idea: 'color-mix(in srgb, var(--accent-mauve) 60%, transparent)',
+    backlog: 'color-mix(in srgb, var(--accent-blue) 60%, transparent)',
+    todo: 'color-mix(in srgb, var(--accent-teal) 60%, transparent)',
+    'in-progress': 'color-mix(in srgb, var(--accent-yellow) 60%, transparent)',
+    review: 'color-mix(in srgb, var(--accent-peach) 60%, transparent)',
+    done: 'color-mix(in srgb, var(--accent-green) 60%, transparent)',
+    discarded: 'color-mix(in srgb, var(--accent-red) 60%, transparent)',
   };
   return map[props.column];
 });

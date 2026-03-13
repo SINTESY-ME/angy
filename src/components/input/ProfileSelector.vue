@@ -2,14 +2,14 @@
   <div class="relative" ref="root">
     <button
       @click="open = !open"
-      class="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded bg-[var(--bg-surface)] text-[var(--text-muted)] hover:text-[var(--text-secondary)] border border-[var(--border-subtle)]"
+      class="flex items-center gap-1 text-[var(--text-xs)] px-2 py-1 rounded bg-[var(--bg-surface)] text-[var(--text-muted)] hover:text-[var(--text-secondary)] border border-[var(--border-subtle)]"
     >
       <span>{{ selectedCount > 0 ? `${selectedCount} profile${selectedCount > 1 ? 's' : ''}` : 'Profiles' }}</span>
-      <span class="text-[8px]">▾</span>
+      <svg class="w-2.5 h-2.5 opacity-50" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2.5 4L5 6.5L7.5 4"/></svg>
     </button>
     <div
       v-if="open"
-      class="absolute bottom-full left-0 mb-1 w-56 bg-[var(--bg-raised)] border border-[var(--border-standard)] rounded-lg shadow-lg overflow-hidden z-10 max-h-48 overflow-y-auto"
+      class="absolute bottom-full left-0 mb-1 w-56 bg-[var(--bg-raised)] border border-[var(--border-standard)] rounded-[var(--radius-md)] shadow-[var(--shadow-md)] overflow-hidden z-10 max-h-48 overflow-y-auto"
     >
       <label
         v-for="profile in profiles"
@@ -17,7 +17,6 @@
         class="flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-white/[0.05]"
       >
         <input type="checkbox" :value="profile.id" v-model="selected" class="accent-[var(--accent-mauve)]" />
-        <span class="text-xs">{{ profile.icon || '👤' }}</span>
         <span class="text-xs text-[var(--text-primary)]">{{ profile.name }}</span>
       </label>
     </div>

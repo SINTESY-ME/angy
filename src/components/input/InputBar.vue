@@ -46,8 +46,12 @@
       @drop.prevent="onDrop($event)"
     >
       <div
-        class="relative bg-[var(--bg-raised)] rounded-xl border-2 ring-0 outline-none transition-border-color"
-        :style="{ borderColor: isDraggingOver ? 'var(--accent-teal)' : 'transparent' }"
+        class="relative bg-[var(--bg-raised)] rounded-xl border ring-0 outline-none transition-border-color"
+        :class="{
+          'border-[var(--border-standard)]': focused,
+          'border-[var(--border-subtle)]': !focused && !isDraggingOver,
+          'border-[var(--accent-mauve)]': isDraggingOver,
+        }"
       >
         <textarea
           ref="inputEl"
@@ -85,7 +89,7 @@
             </button>
           </div>
           <div class="flex items-center gap-2">
-            <span v-if="text.length > 0" class="text-[10px] text-[var(--text-faint)]">
+            <span v-if="text.length > 0" class="text-[var(--text-xs)] text-[var(--text-faint)]">
               {{ text.length }}
             </span>
             <slot name="footer-right" />
@@ -93,7 +97,7 @@
               v-if="!processing"
               @click="send"
               :disabled="!canSend"
-              class="px-4 py-1.5 rounded-lg text-xs font-semibold transition-all"
+              class="px-5 py-2 rounded-[var(--radius-md)] text-xs font-semibold transition-all"
               :class="
                 canSend
                   ? 'bg-[var(--accent-mauve)] text-[var(--bg-base)] hover:brightness-110 cursor-pointer'
@@ -105,7 +109,7 @@
             <button
               v-else
               @click="$emit('stop')"
-              class="px-4 py-1.5 rounded-lg text-xs font-semibold bg-[color-mix(in_srgb,var(--accent-red)_15%,transparent)] text-[var(--accent-red)] border border-[color-mix(in_srgb,var(--accent-red)_30%,transparent)] hover:bg-[color-mix(in_srgb,var(--accent-red)_25%,transparent)] cursor-pointer transition-all"
+              class="px-5 py-2 rounded-[var(--radius-md)] text-xs font-semibold bg-[color-mix(in_srgb,var(--accent-red)_15%,transparent)] text-[var(--accent-red)] border border-[color-mix(in_srgb,var(--accent-red)_30%,transparent)] hover:bg-[color-mix(in_srgb,var(--accent-red)_25%,transparent)] cursor-pointer transition-all"
             >
               Stop
             </button>
@@ -434,6 +438,14 @@ function focus() {
   inputEl.value?.focus();
 }
 
+function prefill(t: string) {
+  text.value = t;
+  nextTick(() => {
+    autoGrow();
+    inputEl.value?.focus();
+  });
+}
+
 // ── Tauri OS file drop (Finder → window) ─────────────────────────────
 
 let unlistenDrop: (() => void) | null = null;
@@ -462,7 +474,7 @@ onUnmounted(() => {
   unlistenDrop?.();
 });
 
-defineExpose({ focus });
+defineExpose({ focus, prefill });
 </script>
 
 <style scoped>
@@ -475,6 +487,6 @@ defineExpose({ focus });
   color: var(--text-faint);
 }
 .transition-border-color {
-  transition: border-color 0.15s ease;
+  transition: border-color var(--transition-fast);
 }
 </style>

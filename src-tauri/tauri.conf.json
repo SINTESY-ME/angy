@@ -20,7 +20,8 @@
         "decorations": true,
         "resizable": true,
         "titleBarStyle": "Transparent",
-        "backgroundColor": "#141414"
+        "backgroundColor": "#141414",
+        "dragDropEnabled": false
       }
     ],
     "security": {

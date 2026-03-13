@@ -2,12 +2,12 @@
   <Teleport to="body">
     <div
       v-if="visible"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
       @click.self="$emit('close')"
     >
-      <div class="bg-[var(--bg-window)] border border-[var(--border-standard)] rounded-xl w-[440px] max-h-[80vh] flex flex-col shadow-2xl">
+      <div class="bg-[var(--bg-window)] border border-[var(--border-subtle)] rounded-[var(--radius-lg)] w-[480px] max-w-[480px] max-h-[80vh] flex flex-col" style="box-shadow: var(--shadow-lg)">
         <!-- Header -->
-        <div class="flex items-center justify-between px-5 py-3 border-b border-[var(--border-subtle)]">
+        <div class="flex items-center justify-between px-6 py-4 border-b border-[var(--border-subtle)]">
           <h2 class="text-sm font-semibold text-[var(--text-primary)]">Scheduler Configuration</h2>
           <button
             class="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
@@ -20,7 +20,7 @@
         </div>
 
         <!-- Body -->
-        <div class="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+        <div class="flex-1 overflow-y-auto px-6 py-4 space-y-4">
           <!-- Auto-schedule toggle -->
           <div class="flex items-center justify-between">
             <label class="text-sm text-[var(--text-primary)]">Auto-schedule</label>
@@ -45,7 +45,7 @@
               min="1"
               max="10"
               class="mt-1 w-full text-sm px-2 py-1.5 rounded border border-[var(--border-subtle)]
-                     bg-[var(--bg-base)] text-[var(--text-primary)]
+                     bg-[var(--bg-raised)] text-[var(--text-primary)]
                      focus:outline-none focus:border-[var(--accent-mauve)] transition-colors"
             />
           </div>
@@ -59,7 +59,7 @@
               min="5"
               max="3600"
               class="mt-1 w-full text-sm px-2 py-1.5 rounded border border-[var(--border-subtle)]
-                     bg-[var(--bg-base)] text-[var(--text-primary)]
+                     bg-[var(--bg-raised)] text-[var(--text-primary)]
                      focus:outline-none focus:border-[var(--accent-mauve)] transition-colors"
             />
           </div>
@@ -73,7 +73,7 @@
               min="0"
               step="0.5"
               class="mt-1 w-full text-sm px-2 py-1.5 rounded border border-[var(--border-subtle)]
-                     bg-[var(--bg-base)] text-[var(--text-primary)]
+                     bg-[var(--bg-raised)] text-[var(--text-primary)]
                      focus:outline-none focus:border-[var(--accent-mauve)] transition-colors"
             />
           </div>
@@ -102,7 +102,7 @@
         </div>
 
         <!-- Footer -->
-        <div class="flex items-center justify-end gap-2 px-5 py-3 border-t border-[var(--border-subtle)]">
+        <div class="flex items-center justify-end gap-2 px-6 py-4 border-t border-[var(--border-subtle)]">
           <button
             class="text-xs px-3 py-1.5 rounded border border-[var(--border-subtle)]
                    text-[var(--text-secondary)] hover:text-[var(--text-primary)]

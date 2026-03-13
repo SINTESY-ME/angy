@@ -1,6 +1,7 @@
 <template>
   <div class="flex flex-col h-full bg-[var(--bg-surface)]">
     <FleetHeader
+      @new-agent="$emit('new-agent-requested')"
       @delete-all="$emit('delete-all-requested')"
       @delete-older="$emit('delete-older-requested')"
       @keep-today="$emit('keep-today-requested')"
@@ -8,7 +9,7 @@
 
     <!-- Agent list -->
     <div class="flex-1 overflow-y-auto py-1 px-1.5">
-      <SectionTip tipId="fleet-intro" title="Agent Fleet" icon="🤖">
+      <SectionTip tipId="fleet-intro" title="Agent Fleet">
         Each row is an AI agent conversation. Click + to start a new agent, or use <strong>Orchestrate</strong> mode to spawn a coordinated team. Agents spawned by an orchestrator appear as nested children.
       </SectionTip>
 

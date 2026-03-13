@@ -14,10 +14,10 @@
       </div>
     </div>
     <div class="flex items-center justify-end gap-2 mt-2.5">
-      <span v-if="relativeTime" class="text-[10px] text-[var(--text-faint)]">{{ relativeTime }}</span>
+      <span v-if="relativeTime" class="text-[var(--text-xs)] text-[var(--text-faint)]">{{ relativeTime }}</span>
       <button
         v-if="turnId > 0"
-        class="text-[10px] px-2 py-0.5 rounded text-[var(--text-faint)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-surface)] transition-colors cursor-pointer"
+        class="text-[var(--text-xs)] px-2 py-0.5 rounded text-[var(--text-faint)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-surface)] transition-colors cursor-pointer"
         @click="$emit('revert', turnId)"
       >
         Revert
@@ -35,8 +35,8 @@
     />
     <div class="flex items-center gap-2 mb-2 select-none">
       <div class="claude-avatar">C</div>
-      <span class="text-[11px] font-semibold text-[var(--text-secondary)] tracking-widest uppercase">Claude</span>
-      <span v-if="relativeTime" class="text-[10px] text-[var(--text-faint)]">{{ relativeTime }}</span>
+      <span class="text-[var(--text-xs)] font-medium text-[var(--text-secondary)]">Claude</span>
+      <span v-if="relativeTime" class="text-[var(--text-xs)] text-[var(--text-faint)]">{{ relativeTime }}</span>
     </div>
     <div
       class="message-content select-text"
@@ -150,19 +150,20 @@ function handleContentClick(e: MouseEvent) {
 /* ── User message card ──────────────────────────────────────────────────── */
 .user-card {
   background: var(--bg-raised);
-  border-left: 3px solid var(--accent-mauve);
-  border-radius: 10px;
-  padding: 12px 16px 10px;
+  border-left: 2px solid var(--accent-mauve);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
 }
 
 /* ── Claude avatar ──────────────────────────────────────────────────────── */
 .claude-avatar {
-  width: 18px;
-  height: 18px;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
-  background: var(--accent-mauve);
-  color: var(--bg-base);
-  font-size: 8px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-standard);
+  color: var(--accent-mauve);
+  font-size: 10px;
   font-weight: 700;
   display: flex;
   align-items: center;
@@ -316,7 +317,7 @@ function handleContentClick(e: MouseEvent) {
   border-collapse: collapse;
   margin: 10px 0;
   width: 100%;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 .message-content :deep(th),
 .message-content :deep(td) {

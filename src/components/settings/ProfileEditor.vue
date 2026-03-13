@@ -1,8 +1,8 @@
 <template>
   <Teleport to="body">
-    <div v-if="visible" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60" @click.self="$emit('close')">
-      <div class="w-[600px] max-h-[80vh] bg-[var(--bg-window)] border border-[var(--border-standard)] rounded-xl shadow-2xl overflow-hidden flex flex-col">
-        <div class="flex items-center justify-between px-5 py-3 border-b border-[var(--border-subtle)]">
+    <div v-if="visible" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" @click.self="$emit('close')">
+      <div class="w-[480px] max-w-[480px] max-h-[80vh] bg-[var(--bg-window)] border border-[var(--border-subtle)] rounded-[var(--radius-lg)] overflow-hidden flex flex-col" style="box-shadow: var(--shadow-lg)">
+        <div class="flex items-center justify-between px-6 py-4 border-b border-[var(--border-subtle)]">
           <span class="text-sm font-medium text-[var(--text-primary)]">Personality Profiles</span>
           <button @click="$emit('close')" class="text-[var(--text-muted)] hover:text-[var(--text-secondary)]">✕</button>
         </div>

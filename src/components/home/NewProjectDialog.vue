@@ -1,15 +1,15 @@
 <template>
   <Teleport to="body">
-    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60" @click.self="$emit('close')">
-      <div class="w-[560px] max-h-[80vh] bg-[var(--bg-window)] border border-[var(--border-standard)] rounded-xl shadow-2xl overflow-hidden flex flex-col">
+    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" @click.self="$emit('close')">
+      <div class="w-[480px] max-w-[480px] max-h-[80vh] bg-[var(--bg-window)] border border-[var(--border-subtle)] rounded-[var(--radius-lg)] overflow-hidden flex flex-col" style="box-shadow: var(--shadow-lg)">
         <!-- Header -->
-        <div class="flex items-center justify-between px-5 py-3 border-b border-[var(--border-subtle)]">
+        <div class="flex items-center justify-between px-6 py-4 border-b border-[var(--border-subtle)]">
           <span class="text-sm font-medium text-[var(--text-primary)]">New Project</span>
           <button @click="$emit('close')" class="text-[var(--text-muted)] hover:text-[var(--text-secondary)]">✕</button>
         </div>
 
         <!-- Form -->
-        <div class="flex-1 overflow-y-auto p-5 space-y-4">
+        <div class="flex-1 overflow-y-auto p-6 space-y-4">
           <!-- Name -->
           <div>
             <label class="text-xs text-[var(--text-secondary)] mb-1 block">Project Name *</label>
@@ -47,7 +47,7 @@
               No repositories added yet.
             </div>
 
-            <div v-for="(repo, i) in repos" :key="i" class="bg-[var(--bg-raised)] border border-[var(--border-subtle)] rounded-lg p-3 mb-2 space-y-2">
+            <div v-for="(repo, i) in repos" :key="i" class="bg-[var(--bg-raised)] border border-[var(--border-subtle)] rounded-[var(--radius-md)] p-3 mb-2 space-y-2">
               <div class="flex items-center gap-2">
                 <input
                   v-model="repo.name"
@@ -96,7 +96,7 @@
         </div>
 
         <!-- Footer -->
-        <div class="flex items-center justify-end gap-2 px-5 py-3 border-t border-[var(--border-subtle)]">
+        <div class="flex items-center justify-end gap-2 px-6 py-4 border-t border-[var(--border-subtle)]">
           <button
             @click="$emit('close')"
             class="px-4 py-1.5 text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"

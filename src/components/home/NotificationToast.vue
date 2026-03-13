@@ -10,7 +10,7 @@ const ui = useUiStore()
       <div
         v-for="notification in ui.notifications"
         :key="notification.id"
-        class="rounded-lg border px-4 py-3 shadow-lg backdrop-blur-sm"
+        class="rounded-[var(--radius-md)] border px-4 py-3 shadow-[var(--shadow-md)] backdrop-blur-sm"
         :class="{
           'bg-red-900/90 border-red-700 text-red-100': notification.type === 'error',
           'bg-yellow-900/90 border-yellow-700 text-yellow-100': notification.type === 'warning',

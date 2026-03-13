@@ -1,7 +1,7 @@
 <template>
   <div
     ref="popupEl"
-    class="absolute bottom-full left-4 mb-1 w-72 bg-[var(--bg-raised)] border border-[var(--border-standard)] rounded-lg shadow-lg overflow-hidden z-50"
+    class="absolute bottom-full left-4 mb-1 w-72 bg-[var(--bg-raised)] border border-[var(--border-standard)] rounded-[var(--radius-md)] shadow-[var(--shadow-md)] overflow-hidden z-50"
   >
     <div
       v-for="(cmd, i) in filteredCommands"

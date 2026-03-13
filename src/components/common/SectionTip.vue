@@ -4,7 +4,6 @@ import { ref, onMounted } from 'vue'
 const props = defineProps<{
   tipId: string
   title?: string
-  icon?: string
 }>()
 
 const dismissed = ref(true) // start hidden to prevent flash
@@ -22,9 +21,12 @@ function dismiss() {
 <template>
   <div
     v-if="!dismissed"
-    class="flex items-start gap-2 mx-2 my-2 px-3 py-2 rounded-lg border bg-[color-mix(in_srgb,var(--accent-blue)_8%,transparent)] border-[color-mix(in_srgb,var(--accent-blue)_20%,transparent)] text-[11px] leading-relaxed"
+    class="flex items-start gap-2 mx-2 my-2 px-3 py-2 rounded-[var(--radius-md)] border bg-[color-mix(in_srgb,var(--accent-blue)_8%,transparent)] border-[color-mix(in_srgb,var(--accent-blue)_20%,transparent)] text-[11px] leading-relaxed"
   >
-    <span class="shrink-0 mt-px">{{ icon || 'ℹ️' }}</span>
+    <svg class="shrink-0 mt-px w-4 h-4 text-[var(--accent-blue)]" viewBox="0 0 16 16" fill="currentColor">
+      <circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <path d="M8 7v4M8 5.5v.5"/>
+    </svg>
     <div class="flex-1 min-w-0">
       <span v-if="title" class="font-semibold text-[var(--text-primary)] mr-1">{{ title }}</span>
       <span class="text-[var(--text-muted)]"><slot /></span>

@@ -1,8 +1,8 @@
 <template>
   <Teleport to="body">
-    <div v-if="visible" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div class="bg-[var(--bg-window)] border border-[var(--border-standard)] rounded-xl w-[480px] shadow-2xl">
-        <div class="flex items-center justify-between px-5 py-4 border-b border-[var(--border-subtle)]">
+    <div v-if="visible" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div class="bg-[var(--bg-window)] border border-[var(--border-subtle)] rounded-[var(--radius-lg)] w-[480px] max-w-[480px]" style="box-shadow: var(--shadow-lg)">
+        <div class="flex items-center justify-between px-6 py-4 border-b border-[var(--border-subtle)]">
           <h2 class="text-sm font-semibold text-[var(--text-primary)]">Start Orchestration</h2>
           <button @click="$emit('close')" class="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -10,19 +10,19 @@
             </svg>
           </button>
         </div>
-        <div class="p-5">
+        <div class="p-6">
           <label class="block text-xs text-[var(--text-muted)] mb-1.5">Goal</label>
           <textarea
             ref="goalInput"
             v-model="goal"
             rows="4"
-            class="w-full bg-[var(--bg-raised)] text-[var(--text-primary)] text-sm px-3 py-2 rounded-lg border border-[var(--border-standard)] outline-none focus:border-[var(--accent-mauve)] resize-none placeholder:text-[var(--text-faint)]"
+            class="w-full bg-[var(--bg-raised)] text-[var(--text-primary)] text-sm px-3 py-2 rounded-[var(--radius-sm)] border border-[var(--border-standard)] outline-none focus:border-[var(--accent-mauve)] resize-none placeholder:text-[var(--text-faint)]"
             placeholder="Describe the task for the orchestrator..."
             @keydown.meta.enter="onStart"
           />
           <p class="text-[11px] text-[var(--text-muted)] mt-1.5">Describe what you want built or fixed. The orchestrator will break this into tasks and delegate to specialist agents (architect, implementer, tester, reviewer).</p>
         </div>
-        <div class="flex justify-end gap-2 px-5 py-3 border-t border-[var(--border-subtle)]">
+        <div class="flex justify-end gap-2 px-6 py-4 border-t border-[var(--border-subtle)]">
           <button
             @click="$emit('close')"
             class="px-4 py-1.5 text-xs text-[var(--text-muted)] rounded-md hover:bg-[var(--bg-raised)] transition-colors"

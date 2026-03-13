@@ -6,13 +6,13 @@
       class="flex-1 flex items-center justify-center"
     >
       <div class="flex flex-col items-center gap-3">
-        <div class="w-6 h-6 border-2 border-[var(--accent-teal)] border-t-transparent rounded-full animate-spin" />
+        <div class="w-6 h-6 border-2 border-[var(--accent-mauve)] border-t-transparent rounded-full animate-spin" />
         <span class="text-[11px] text-[var(--text-muted)]">Loading conversation...</span>
       </div>
     </div>
 
     <!-- Welcome screen (shown when no messages for active session) -->
-    <WelcomeScreen v-if="!isLoadingHistory && activeMessages.length === 0 && !isProcessing" />
+    <WelcomeScreen v-if="!isLoadingHistory && activeMessages.length === 0 && !isProcessing" @prefill="onPrefill" />
 
     <!-- Messages area -->
     <div
@@ -21,7 +21,7 @@
       v-show="activeMessages.length > 0 || isProcessing"
     >
       <div class="max-w-[860px] mx-auto py-8 px-6 space-y-5">
-        <SectionTip tipId="pipeline-modes" title="Chat" icon="⚡">
+        <SectionTip tipId="pipeline-modes" title="Chat">
           Single agent chat. Use Kanban epics for orchestrated multi-agent pipelines.
         </SectionTip>
         <template v-for="item in groupedMessages" :key="item.id">
@@ -82,7 +82,7 @@
       This agent is managed by the scheduler
       <div v-if="autoProfiles.length" class="flex items-center justify-center gap-1.5 mt-1 flex-wrap">
         <span v-for="p in autoProfiles" :key="p.id"
-              class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px]"
+              class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[var(--text-xs)]"
               style="background: color-mix(in srgb, var(--accent-teal) 15%, transparent); color: var(--accent-teal)">
           {{ p.icon }} {{ p.name }}
         </span>
@@ -556,6 +556,10 @@ function clearChat(sessionId: string) {
   state.realClaudeSessionId = null;
   state.pendingThinkingContent = '';
   state.thinkingStartTime = 0;
+}
+
+function onPrefill(text: string) {
+  inputBar.value?.prefill(text);
 }
 
 function onStop() {

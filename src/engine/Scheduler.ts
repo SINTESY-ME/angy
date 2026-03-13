@@ -406,7 +406,9 @@ export class Scheduler {
         }
 
         console.log(`[Scheduler] ${tryResume ? 'Resuming' : 'Starting'} epic: ${epic.id} ("${epic.title}") score=${score.toFixed(3)}`);
-        await this.executeStart(epic, budgetRemaining, tryResume);
+        const started = await this.executeStart(epic, budgetRemaining, tryResume);
+        if (!started) continue;
+
         await this.doUpdateEpic(epic.id, { computedScore: score });
         slotsAvailable--;
 
@@ -436,25 +438,32 @@ export class Scheduler {
 
   // ── Epic Lifecycle ────────────────────────────────────────────────────
 
-  async executeStart(epic: Epic, budgetRemaining: number | null = null, tryResume = false): Promise<void> {
+  async executeStart(epic: Epic, budgetRemaining: number | null = null, tryResume = false): Promise<boolean> {
     console.log(`[Scheduler] executeStart: epic=${epic.id} ("${epic.title}") pool=${!!this.pool} tryResume=${tryResume}`);
 
     await this.refreshCache();
+
+    const freshEpic = this.getAllEpics().find(e => e.id === epic.id);
+    if (!freshEpic || freshEpic.column !== epic.column) {
+      console.log(`[Scheduler] Aborting executeStart: epic ${epic.id} ("${epic.title}") column changed since scheduling (was: '${epic.column}', now: '${freshEpic?.column ?? 'deleted'}')`);
+      return false;
+    }
+
     await this.doMoveEpic(epic.id, 'in-progress');
-    if (epic.suspendedAt) {
+    if (freshEpic.suspendedAt) {
       await this.doUpdateEpic(epic.id, { suspendedAt: null });
     }
-    this.acquireRepos(epic);
+    this.acquireRepos(freshEpic);
 
     await this.logAction({
       type: 'start',
-      epicId: epic.id,
+      epicId: freshEpic.id,
       timestamp: new Date().toISOString(),
-      details: tryResume ? `Resumed epic: ${epic.title}` : `Started epic: ${epic.title}`,
+      details: tryResume ? `Resumed epic: ${freshEpic.title}` : `Started epic: ${freshEpic.title}`,
     });
 
     if (this.pool) {
-      const repos = this.getReposForEpic(epic);
+      const repos = this.getReposForEpic(freshEpic);
 
       const repoPaths: Record<string, string> = {};
       for (const r of repos) {
@@ -462,8 +471,8 @@ export class Scheduler {
       }
 
       const options: OrchestratorOptions = {
-        epicId: epic.id,
-        projectId: epic.projectId,
+        epicId: freshEpic.id,
+        projectId: freshEpic.projectId,
         repoPaths,
         depth: 0,
         maxDepth: this.config.maxOrchestratorDepth ?? 3,
@@ -476,35 +485,39 @@ export class Scheduler {
       try {
         let sessionId: string;
         if (tryResume) {
-          console.log(`[Scheduler] Attempting resume for epic: ${epic.id}`);
-          sessionId = await this.pool.resumeOrSpawnRoot(epic.id, options, epic, repos);
+          console.log(`[Scheduler] Attempting resume for epic: ${freshEpic.id}`);
+          sessionId = await this.pool.resumeOrSpawnRoot(freshEpic.id, options, freshEpic, repos);
         } else {
-          console.log(`[Scheduler] Calling pool.spawnRoot for epic: ${epic.id}`);
-          sessionId = await this.pool.spawnRoot(epic.id, options, epic, repos);
+          console.log(`[Scheduler] Calling pool.spawnRoot for epic: ${freshEpic.id}`);
+          sessionId = await this.pool.spawnRoot(freshEpic.id, options, freshEpic, repos);
         }
-        console.log(`[Scheduler] Orchestrator ${tryResume ? 'resumed/spawned' : 'spawned'} for epic ${epic.id}, session: ${sessionId}`);
-        await this.doUpdateEpic(epic.id, { rootSessionId: sessionId });
+        console.log(`[Scheduler] Orchestrator ${tryResume ? 'resumed/spawned' : 'spawned'} for epic ${freshEpic.id}, session: ${sessionId}`);
+        await this.doUpdateEpic(freshEpic.id, { rootSessionId: sessionId });
         engineBus.emit('scheduler:info', {
-          epicId: epic.id,
+          epicId: freshEpic.id,
           title: tryResume ? 'Epic resumed' : 'Epic started',
-          message: `"${epic.title}" is now in progress`,
+          message: `"${freshEpic.title}" is now in progress`,
         });
       } catch (err) {
-        console.error(`[Scheduler] Failed to spawn orchestrator for epic ${epic.id}:`, err);
+        console.error(`[Scheduler] Failed to spawn orchestrator for epic ${freshEpic.id}:`, err);
         engineBus.emit('scheduler:error', {
-          epicId: epic.id,
+          epicId: freshEpic.id,
           title: 'Failed to start epic',
           message: err instanceof Error ? err.message : String(err),
         });
+        return false;
       }
     } else {
-      console.error(`[Scheduler] No pool available — cannot spawn orchestrator for epic: ${epic.id}`);
+      console.error(`[Scheduler] No pool available — cannot spawn orchestrator for epic: ${freshEpic.id}`);
       engineBus.emit('scheduler:error', {
-        epicId: epic.id,
+        epicId: freshEpic.id,
         title: 'No orchestrator pool',
         message: 'Scheduler pool is not configured.',
       });
+      return false;
     }
+
+    return true;
   }
 
   async moveToReview(epicId: string): Promise<void> {

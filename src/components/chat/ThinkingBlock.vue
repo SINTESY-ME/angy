@@ -4,7 +4,7 @@
       @click="expanded = !expanded"
       class="flex items-center gap-1.5 text-[11px] text-[var(--text-faint)] hover:text-[var(--text-muted)] transition-colors select-none w-full text-left py-1"
     >
-      <span class="text-[9px] transition-transform duration-150" :class="expanded ? 'rotate-90' : ''">▶</span>
+      <svg class="w-2 h-2 transition-transform duration-150" :class="expanded ? 'rotate-90' : ''" viewBox="0 0 8 8" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 2L5 4L3 6"/></svg>
       <span :class="isStreaming ? 'animate-pulse' : ''">
         {{ isStreaming ? 'Thinking...' : `Thought for ${formattedTime}` }}
       </span>

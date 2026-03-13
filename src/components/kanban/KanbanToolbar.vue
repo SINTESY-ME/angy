@@ -1,16 +1,5 @@
 <template>
   <div class="flex items-center gap-3 px-4 py-2 border-b border-[var(--border-subtle)] bg-[var(--bg-surface)]">
-    <!-- Back button -->
-    <button
-      class="flex items-center gap-1 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
-      @click="ui.navigateHome()"
-    >
-      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
-      </svg>
-      Back
-    </button>
-
     <!-- Project name -->
     <h1 class="text-sm font-semibold text-[var(--text-primary)] truncate">
       {{ projectName }}
@@ -39,7 +28,7 @@
 
     <!-- Add Epic -->
     <button
-      class="flex items-center gap-1 text-xs px-2.5 py-1 rounded
+      class="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded
              bg-[var(--accent-mauve)] text-[var(--bg-base)] font-medium
              hover:opacity-90 transition-opacity"
       @click="$emit('addEpic')"
@@ -57,7 +46,7 @@
              hover:border-[var(--border-standard)] transition-colors"
       @click="$emit('scheduleNow')"
     >
-      Schedule Now
+      Schedule
     </button>
 
     <!-- Git Tree -->
@@ -88,8 +77,6 @@
 </template>
 
 <script setup lang="ts">
-import { useUiStore } from '@/stores/ui';
-
 defineProps<{
   projectName: string;
   filterText?: string;
@@ -102,6 +89,4 @@ defineEmits<{
   openGitTree: [];
   'update:filterText': [value: string];
 }>();
-
-const ui = useUiStore();
 </script>
