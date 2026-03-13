@@ -401,49 +401,56 @@ export class HybridPipelineRunner {
     const structurePlan = await this.healthCheckedArchitect(this.architectStructureTask(goal, acceptanceCriteria));
     if (this._cancelled) return;
 
+    // Counterpart reviews and corrects the plan in a single pass
+    let approvedPlan = structurePlan;
     if (features.useCounterpart) {
       this.setPhase('verifying plan');
-      let planVerdict = await this.extractVerdict(
-        await this.healthCheckedCounterpart(this.planReviewTask(structurePlan, acceptanceCriteria)),
+      const counterpartOutput = await this.healthCheckedCounterpart(
+        this.planReviewTask(structurePlan, acceptanceCriteria),
       );
       if (this._cancelled) return;
 
-      let revisionCycles = 0;
-      while (this.isChallenged(planVerdict) && revisionCycles < 5) {
-        revisionCycles++;
-        this.log(`Plan challenged (cycle ${revisionCycles}), revising`);
-        this.setPhase(`revising plan (cycle ${revisionCycles})`);
+      if (this.isRejected(counterpartOutput)) {
+        // Plan fundamentally flawed — architect must redo (max 1 retry)
+        const reason = counterpartOutput.replace(/^REJECTED:?\s*/i, '').trim();
+        this.log(`Plan rejected by counterpart: ${reason.substring(0, 100)}...`);
+        this.setPhase('revising plan (rejected)');
 
-        const issueText = this.formatIssues(planVerdict);
-        await this.healthCheckedArchitect(this.revisionTask(structurePlan, issueText));
-        if (this._cancelled) return;
-
-        const latestPlan = this.childOutputs.filter(c => c.role === 'architect').pop()?.output || structurePlan;
-        this.setPhase('re-verifying plan');
-        planVerdict = await this.extractVerdict(
-          await this.healthCheckedCounterpart(this.planReviewTask(latestPlan, acceptanceCriteria)),
+        const revisedPlan = await this.healthCheckedArchitect(
+          `Your plan was rejected by the counterpart as fundamentally flawed.\n\n# Rejection Reason\n${reason}\n\n# Instructions\nProduce a COMPLETE revised plan from scratch, addressing the rejection reason. Follow the same output format as your original plan.`,
         );
         if (this._cancelled) return;
+
+        this.setPhase('re-verifying plan');
+        const secondOutput = await this.healthCheckedCounterpart(
+          this.planReviewTask(revisedPlan, acceptanceCriteria),
+        );
+        if (this._cancelled) return;
+
+        if (this.isRejected(secondOutput)) {
+          this.log('Plan rejected twice — proceeding with architect version');
+          approvedPlan = revisedPlan;
+        } else {
+          approvedPlan = secondOutput;
+        }
+      } else {
+        approvedPlan = counterpartOutput;
       }
     }
 
-    const latestStructurePlan = this.childOutputs
-      .filter(c => c.role === 'architect')
-      .pop()?.output || structurePlan;
-
     if (features.architectTurns >= 3) {
-      const hasFrontend = await this.detectFrontendScope(latestStructurePlan);
+      const hasFrontend = await this.detectFrontendScope(approvedPlan);
       if (hasFrontend && features.useDesignSystem) {
         this.setPhase('designing UI');
         this.log('Architect Turn 2: Design system');
-        this.designPlan = await this.healthCheckedArchitect(this.architectDesignTask(latestStructurePlan));
+        this.designPlan = await this.healthCheckedArchitect(this.architectDesignTask(approvedPlan));
         if (this._cancelled) return;
       }
     }
 
     this.architectContext = this.designPlan
-      ? `${latestStructurePlan}\n\n---\n\n# DESIGN SYSTEM\n\n${this.designPlan}`
-      : latestStructurePlan;
+      ? `${approvedPlan}\n\n---\n\n# DESIGN SYSTEM\n\n${this.designPlan}`
+      : approvedPlan;
 
     this.setPhase('extracting todos');
     this.log('Extracting todos from approved plan');
@@ -1266,8 +1273,8 @@ ${issues}`,
 
   // ── Verdict helpers ─────────────────────────────────────────────────
 
-  private isChallenged(v: Verdict): boolean {
-    return v.verdict === 'challenged' || v.verdict === 'request_changes';
+  private isRejected(output: string): boolean {
+    return /^REJECTED/i.test(output.trim());
   }
 
   private hasChangesRequested(v: Verdict): boolean {
@@ -1327,13 +1334,13 @@ Be specific and actionable. A fresh builder with no prior context must be able t
   }
 
   private architectDesignTask(structurePlan: string): string {
-    return `You already have the structural plan in context from your previous turn. Now produce the DESIGN SYSTEM section.
+    return `Now produce the DESIGN SYSTEM section for the structural plan below.
 
 This section will be given to frontend builders to ensure a cohesive, visually rich product. The builder will follow it literally — vague or minimal guidance produces vague, minimal UIs. Be specific and opinionated.
 
 If this is an existing project, read existing views/components and describe the existing design language rather than inventing a new one. If it IS a new project, design something that feels warm, crafted, and intentional — not a default template.
 
-# Structural Plan (for reference)
+# Approved Structural Plan
 ${structurePlan}
 
 # Design Philosophy
@@ -1405,7 +1412,7 @@ Specify as exact CSS custom properties or framework utility classes. Include:
   }
 
   private planReviewTask(plan: string, acceptanceCriteria: string): string {
-    return `You are reviewing an architect's plan for adversarial verification.
+    return `You are reviewing and refining an architect's plan. Your job is to find issues AND fix them directly in the plan — not report them back.
 
 # Acceptance Criteria
 ${acceptanceCriteria}
@@ -1413,42 +1420,27 @@ ${acceptanceCriteria}
 # Architect's Plan
 ${plan}
 
-# Verification Checklist
+# Review Checklist
 
-Verify ALL of the following:
-1. Plan covers ALL acceptance criteria listed above
-2. No spec deviations — the plan implements exactly what is required
-3. Module boundaries have no file ownership overlaps
-4. Integration contracts specify request/response schemas with validation rules
-5. Integration contracts specify the EXACT response envelope structure (nesting depth, field names, status codes) so frontend and backend builders agree on the wire format
-6. Response shapes are unambiguous — a frontend builder reading them must produce stores that destructure correctly WITHOUT reading backend code
-7. File ownership has no cross-scope conflicts (e.g., scaffold-owned file that backend needs to modify)
-8. Plan is specific enough for a fresh builder to follow without ambiguity
-9. No missing modules or endpoints
-10. Error handling and edge cases are addressed
+Check for these common issues:
+1. Plan covers all acceptance criteria
+2. No file ownership overlaps between scopes
+3. Integration contracts specify exact request/response schemas (field names, types, status codes, envelope nesting)
+4. Response shapes are unambiguous — a frontend builder must be able to destructure correctly WITHOUT reading backend code
+5. Dockerfile commands are correct (npm ci vs npm install, --omit=dev implications, lockfile requirements)
+6. Docker networking is correct (service names as hostnames, ports, healthchecks with depends_on conditions)
+7. No internal contradictions (conventions vs steps, traps vs implementation guidance)
+8. Missing files (.gitignore, .dockerignore, lockfiles, config files)
+9. Plan is specific enough for a fresh builder to implement without ambiguity
+10. Error handling and edge cases are addressed (validation, malformed input, 404s)
 
-End with:
-- VERDICT: APPROVED — if the plan passes all checks
-- VERDICT: CHALLENGED — followed by numbered issues with severity (CRITICAL/MAJOR/NIT)`;
-  }
+# Output
 
-  private revisionTask(_originalPlan: string, issues: string): string {
-    return `The counterpart challenged your plan. Address each issue below.
+If the plan is structurally sound but has issues, FIX THEM directly and output the COMPLETE corrected plan. Do not list issues separately — apply your fixes inline. Your output replaces the architect's plan entirely, so it must be complete and self-contained with every section. Do not abbreviate or summarize sections.
 
-# Counterpart Issues
-${issues}
+If the plan is fundamentally broken (wrong technology choices for the requirements, missing entire architectural layers, incoherent structure that cannot be patched) and cannot be salvaged by editing, start your response with REJECTED: followed by the specific reason. This should be rare — most plans can be fixed by editing.
 
-# Instructions
-
-You already have the full plan in context from your previous turn.
-Produce the COMPLETE, FINAL plan from scratch — every section, every detail.
-Do NOT produce a partial patch or "only the changed sections."
-The output must be a single self-contained document that a fresh builder
-could follow without seeing any prior version. Supersede everything.
-
-Keep everything the counterpart did NOT challenge, but emit it again in full.
-Fix everything the counterpart DID challenge.
-The result must have zero internal contradictions.`;
+Otherwise, output ONLY the complete, corrected plan.`;
   }
 
   private todoTask(todo: PipelineTodo): string {
