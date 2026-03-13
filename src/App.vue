@@ -7,9 +7,7 @@
         @open-scheduler-config="kanbanViewRef?.openSchedulerConfig()"
         @toggle-git-ops="kanbanViewRef?.toggleGitOps()"
         @toggle-merge-mode="kanbanViewRef?.toggleMergeMode()" />
-      <ManagerActions v-else-if="ui.viewMode === 'agents'"
-        @new-agent="onNewChat()"
-        @enter-mission-control="onEnterMissionControl()" />
+      <!-- ManagerActions hidden in agents mode — AgentsView has its own header -->
       <MissionControlActions v-else-if="ui.viewMode === 'mission-control'"
         @exit-mission-control="onExitMissionControl()" />
     </template>
@@ -17,6 +15,13 @@
     <!-- Top-level view routing based on viewMode -->
     <HomeView v-if="ui.viewMode === 'home'" />
     <KanbanView v-else-if="ui.viewMode === 'kanban'" ref="kanbanViewRef" />
+
+    <!-- Agents view: new 3-panel layout -->
+    <AgentsView
+      v-else-if="ui.viewMode === 'agents' && ui.workspacePath"
+      @file-clicked="onFileClicked"
+      @enter-mission-control="onEnterMissionControl"
+    />
 
     <!-- Workspace-dependent views: show selector until a workspace is chosen -->
     <WorkspaceSelector v-else-if="!ui.workspacePath" />
@@ -80,7 +85,6 @@ import { ref, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import AppShell from './components/layout/AppShell.vue';
 import HomeActions from './components/layout/actions/HomeActions.vue';
 import KanbanActions from './components/layout/actions/KanbanActions.vue';
-import ManagerActions from './components/layout/actions/ManagerActions.vue';
 import MissionControlActions from './components/layout/actions/MissionControlActions.vue';
 import WorkspaceSelector from './components/WorkspaceSelector.vue';
 import HomeView from './components/home/HomeView.vue';
@@ -93,6 +97,7 @@ import type { GitUnifiedDiff } from './engine/GitManager';
 import TerminalPanel from './components/terminal/TerminalPanel.vue';
 import SettingsDialog from './components/settings/SettingsDialog.vue';
 import NotificationToast from './components/home/NotificationToast.vue';
+import AgentsView from './components/agents/AgentsView.vue';
 import { useUiStore } from './stores/ui';
 import { useThemeStore } from './stores/theme';
 import { useSessionsStore, getDatabase, initSessionEngines } from './stores/sessions';

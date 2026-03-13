@@ -18,6 +18,10 @@
         />
         {{ project.name }}
         <span
+          v-if="showAgentCounts && agentRunningCount(project.id) > 0"
+          class="text-[9px] font-mono text-txt-faint ml-0.5"
+        >{{ agentRunningCount(project.id) }}</span>
+        <span
           class="ml-0.5 leading-none opacity-60 hover:opacity-100"
           @click.stop="onRemove(project.id)"
         >&times;</span>
@@ -26,10 +30,14 @@
       <!-- Unselected chip -->
       <button
         v-else
-        class="px-2 py-0.5 rounded-full border border-border-standard text-txt-faint text-[10px] hover:border-txt-faint hover:text-txt-muted transition-colors flex-shrink-0"
+        class="flex items-center gap-0.5 px-2 py-0.5 rounded-full border border-border-standard text-txt-faint text-[10px] hover:border-txt-faint hover:text-txt-muted transition-colors flex-shrink-0"
         @click="onToggle(project.id)"
       >
         {{ project.name }}
+        <span
+          v-if="showAgentCounts && agentRunningCount(project.id) > 0"
+          class="text-[9px] font-mono text-txt-faint ml-0.5"
+        >{{ agentRunningCount(project.id) }}</span>
       </button>
     </template>
 
@@ -61,6 +69,7 @@
 <script setup lang="ts">
 import { ref, computed, nextTick } from 'vue';
 import PopoverPanel from './PopoverPanel.vue';
+import { useFleetStore } from '../../stores/fleet';
 
 interface ProjectItem {
   id: string;
@@ -87,6 +96,14 @@ const emit = defineEmits<{
 const popoverOpen = ref(false);
 const overflowBtnEl = ref<HTMLElement | null>(null);
 const popoverStyle = ref<Record<string, string>>({});
+
+const fleetStore = useFleetStore();
+
+function agentRunningCount(projectId: string): number {
+  if (!props.showAgentCounts) return 0;
+  const group = fleetStore.agentsGroupedByProject.find((g) => g.projectId === projectId);
+  return group?.runningCount ?? 0;
+}
 
 const visibleProjects = computed(() => props.projects.slice(0, props.pinnedCount));
 const overflowCount = computed(() => Math.max(0, props.projects.length - props.pinnedCount));
