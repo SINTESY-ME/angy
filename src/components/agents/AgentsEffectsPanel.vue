@@ -1,7 +1,7 @@
 <template>
   <div class="flex flex-col h-full bg-base w-64 flex-shrink-0 border-l border-border-subtle">
     <!-- Header -->
-    <div class="px-3 py-2.5 bg-surface border-b border-border-subtle flex items-center justify-between">
+    <div class="px-3 py-2.5 border-b border-border-subtle flex items-center justify-between">
       <span class="text-[11px] font-semibold uppercase tracking-wider text-txt-muted">Effects</span>
       <div class="flex gap-1">
         <button
@@ -34,7 +34,7 @@
     </div>
 
     <!-- Summary bar -->
-    <div class="px-3 py-2 bg-surface border-b border-border-subtle flex gap-3 text-[10px] text-txt-muted">
+    <div class="px-3 py-2 border-b border-border-subtle flex gap-3 text-[10px] text-txt-muted">
       <span>{{ fileChanges.length }} files</span>
       <span class="text-emerald-400">+{{ totalAdded }}</span>
       <span class="text-accent-red">-{{ totalRemoved }}</span>
@@ -93,7 +93,7 @@
     </div>
 
     <!-- Approve / Reject — hidden when no pending approval -->
-    <div v-if="hasPendingApproval" class="px-3 py-3 bg-surface border-t border-border-subtle flex gap-2 justify-end">
+    <div v-if="hasPendingApproval" class="px-3 py-3 border-t border-border-subtle flex gap-2 justify-end">
       <button
         class="flex items-center gap-1 bg-white/[0.04] border border-white/[0.06] text-xs text-txt-secondary rounded-lg h-8 px-3 hover:bg-white/[0.06] transition-colors"
         @click="$emit('reject')"

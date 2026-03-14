@@ -102,7 +102,7 @@ body,
   background-color: var(--bg-base);
   color: var(--text-primary);
   font-family: var(--font-sans);
-  font-size: 13px;
+  font-size: 16px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -169,6 +169,7 @@ button:focus-visible {
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 .card-lift:hover {
+  transform: translateY(-2px);
   box-shadow: 0 8px 24px rgba(0,0,0,0.3);
 }
 
@@ -234,8 +235,8 @@ button:focus-visible {
 .accent-stripe {
   position: absolute;
   left: 0;
-  top: 12px;
-  bottom: 12px;
+  top: 8px;
+  bottom: 8px;
   width: 3px;
   border-radius: 0 2px 2px 0;
 }

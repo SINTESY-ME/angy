@@ -1,5 +1,5 @@
 <template>
-  <div class="flex flex-col h-full bg-[var(--bg-surface)]">
+  <div class="flex flex-col h-full bg-[var(--bg-base)]">
     <!-- Branch header -->
     <div class="flex items-center justify-between px-3 py-2 border-b border-[var(--border-subtle)]">
       <div class="flex items-center gap-1.5">

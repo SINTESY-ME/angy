@@ -1,5 +1,5 @@
 <template>
-  <div class="flex flex-col bg-surface border-b border-border-subtle">
+  <div class="flex flex-col bg-window/50 border-b border-border-subtle">
     <!-- Row 1: Title + Actions -->
     <div class="flex items-center gap-3 px-4 py-2.5">
       <span class="text-sm font-semibold text-txt-primary">Agents</span>

@@ -1,5 +1,5 @@
 <template>
-  <div class="h-full w-full flex flex-col bg-[var(--bg-surface)] text-[var(--text-primary)]">
+  <div class="h-full w-full flex flex-col bg-[var(--bg-base)] text-[var(--text-primary)]">
     <!-- Mission Control: full-screen graph dashboard -->
     <MissionControlView
       v-if="ui.viewMode === 'mission-control'"
@@ -30,7 +30,7 @@
 
       <!-- Panel 1: Left Tabs (Editor only) -->
       <Pane :size="panelSizes[1]" :min-size="inEditor ? 10 : 0" :max-size="inEditor ? 25 : 0">
-        <div v-if="inEditor" class="h-full flex flex-col bg-[var(--bg-surface)]">
+        <div v-if="inEditor" class="h-full flex flex-col bg-[var(--bg-base)]">
           <!-- Header with back button + compact tab switcher -->
           <div class="flex items-center justify-between px-3 h-11 border-b border-[var(--border-subtle)]">
             <button
@@ -77,7 +77,7 @@
           <!-- Back bar for inline preview in Manager mode -->
           <div
             v-if="inManager && (ui.inlinePreviewFile || ui.diffView)"
-            class="flex items-center h-8 px-3 border-b border-[var(--border-subtle)] bg-[var(--bg-surface)] cursor-pointer"
+            class="flex items-center h-8 px-3 border-b border-[var(--border-subtle)] bg-[var(--bg-window)] cursor-pointer"
             @click="closeCenterPane"
           >
             <span class="text-[11px] text-[var(--accent-teal)]">← Back to Chat</span>
@@ -113,7 +113,7 @@
       <Pane :size="panelSizes[4]" :min-size="effectsPaneMin" :max-size="effectsPaneMax">
         <div v-show="inManager && ui.effectsPanelVisible" class="h-full flex flex-col">
           <!-- Tab switcher -->
-          <div class="flex items-center px-3 h-8 border-b border-[var(--border-subtle)] bg-[var(--bg-surface)]">
+          <div class="flex items-center px-3 h-8 border-b border-[var(--border-subtle)] bg-[var(--bg-window)]">
             <div class="flex border rounded border-[var(--border-subtle)] overflow-hidden">
               <button
                 @click="ui.setRightPanelMode('effects')"

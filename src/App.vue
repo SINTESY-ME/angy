@@ -1,17 +1,5 @@
 <template>
   <AppShell>
-    <template #actions>
-      <HomeActions v-if="ui.viewMode === 'home'" />
-      <KanbanActions v-else-if="ui.viewMode === 'kanban'"
-        @open-git-tree="kanbanViewRef?.openGitTree()"
-        @open-scheduler-config="kanbanViewRef?.openSchedulerConfig()"
-        @toggle-git-ops="kanbanViewRef?.toggleGitOps()"
-        @toggle-merge-mode="kanbanViewRef?.toggleMergeMode()" />
-      <!-- ManagerActions hidden in agents mode — AgentsView has its own header -->
-      <MissionControlActions v-else-if="ui.viewMode === 'mission-control'"
-        @exit-mission-control="onExitMissionControl()" />
-    </template>
-
     <!-- Top-level view routing based on viewMode -->
     <HomeView v-if="ui.viewMode === 'home'" />
     <KanbanView v-else-if="ui.viewMode === 'kanban'" ref="kanbanViewRef" />
@@ -88,9 +76,6 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import AppShell from './components/layout/AppShell.vue';
-import HomeActions from './components/layout/actions/HomeActions.vue';
-import KanbanActions from './components/layout/actions/KanbanActions.vue';
-import MissionControlActions from './components/layout/actions/MissionControlActions.vue';
 import WorkspaceSelector from './components/WorkspaceSelector.vue';
 import HomeView from './components/home/HomeView.vue';
 import KanbanView from './components/kanban/KanbanView.vue';

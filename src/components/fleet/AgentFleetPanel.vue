@@ -1,5 +1,5 @@
 <template>
-  <div class="flex flex-col h-full bg-[var(--bg-surface)]">
+  <div class="flex flex-col h-full bg-[var(--bg-base)]">
     <FleetHeader
       @delete-all="$emit('delete-all-requested')"
       @delete-older="$emit('delete-older-requested')"

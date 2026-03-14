@@ -1,5 +1,5 @@
 <template>
-  <div class="relative flex items-center h-10 px-3 bg-[var(--bg-surface)] border-b border-[var(--border-subtle)] text-xs select-none">
+  <div class="relative flex items-center h-10 px-3 bg-window/50 border-b border-[var(--border-subtle)] text-xs select-none">
     <!-- Left: Logo + Breadcrumbs -->
     <div class="flex items-center gap-1.5 min-w-0 z-10">
       <!-- Breadcrumb: Project -->

@@ -1,44 +1,35 @@
 <template>
   <details
     :open="agent.status === 'working' || undefined"
+    class="tree-node tree-branch anim-fade-in"
     :class="depth > 0 ? 'ml-4' : ''"
   >
-    <!-- Summary row -->
+    <!-- Summary row (matches prototype bordered card style) -->
     <summary
-      class="flex items-center gap-2 px-2 py-1.5 cursor-pointer rounded-md transition-colors select-none"
-      :class="[
-        'hover:bg-white/[0.03]',
-        agent.status === 'done' ? 'opacity-70 hover:opacity-100' : '',
-      ]"
+      class="tree-summary flex items-center gap-2.5 px-3 py-2 rounded-lg cursor-pointer transition-colors select-none"
+      :class="summaryClasses"
     >
       <!-- Chevron -->
       <svg
-        class="w-2.5 h-2.5 text-txt-muted flex-shrink-0 transition-transform duration-150 chevron-icon"
-        viewBox="0 0 10 10"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.5"
+        class="tree-chevron w-3 h-3 text-txt-faint flex-shrink-0 transition-transform"
+        fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"
       >
-        <path d="M3 1l4 4-4 4" />
+        <path d="M9 18l6-6-6-6" />
       </svg>
 
       <!-- Avatar -->
       <div
-        class="w-5 h-5 rounded-md flex items-center justify-center flex-shrink-0 text-[8px] font-semibold text-white"
+        class="w-5 h-5 rounded-md flex items-center justify-center flex-shrink-0"
         :style="{ background: avatarGradient }"
       >
-        {{ initials }}
+        <span class="text-[8px] font-bold" :style="{ color: avatarTextColor }">{{ initials }}</span>
       </div>
 
-      <!-- Name + status badge -->
+      <!-- Name -->
       <span
         class="text-xs font-medium truncate"
         :class="agent.status === 'done' ? 'text-txt-secondary' : 'text-txt-primary'"
       >{{ agent.title || 'Untitled' }}</span>
-
-      <span v-if="agent.status === 'working'" class="text-[9px] px-1.5 py-0.5 rounded bg-teal/10 text-teal flex-shrink-0">running</span>
-      <span v-else-if="agent.status === 'done'" class="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 flex-shrink-0">done</span>
-      <span v-else-if="agent.status === 'error'" class="text-[9px] px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 flex-shrink-0">failed</span>
 
       <!-- Running dot -->
       <span
@@ -46,16 +37,25 @@
         class="w-1.5 h-1.5 rounded-full bg-teal anim-breathe flex-shrink-0"
       />
 
-      <span class="flex-1" />
+      <!-- Status badge -->
+      <span v-if="agent.status === 'working'" class="text-[9px] px-1.5 py-0.5 rounded bg-teal/10 text-teal flex-shrink-0">running</span>
+      <span v-else-if="agent.status === 'done'" class="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 flex-shrink-0">done</span>
+      <span v-else-if="agent.status === 'error'" class="text-[9px] px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 flex-shrink-0">failed</span>
+
+      <!-- Done checkmark -->
+      <svg v-if="agent.status === 'done'" class="w-3 h-3 text-emerald-400 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+      </svg>
 
       <!-- Right meta -->
-      <span v-if="agent.costUsd > 0" class="text-[9px] font-mono text-txt-faint flex-shrink-0">${{ agent.costUsd.toFixed(2) }}</span>
-      <span class="text-[9px] font-mono text-txt-faint flex-shrink-0">{{ messages.length }} msgs</span>
+      <span class="flex-1" />
+      <span v-if="agent.costUsd > 0" class="text-[9px] text-txt-faint flex-shrink-0">${{ agent.costUsd.toFixed(2) }}</span>
+      <span class="text-[9px] text-txt-faint flex-shrink-0 ml-1">{{ messages.length }} msgs</span>
     </summary>
 
     <!-- Children area -->
     <div
-      class="ml-4 pl-2 border-l-2 space-y-1 py-1"
+      class="tree-children ml-4 pl-4 border-l-2 mt-2 space-y-3 pb-1"
       :class="borderClass"
     >
       <ChatTreeNode
@@ -93,31 +93,43 @@ defineEmits<{
   'file-clicked': [filePath: string];
 }>();
 
-const AVATAR_GRADIENTS = [
-  'linear-gradient(135deg, #f59e0b, #ea580c)',
-  'linear-gradient(135deg, #10b981, #059669)',
-  'linear-gradient(135deg, #22d3ee, #0891b2)',
-  'linear-gradient(135deg, #a855f6, #7c3aed)',
+const AVATAR_STYLES = [
+  { gradient: 'linear-gradient(135deg, rgba(245,158,11,0.3), rgba(234,88,12,0.3))', textColor: '#fb923c' },
+  { gradient: 'linear-gradient(135deg, rgba(16,185,129,0.4), rgba(5,150,105,0.4))', textColor: '#10b981' },
+  { gradient: 'linear-gradient(135deg, rgba(251,191,36,0.4), rgba(217,119,6,0.4))', textColor: '#fbbf24' },
+  { gradient: 'linear-gradient(135deg, rgba(168,85,247,0.4), rgba(124,58,237,0.4))', textColor: '#a855f6' },
 ];
 
-const avatarGradient = computed(() => {
+const avatarStyle = computed(() => {
   const hash = props.agent.sessionId.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
-  return AVATAR_GRADIENTS[hash % AVATAR_GRADIENTS.length];
+  return AVATAR_STYLES[hash % AVATAR_STYLES.length];
 });
+
+const avatarGradient = computed(() => avatarStyle.value.gradient);
+const avatarTextColor = computed(() => avatarStyle.value.textColor);
 
 const initials = computed(() => {
   const name = props.agent.title || 'U';
-  const parts = name.trim().split(/\s+/);
-  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  const parts = name.trim().split(/[-\s]+/);
+  if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
   return name.slice(0, 2).toUpperCase();
+});
+
+const summaryClasses = computed(() => {
+  if (props.agent.status === 'working') {
+    return 'bg-surface border border-teal/20 anim-shimmer hover:border-teal/30';
+  }
+  if (props.agent.status === 'done') {
+    return 'bg-surface border border-border-subtle opacity-70 hover:opacity-100';
+  }
+  return 'bg-surface border border-border-subtle hover:border-purple-500/20';
 });
 
 const borderClass = computed(() => {
   switch (props.agent.status) {
-    case 'working': return 'border-teal/30 anim-shimmer';
+    case 'working': return 'border-teal/20';
     case 'done': return 'border-emerald-500/15';
-    case 'error': return 'border-border-subtle';
-    default: return 'border-border-subtle';
+    default: return 'border-purple-500/15';
   }
 });
 
@@ -130,16 +142,3 @@ const agentColor = computed(() => {
   }
 });
 </script>
-
-<style scoped>
-summary {
-  list-style: none;
-}
-summary::marker,
-summary::-webkit-details-marker {
-  display: none;
-}
-details[open] > summary .chevron-icon {
-  transform: rotate(90deg);
-}
-</style>

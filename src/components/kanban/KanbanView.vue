@@ -4,65 +4,66 @@
     <GitOpsPanel v-if="showGitOps && projectId" ref="gitOpsPanelRef" :projectId="projectId" />
 
     <!-- Two-row header -->
-    <div class="flex flex-col gap-1.5 px-4 pt-3 pb-2">
+    <header class="flex-shrink-0 bg-window/50 border-b border-border-subtle">
       <!-- Row 1: title, subtitle, filter input, actions -->
-      <div class="flex items-center gap-3">
-        <div class="flex flex-col mr-auto">
-          <h2 class="text-base font-semibold text-txt-primary leading-tight">Board</h2>
-          <span class="text-[10px] text-txt-muted">
-            {{ epicCount }} epic{{ epicCount !== 1 ? 's' : '' }} across {{ activeProjectCount }} project{{ activeProjectCount !== 1 ? 's' : '' }}
-          </span>
-        </div>
+      <div class="h-12 flex items-center px-5 gap-3">
+        <span class="text-sm font-semibold text-txt-primary">Board</span>
+        <span class="text-xs text-txt-muted">
+          {{ epicCount }} epic{{ epicCount !== 1 ? 's' : '' }} across {{ activeProjectCount }} active project{{ activeProjectCount !== 1 ? 's' : '' }}
+        </span>
+        <div class="flex-1" />
 
         <!-- Search input -->
-        <div class="relative">
-          <svg class="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-txt-faint pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+        <div class="flex items-center bg-raised rounded-lg px-3 py-1.5 gap-2 w-48">
+          <svg class="w-3.5 h-3.5 text-txt-faint flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
           </svg>
           <input
             v-model="filterQuery"
             type="text"
-            placeholder="Filter epics…"
-            class="w-44 pl-7 pr-2 py-1 rounded-lg bg-raised border border-border-subtle text-xs text-txt-primary placeholder:text-txt-faint focus:outline-none focus:border-[var(--accent-mauve)]/40 transition-colors"
+            placeholder="Filter epics..."
+            class="bg-transparent text-xs text-txt-primary placeholder:text-txt-faint outline-none w-full"
           />
         </div>
 
+        <!-- Add Epic -->
+        <button
+          class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-base bg-gradient-to-r from-ember-500 to-ember-600 hover:brightness-110 transition"
+          @click="addEpic"
+        >
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+          </svg>
+          Add Epic
+        </button>
+
         <!-- Schedule Now -->
         <button
-          class="px-2.5 py-1 rounded-lg text-[11px] font-medium text-txt-secondary bg-raised border border-border-subtle hover:border-border-standard hover:text-txt-primary transition-colors"
+          class="text-xs text-txt-muted hover:text-txt-secondary transition-colors px-2 py-1.5"
           title="Trigger scheduler tick"
           @click="onScheduleNow"
         >
           Schedule Now
         </button>
-
-        <!-- Add Epic -->
-        <button
-          class="px-2.5 py-1 rounded-lg text-[11px] font-medium text-white bg-[var(--accent-mauve)] hover:opacity-90 transition-opacity flex items-center gap-1"
-          @click="addEpic"
-        >
-          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
-          </svg>
-          Add Epic
-        </button>
       </div>
 
       <!-- Row 2: Project filter chips -->
-      <ProjectFilterChips
-        :selectedIds="filterStore.selectedProjectIds"
-        :projects="chipProjects"
-        popoverId="kanban-project-filter"
-        @toggle="onFilterToggle"
-        @remove="onFilterToggle"
-      />
-    </div>
+      <div class="h-9 flex items-center px-5 border-t border-border-subtle">
+        <ProjectFilterChips
+          :selectedIds="filterStore.selectedProjectIds"
+          :projects="chipProjects"
+          popoverId="kanban-project-filter"
+          @toggle="onFilterToggle"
+          @remove="onFilterToggle"
+        />
+      </div>
+    </header>
 
     <!-- Board + Detail panel -->
     <div class="flex flex-1 overflow-hidden">
       <!-- Columns -->
       <div class="flex-1 flex flex-col overflow-hidden">
-        <div class="flex-1 flex gap-2 p-2 overflow-x-auto">
+        <div class="flex-1 flex gap-3 p-4 overflow-x-auto min-w-max">
           <KanbanColumn
             v-for="col in boardColumns"
             :key="col.key"
@@ -138,12 +139,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import type { SchedulerConfig } from '@/engine/KosTypes';
 import { useUiStore } from '@/stores/ui';
 import { useEpicStore } from '@/stores/epics';
 import { useProjectsStore } from '@/stores/projects';
 import { useFilterStore } from '@/stores/filter';
+import { PROJECT_COLORS } from '@/stores/fleet';
 import { Scheduler } from '@/engine/Scheduler';
 import KanbanColumn from './KanbanColumn.vue';
 import type { BoardColumn } from './KanbanColumn.vue';
@@ -158,6 +160,12 @@ const ui = useUiStore();
 const epicStore = useEpicStore();
 const projectsStore = useProjectsStore();
 const filterStore = useFilterStore();
+
+onMounted(() => {
+  if (filterStore.selectedProjectIds.length === 0) {
+    filterStore.applyPreset('active');
+  }
+});
 
 const gitOpsPanelRef = ref<InstanceType<typeof GitOpsPanel> | null>(null);
 const selectedEpicId = ref<string | null>(null);
@@ -175,7 +183,11 @@ const projectId = computed(() => ui.activeProjectId ?? '');
 // ── Derived data ──────────────────────────────────────────────────────
 
 const chipProjects = computed(() =>
-  projectsStore.projects.map((p) => ({ id: p.id, name: p.name })),
+  projectsStore.projects.map((p, idx) => ({
+    id: p.id,
+    name: p.name,
+    color: PROJECT_COLORS[idx % PROJECT_COLORS.length],
+  })),
 );
 
 const epicCount = computed(() =>
@@ -191,10 +203,10 @@ const boardColumns = computed<BoardColumn[]>(() => [
     key: 'idea',
     columns: ['idea'],
     dropTarget: 'idea',
-    label: 'Ideas',
-    width: '15%',
-    dotColor: 'bg-[var(--accent-mauve)]',
-    labelColor: 'text-[var(--accent-mauve)]',
+    label: 'Idea',
+    width: '220px',
+    dotColor: 'bg-purple-400/80',
+    labelColor: 'text-txt-faint',
     opacity: 1,
     breathe: false,
     addButton: true,
@@ -204,9 +216,9 @@ const boardColumns = computed<BoardColumn[]>(() => [
     columns: ['backlog', 'todo'],
     dropTarget: 'todo',
     label: 'Upcoming',
-    width: '18%',
-    dotColor: 'bg-[var(--accent-cyan)]',
-    labelColor: 'text-[var(--accent-cyan)]',
+    width: '250px',
+    dotColor: 'bg-blue-400/80',
+    labelColor: 'text-txt-faint',
     opacity: 1,
     breathe: false,
   },
@@ -215,9 +227,9 @@ const boardColumns = computed<BoardColumn[]>(() => [
     columns: ['in-progress'],
     dropTarget: 'in-progress',
     label: 'Active',
-    width: '22%',
-    dotColor: 'bg-[var(--accent-yellow)]',
-    labelColor: 'text-[var(--accent-yellow)]',
+    width: '340px',
+    dotColor: 'bg-ember',
+    labelColor: 'text-ember-400',
     opacity: 1,
     breathe: true,
   },
@@ -226,20 +238,20 @@ const boardColumns = computed<BoardColumn[]>(() => [
     columns: ['review'],
     dropTarget: 'review',
     label: 'Review',
-    width: '18%',
-    dotColor: 'bg-[var(--accent-peach)]',
-    labelColor: 'text-[var(--accent-peach)]',
+    width: '270px',
+    dotColor: 'bg-orange-400',
+    labelColor: 'text-orange-400',
     opacity: 1,
-    breathe: false,
+    breathe: true,
   },
   {
     key: 'done',
     columns: ['done'],
     dropTarget: 'done',
     label: 'Done',
-    width: '14%',
-    dotColor: 'bg-[var(--accent-green)]',
-    labelColor: 'text-[var(--accent-green)]',
+    width: '220px',
+    dotColor: 'bg-emerald-400',
+    labelColor: 'text-txt-faint',
     opacity: 0.7,
     breathe: false,
   },
@@ -248,8 +260,8 @@ const boardColumns = computed<BoardColumn[]>(() => [
     columns: ['discarded'],
     dropTarget: 'discarded',
     label: 'Discarded',
-    width: '13%',
-    dotColor: 'bg-txt-faint',
+    width: '180px',
+    dotColor: 'bg-red-400/60',
     labelColor: 'text-txt-faint',
     opacity: 0.5,
     breathe: false,

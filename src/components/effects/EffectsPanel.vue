@@ -1,7 +1,7 @@
 <template>
-  <div class="flex flex-col h-full bg-[var(--bg-surface)]">
+  <div class="flex flex-col h-full bg-[var(--bg-base)]">
     <!-- Header -->
-    <div class="flex items-center justify-between px-3 h-11 bg-[var(--bg-surface)]">
+    <div class="flex items-center justify-between px-3 h-11 bg-[var(--bg-base)]">
       <span class="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Effects</span>
       <button
         @click="toggleScope"

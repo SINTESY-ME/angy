@@ -1,5 +1,5 @@
 <template>
-  <div class="relative flex flex-col bg-[var(--bg-surface)]">
+  <div class="relative flex flex-col bg-[var(--bg-base)]">
     <div class="flex items-center justify-between px-3 h-8">
       <!-- Left side: title -->
       <div class="flex items-center gap-1.5">

@@ -1,5 +1,5 @@
 <template>
-  <div class="flex items-end gap-2 px-4 py-3 bg-surface border-t border-border-subtle">
+  <div class="flex items-end gap-2 px-4 py-3 bg-base border-t border-border-subtle">
     <!-- Agent picker placeholder -->
     <button
       class="text-xs text-txt-muted hover:text-txt-secondary px-2 py-1 rounded-md hover:bg-raised transition-colors flex items-center gap-1 flex-shrink-0"

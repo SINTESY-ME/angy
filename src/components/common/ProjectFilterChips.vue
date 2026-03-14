@@ -143,8 +143,16 @@ function agentRunningCount(projectId: string): number {
   return group?.runningCount ?? 0;
 }
 
-const visibleProjects = computed(() => props.projects.slice(0, props.pinnedCount));
-const overflowCount = computed(() => Math.max(0, props.projects.length - props.pinnedCount));
+const sortedProjects = computed(() => {
+  const selected = props.projects.filter(p => props.selectedIds.includes(p.id));
+  const unselected = props.projects.filter(p => !props.selectedIds.includes(p.id));
+  return [...selected, ...unselected];
+});
+const effectivePinnedCount = computed(() =>
+  Math.max(props.pinnedCount, props.projects.filter(p => props.selectedIds.includes(p.id)).length),
+);
+const visibleProjects = computed(() => sortedProjects.value.slice(0, effectivePinnedCount.value));
+const overflowCount = computed(() => Math.max(0, sortedProjects.value.length - effectivePinnedCount.value));
 
 const popoverGroups = computed(() => [{
   label: '',
