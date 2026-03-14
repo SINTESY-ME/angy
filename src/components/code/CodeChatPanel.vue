@@ -124,7 +124,6 @@ const currentText = ref('');
 const currentThinking = ref('');
 const currentMsgId = ref<string | null>(null);
 const turnCounter = ref(0);
-const pendingDbMessages: MessageRecord[] = [];
 
 const inputText = ref('');
 const inputEl = ref<HTMLTextAreaElement | null>(null);
@@ -259,7 +258,6 @@ async function createNewChat(): Promise<string> {
   currentText.value = '';
   currentThinking.value = '';
   currentMsgId.value = null;
-  pendingDbMessages.length = 0;
   return sid;
 }
 
@@ -287,7 +285,6 @@ const handle: AgentHandle = {
       messages.value.push(msg);
       const record: MessageRecord = { sessionId: _sid, role: 'assistant', content, turnId: turnCounter.value, timestamp: msg.timestamp };
       sessionsStore.addMessage(_sid, record);
-      pendingDbMessages.push(record);
     }
   },
   appendThinkingDelta(_sid: string, text: string) {
@@ -308,26 +305,21 @@ const handle: AgentHandle = {
       turnId: turnCounter.value, timestamp: msg.timestamp,
     };
     sessionsStore.addMessage(_sid, record);
-    pendingDbMessages.push(record);
   },
   markDone(_sid: string) {
     isProcessing.value = false;
     currentText.value = '';
     currentThinking.value = '';
     currentMsgId.value = null;
-    const db = getDatabase();
-    for (const m of pendingDbMessages) db.saveMessage(m);
-    pendingDbMessages.length = 0;
     fleetStore.updateAgent({ sessionId: _sid, status: 'idle', activity: '' });
     sessionsStore.persistSession(_sid);
   },
   showError(_sid: string, error: string) {
     const id = genId();
     const content = `**Error:** ${error.replace(/<[^>]*>/g, '')}`;
+    // Push for in-memory UI display only — DB persistence handled by the buffer.
+    // Do NOT call markDone — the finished handler is the sole caller.
     messages.value.push({ id, role: 'assistant', content, turnId: turnCounter.value, timestamp: Math.floor(Date.now() / 1000) });
-    const record: MessageRecord = { sessionId: _sid, role: 'assistant', content, turnId: turnCounter.value, timestamp: Math.floor(Date.now() / 1000) };
-    pendingDbMessages.push(record);
-    handle.markDone(_sid);
   },
   setThinking() {},
   setRealSessionId(_sid: string, realId: string) {

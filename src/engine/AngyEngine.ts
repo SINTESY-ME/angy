@@ -69,7 +69,7 @@ export class AngyEngine {
   private constructor() {
     this.db = new Database();
     this.sessions = new SessionService(this.db);
-    this.processes = new ProcessManager();
+    this.processes = new ProcessManager(this.db);
     this.branchManager = new BranchManager(this.db);
     this.pool = OrchestratorPool.getInstance(this.branchManager, this.db);
     this.scheduler = Scheduler.getInstance();
@@ -491,7 +491,14 @@ export class AngyEngine {
       this.sessions.persistSession(sid);
     };
 
-    const workspace = snapshot.workspace;
+    // Resolve workspace: prefer worktree path from branch records over snapshot
+    let workspace = snapshot.workspace;
+    const branches = await this.branchManager.getEpicBranches(epicId);
+    const wtBranch = branches.find(b => b.worktreePath && b.status === 'active');
+    if (wtBranch) {
+      workspace = wtBranch.worktreePath!;
+      console.log(`[AngyEngine] Resume: overriding workspace with worktree path: ${workspace}`);
+    }
     const detectedProfiles = await detectTechnologies(workspace);
 
     const runner = new HybridPipelineRunner({
@@ -669,9 +676,14 @@ export class AngyEngine {
     engineBus.on('epic:completed', async ({ epicId }) => {
       try {
         await this.restoreReposForEpic(epicId);
+      } catch (err) {
+        console.error(`[AngyEngine] restoreReposForEpic failed for ${epicId}:`, err);
+      }
+      try {
         await this.scheduler.moveToReview(epicId);
       } catch (err) {
-        console.error(`[AngyEngine] Failed to move epic ${epicId} to review:`, err);
+        console.error(`[AngyEngine] moveToReview failed for ${epicId}, forcing pool cleanup:`, err);
+        await this.pool.removeEpic(epicId).catch(() => {});
       }
       engineBus.emit('epic:storeSyncNeeded');
     });
@@ -681,9 +693,14 @@ export class AngyEngine {
     engineBus.on('epic:failed', async ({ epicId, reason }) => {
       try {
         await this.restoreReposForEpic(epicId);
+      } catch (err) {
+        console.error(`[AngyEngine] restoreReposForEpic failed for ${epicId}:`, err);
+      }
+      try {
         await this.scheduler.rejectEpic(epicId, `Agent failed: ${reason}`);
       } catch (err) {
-        console.error(`[AngyEngine] Failed to reject epic ${epicId}:`, err);
+        console.error(`[AngyEngine] rejectEpic failed for ${epicId}, forcing pool cleanup:`, err);
+        await this.pool.removeEpic(epicId).catch(() => {});
       }
       engineBus.emit('epic:storeSyncNeeded');
     });

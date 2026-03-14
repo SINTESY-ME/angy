@@ -114,7 +114,6 @@ interface StreamState {
   turnCounter: number;
   currentText: string;
   thinkingText: string;
-  pendingMessages: MessageRecord[];
 }
 
 const streamStates = new Map<string, StreamState>();
@@ -124,7 +123,7 @@ function getStreamState(sessionId: string): StreamState {
   if (!s) {
     const existing = sessionsStore.getMessages(sessionId);
     const maxTurn = existing.reduce((max, m) => Math.max(max, m.turnId), 0);
-    s = { turnCounter: maxTurn, currentText: '', thinkingText: '', pendingMessages: [] };
+    s = { turnCounter: maxTurn, currentText: '', thinkingText: '' };
     streamStates.set(sessionId, s);
   }
   return s;
@@ -154,7 +153,6 @@ const storeHandle: AgentHandle = {
         timestamp: Math.floor(Date.now() / 1000),
       };
       sessionsStore.addMessage(sessionId, msg);
-      state.pendingMessages.push(msg);
     }
   },
 
@@ -177,21 +175,14 @@ const storeHandle: AgentHandle = {
       timestamp: Math.floor(Date.now() / 1000),
     };
     sessionsStore.addMessage(sessionId, msg);
-    state.pendingMessages.push(msg);
   },
 
   markDone(sessionId: string) {
     const state = streamStates.get(sessionId);
     if (!state) return;
 
-    const db = getDatabase();
-    for (const msg of state.pendingMessages) {
-      db.saveMessage(msg);
-    }
-
     state.currentText = '';
     state.thinkingText = '';
-    state.pendingMessages = [];
 
     fleetStore.updateAgent({ sessionId, status: 'idle', activity: '' });
     sessionsStore.persistSession(sessionId);
@@ -206,9 +197,9 @@ const storeHandle: AgentHandle = {
       turnId: state.turnCounter,
       timestamp: Math.floor(Date.now() / 1000),
     };
+    // Push for in-memory UI display only — DB persistence handled by the buffer.
+    // Do NOT call markDone — the finished handler is the sole caller.
     sessionsStore.addMessage(sessionId, msg);
-    state.pendingMessages.push(msg);
-    storeHandle.markDone(sessionId);
   },
 
   setThinking(sessionId: string, thinking: boolean) {
@@ -241,7 +232,6 @@ async function onSend(message: string, images: AttachedImage[] = []) {
   state.turnCounter++;
   state.currentText = '';
   state.thinkingText = '';
-  state.pendingMessages = [];
 
   const userMsg: MessageRecord = {
     sessionId: sid,

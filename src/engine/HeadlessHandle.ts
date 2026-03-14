@@ -2,8 +2,9 @@
  * HeadlessHandle — AgentHandle implementation that runs without any Vue component.
  *
  * Tracks per-session state in memory (accumulated text, messages, turn counter)
- * and persists messages to the Database on markDone. Enables orchestrators to
- * run headlessly — no ChatPanel, no DOM, no Vue dependency.
+ * for result extraction and delegation. Message persistence is handled
+ * incrementally by SessionMessageBuffer in ProcessManager. Enables orchestrators
+ * to run headlessly — no ChatPanel, no DOM, no Vue dependency.
  *
  * Each orchestrator (or concurrent epic) gets its own HeadlessHandle instance,
  * so multiple orchestrators can run in parallel without shared state.
@@ -192,25 +193,7 @@ export class HeadlessHandle implements AgentHandle {
     s.lastAssistantContent = result;
     s.currentText = '';
 
-    // Persist non-user messages to DB (user messages were persisted in prepareForSend)
-    const savePromises: Promise<void>[] = [];
-    for (const msg of s.messages) {
-      if (msg.role === 'user') continue;
-      savePromises.push(
-        this.db.saveMessage({
-          sessionId,
-          role: msg.role,
-          content: msg.content,
-          toolName: msg.toolName,
-          toolInput: msg.toolInput,
-          turnId: msg.turnId,
-          timestamp: Math.floor(msg.timestamp / 1000),
-        }).catch(err => {
-          console.error(`[HeadlessHandle] Failed to persist ${msg.role} message for session ${sessionId}:`, err);
-        }),
-      );
-    }
-    await Promise.all(savePromises);
+    // Messages are now saved incrementally by SessionMessageBuffer in ProcessManager.
     s.messages = [];
 
     // Handle delegation completion for child sessions
@@ -233,23 +216,13 @@ export class HeadlessHandle implements AgentHandle {
 
   async showError(sessionId: string, error: string): Promise<void> {
     const s = this.getOrCreate(sessionId);
-    // Flush any accumulated text
+    // Append error to currentText so markDone can extract it for delegation results.
+    // Do NOT push a separate message (the buffer already persisted via appendAssistantDelta).
+    // Do NOT call markDone here — the finished handler is the sole caller of markDone.
     if (s.currentText) {
-      s.messages.push({
-        role: 'assistant',
-        content: s.currentText,
-        turnId: s.turnCounter,
-        timestamp: Date.now(),
-      });
-      s.currentText = '';
+      s.currentText += '\n';
     }
-    s.messages.push({
-      role: 'assistant',
-      content: `Error: ${error}`,
-      turnId: s.turnCounter,
-      timestamp: Date.now(),
-    });
-    await this.markDone(sessionId);
+    s.currentText += `Error: ${error}`;
   }
 
   setThinking(sessionId: string, thinking: boolean): void {

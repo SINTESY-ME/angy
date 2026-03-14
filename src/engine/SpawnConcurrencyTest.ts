@@ -108,7 +108,7 @@ export async function runProductionTest(
     const db = createStubDb();
     const mgr = new SessionManager();
     const handle = new HeadlessHandle(db, mgr);
-    const processes = new ProcessManager();
+    const processes = new ProcessManager(db);
     const pendingResolvers = new Map<string, (result: string) => void>();
     const activeProcesses = new Set<string>();
     let agentCounter = 0;

@@ -9,6 +9,7 @@
 import { ProcessManager } from '../engine/ProcessManager';
 import { ClaudeProcess } from '../engine/ClaudeProcess';
 import type { AgentHandle, ProcessOptions } from '../engine/types';
+import { getDatabase } from '../stores/sessions';
 
 // ── Re-export for backward compatibility ─────────────────────────────────
 
@@ -26,7 +27,7 @@ let _pm: ProcessManager | null = null;
 
 function getProcessManager(): ProcessManager {
   if (!_pm) {
-    _pm = new ProcessManager();
+    _pm = new ProcessManager(getDatabase());
   }
   return _pm;
 }

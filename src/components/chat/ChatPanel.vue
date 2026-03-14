@@ -754,29 +754,8 @@ function addToolUse(sessionId: string, toolName: string, summary: string, toolIn
 function markDone(sessionId: string) {
   const state = sessionStates.value.get(sessionId);
   if (state) {
-    // Ensure the session row exists in the DB before saving messages
-    // (prevents FOREIGN KEY constraint failures for newly-created sessions).
+    // Persist the session row (messages are now saved incrementally by SessionMessageBuffer).
     sessionsStore.persistSession(sessionId);
-
-    // Persist any unsaved assistant/tool messages from this turn batch.
-    // Also persist orchestrator feed-result user messages (id contains '-feed')
-    // so orchestrator sessions are fully debuggable from the DB.
-    const db = getDatabase();
-    for (const msg of state.messages) {
-      if (msg.id.startsWith('db-')) continue;
-      const isFeedMessage = msg.role === 'user' && msg.id.includes('-feed');
-      if ((msg.role !== 'user' || isFeedMessage) && msg.turnId > state.lastPersistedTurnId) {
-        db.saveMessage({
-          sessionId,
-          role: msg.role,
-          content: msg.content,
-          toolName: msg.toolName,
-          toolInput: msg.toolInput ? JSON.stringify(msg.toolInput) : undefined,
-          turnId: msg.turnId,
-          timestamp: Math.floor(msg.timestamp / 1000),
-        });
-      }
-    }
     state.lastPersistedTurnId = state.turnCounter;
 
     state.isProcessing = false;
@@ -797,6 +776,8 @@ function showError(sessionId: string, errorText: string) {
   const state = getOrCreateState(sessionId);
   // Strip any HTML tags from error text to avoid rendering issues
   const cleanError = errorText.replace(/<[^>]*>/g, '');
+  // Push error for in-memory UI display only — DB persistence is handled by the buffer.
+  // Do NOT call markDone here — the finished handler is the sole caller of markDone.
   state.messages.push({
     id: `msg-${Date.now()}-error`,
     role: 'assistant',
@@ -804,7 +785,6 @@ function showError(sessionId: string, errorText: string) {
     turnId: state.turnCounter,
     timestamp: Date.now(),
   });
-  markDone(sessionId);
 }
 
 function setThinking(sessionId: string, thinking: boolean) {

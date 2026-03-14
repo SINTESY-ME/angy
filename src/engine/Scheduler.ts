@@ -523,6 +523,52 @@ export class Scheduler {
       return false;
     }
 
+    // ── Parallel agents: duplicate epic N times and discard original ──────
+    const parallelCount = freshEpic.parallelAgentCount ?? 1;
+    if (parallelCount > 1 && this.epicRepo) {
+      const now = new Date().toISOString();
+      // Strip existing X-suffix so re-scheduling doesn't double-suffix
+      const baseTitle = freshEpic.title.replace(/ X\d+$/, '');
+      console.log(`[Scheduler] Duplicating epic "${baseTitle}" x${parallelCount} for parallel execution`);
+
+      for (let i = 1; i <= parallelCount; i++) {
+        const clone: Epic = {
+          ...freshEpic,
+          id: crypto.randomUUID(),
+          title: `${baseTitle} X${i}`,
+          parallelAgentCount: 1,
+          column: 'todo',
+          rootSessionId: null,
+          costTotal: 0,
+          computedScore: 0,
+          startedAt: null,
+          completedAt: null,
+          suspendedAt: null,
+          rejectionCount: 0,
+          rejectionFeedback: '',
+          lastAttemptFiles: [],
+          lastValidationResults: [],
+          lastArchitectPlan: '',
+          createdAt: now,
+          updatedAt: now,
+        };
+        await this.epicRepo.saveEpic(clone);
+      }
+
+      // Discard the template epic
+      await this.doMoveEpic(freshEpic.id, 'discarded');
+      engineBus.emit('epic:storeSyncNeeded');
+
+      await this.logAction({
+        type: 'start',
+        epicId: freshEpic.id,
+        timestamp: now,
+        details: `Split "${baseTitle}" into ${parallelCount} parallel copies (X1–X${parallelCount})`,
+      });
+
+      return false; // clones will be picked up on the next scheduler tick
+    }
+
     await this.doMoveEpic(epic.id, 'in-progress');
     if (freshEpic.suspendedAt) {
       await this.doUpdateEpic(epic.id, { suspendedAt: null });

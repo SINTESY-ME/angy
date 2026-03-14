@@ -10,6 +10,8 @@ import { Command } from '@tauri-apps/plugin-shell';
 import { ClaudeProcess } from './ClaudeProcess';
 import type { AgentHandle, ProcessOptions } from './types';
 import { engineBus } from './EventBus';
+import type { Database } from './Database';
+import { SessionMessageBuffer } from './SessionMessageBuffer';
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -73,6 +75,13 @@ async function runAutoCommit(workingDir: string): Promise<void> {
 
 export class ProcessManager {
   private processes = new Map<string, ClaudeProcess>();
+  private buffer: SessionMessageBuffer;
+  /** Generation counter per session — stale finished handlers detect they are outdated. */
+  private generations = new Map<string, number>();
+
+  constructor(db: Database) {
+    this.buffer = new SessionMessageBuffer(db);
+  }
 
   /**
    * Send a message to Claude for a given session.
@@ -100,8 +109,12 @@ export class ProcessManager {
     if (options.agentName) proc.setAgentName(options.agentName);
     if (options.specialistRole) proc.setSpecialistRole(options.specialistRole);
 
+    // Bump generation so stale finished handlers from cancelled processes are ignored
+    const gen = (this.generations.get(sessionId) ?? 0) + 1;
+    this.generations.set(sessionId, gen);
+
     this.processes.set(sessionId, proc);
-    this.wireEvents(sessionId, proc, handle, options);
+    this.wireEvents(sessionId, proc, handle, options, gen);
     proc.sendMessage(text, options.images);
 
     return proc;
@@ -129,8 +142,12 @@ export class ProcessManager {
     if (options.model) proc.setModel(options.model);
     proc.setSessionId(options.resumeSessionId);
 
+    // Bump generation so stale finished handlers from cancelled processes are ignored
+    const gen = (this.generations.get(sessionId) ?? 0) + 1;
+    this.generations.set(sessionId, gen);
+
     this.processes.set(sessionId, proc);
-    this.wireEvents(sessionId, proc, handle, options);
+    this.wireEvents(sessionId, proc, handle, options, gen);
     proc.sendToolResult(toolUseId, content);
 
     return proc;
@@ -141,8 +158,10 @@ export class ProcessManager {
     const proc = this.processes.get(sessionId);
     if (proc?.isRunning()) {
       proc.cancel();
+      // Issue 5 fix: do NOT delete from processes here — let the finished handler
+      // be the sole owner of process-map cleanup. This prevents races where a new
+      // sendMessage arrives before the stale finished handler fires.
     }
-    this.processes.delete(sessionId);
   }
 
   /** Get the active process for a session (if any). */
@@ -157,10 +176,12 @@ export class ProcessManager {
     proc: ClaudeProcess,
     handle: AgentHandle,
     options: ProcessOptions,
+    generation: number,
   ): void {
     // ── StreamParser events → AgentHandle ──
 
     proc.streamParser.events.on('textDelta', (text) => {
+      this.buffer.appendAssistantDelta(sessionId, text);
       handle.appendTextDelta(sessionId, text);
     });
 
@@ -178,6 +199,12 @@ export class ProcessManager {
 
     proc.streamParser.events.on('toolUseStarted', (payload) => {
       const summary = summarizeTool(payload.toolName, payload.input);
+      this.buffer.addToolMessage(sessionId, {
+        toolName: payload.toolName,
+        summary,
+        toolInput: payload.input ? JSON.stringify(payload.input) : undefined,
+        timestamp: Math.floor(Date.now() / 1000),
+      });
       handle.addToolUse(sessionId, payload.toolName, summary, payload.input, payload.toolId);
 
       // Broadcast status change so fleet UI can track activity for all handle types
@@ -216,7 +243,9 @@ export class ProcessManager {
     });
 
     proc.streamParser.events.on('errorOccurred', (error) => {
-      handle.showError(sessionId, error);
+      // Persist error text through the buffer (sole persistence point for errors).
+      // Do NOT call showError here — let proc.events.errorOccurred handle UI feedback.
+      this.buffer.appendAssistantDelta(sessionId, `Error: ${error}`);
     });
 
     proc.streamParser.events.on('resultReady', (payload) => {
@@ -234,24 +263,41 @@ export class ProcessManager {
     // ── ClaudeProcess lifecycle events ──
 
     proc.events.on('finished', (exitCode) => {
-      handle.markDone(sessionId);
-      this.processes.delete(sessionId);
-
-      // Broadcast idle status + session:finished so fleet UI updates for all handle types
-      engineBus.emit('agent:statusChanged', {
-        agentId: sessionId,
-        status: 'idle',
-        activity: '',
-      });
-      engineBus.emit('session:finished', { sessionId, exitCode });
-
-      // Auto-commit after agent completes
-      if (options.autoCommit) {
-        runAutoCommit(options.workingDir);
+      // Issue 5 fix: if a newer process has been started for this session,
+      // this is a stale finished handler — skip cleanup to avoid wiping new state
+      if (this.generations.get(sessionId) !== generation) {
+        return;
       }
+
+      this.buffer.flush(sessionId).then(() => {
+        // Re-check generation after async flush in case a new process started while flushing
+        if (this.generations.get(sessionId) !== generation) {
+          return;
+        }
+
+        handle.markDone(sessionId);
+        this.buffer.clear(sessionId);
+        this.processes.delete(sessionId);
+
+        // Broadcast idle status + session:finished so fleet UI updates for all handle types
+        engineBus.emit('agent:statusChanged', {
+          agentId: sessionId,
+          status: 'idle',
+          activity: '',
+        });
+        engineBus.emit('session:finished', { sessionId, exitCode });
+
+        // Auto-commit after agent completes
+        if (options.autoCommit) {
+          runAutoCommit(options.workingDir);
+        }
+      });
     });
 
     proc.events.on('errorOccurred', (error) => {
+      // UI feedback only — do NOT touch the buffer here.
+      // Error text is already persisted by streamParser.events.errorOccurred above.
+      // The finished handler (which always fires after this) is the sole flusher.
       handle.showError(sessionId, error);
     });
   }

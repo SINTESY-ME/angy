@@ -107,6 +107,7 @@ export interface Epic {
   completedAt: string | null;
   suspendedAt: string | null;
   runAfter: string | null;
+  parallelAgentCount?: number;  // 1–4; when > 1 the scheduler duplicates this epic N times on start
   progress?: number;  // 0-1 float, used by ActiveCard progress ring
 }
 

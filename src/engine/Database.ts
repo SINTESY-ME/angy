@@ -209,6 +209,9 @@ export class Database {
     try {
       await this.db.execute(`ALTER TABLE epics ADD COLUMN base_branch TEXT DEFAULT NULL`);
     } catch { /* column already exists */ }
+    try {
+      await this.db.execute(`ALTER TABLE epics ADD COLUMN parallel_agent_count INTEGER DEFAULT 1`);
+    } catch { /* column already exists */ }
 
     await this.db.execute(`
       CREATE TABLE IF NOT EXISTS epic_branches (
@@ -409,6 +412,33 @@ export class Database {
         msg.timestamp,
       ],
     );
+  }
+
+  async upsertMessage(msg: MessageRecord): Promise<number> {
+    if (!this.db) throw new Error('Database not open');
+
+    if (msg.id == null) {
+      const result = await this.db.execute(
+        `INSERT INTO messages (session_id, role, content, tool_name, tool_input, turn_id, timestamp)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [
+          msg.sessionId,
+          msg.role,
+          msg.content,
+          msg.toolName ?? '',
+          msg.toolInput ?? '',
+          msg.turnId,
+          msg.timestamp,
+        ],
+      );
+      return result.lastInsertId as number;
+    }
+
+    await this.db.execute(
+      `UPDATE messages SET content = $1 WHERE id = $2`,
+      [msg.content, msg.id],
+    );
+    return msg.id;
   }
 
   async loadMessages(sessionId: string): Promise<MessageRecord[]> {
@@ -716,8 +746,9 @@ export class Database {
         complexity, model, depends_on, target_repos, pipeline_type, use_git_branch, use_worktree, base_branch,
         rejection_count, rejection_feedback,
         last_attempt_files, last_validation_results, last_architect_plan,
-        computed_score, root_session_id, cost_total, created_at, updated_at, started_at, completed_at, suspended_at, run_after)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29)`,
+        computed_score, root_session_id, cost_total, created_at, updated_at, started_at, completed_at, suspended_at, run_after,
+        parallel_agent_count)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30)`,
       [
         epic.id,
         epic.projectId,
@@ -748,6 +779,7 @@ export class Database {
         epic.completedAt,
         epic.suspendedAt,
         epic.runAfter ?? null,
+        epic.parallelAgentCount ?? 1,
       ],
     );
   }
@@ -1347,6 +1379,7 @@ export class Database {
       completedAt: r.completed_at || null,
       suspendedAt: r.suspended_at || null,
       runAfter: r.run_after || null,
+      parallelAgentCount: r.parallel_agent_count ?? 1,
     };
   }
 

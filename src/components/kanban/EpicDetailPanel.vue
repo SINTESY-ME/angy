@@ -184,7 +184,8 @@
               <button
                 class="panel-toggle"
                 :class="draft.useWorktree ? 'on' : 'off'"
-                @click="draft.useWorktree = !draft.useWorktree"
+                @click="draft.parallelAgentCount && draft.parallelAgentCount > 1 ? null : (draft.useWorktree = !draft.useWorktree)"
+                :disabled="draft.parallelAgentCount !== undefined && draft.parallelAgentCount > 1"
               />
             </div>
             <p class="text-[11px] text-txt-faint leading-relaxed">
@@ -201,6 +202,31 @@
               />
               <p v-if="!!draft.runAfter" class="text-[11px] text-txt-faint">Inherited from predecessor</p>
             </div>
+          </div>
+
+          <!-- Parallel agents -->
+          <div class="space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="field-label">Parallel agents</span>
+              <div class="flex gap-1">
+                <button
+                  v-for="n in [1, 2, 3, 4]"
+                  :key="n"
+                  class="w-7 h-7 text-[12px] font-medium rounded-md border transition-colors"
+                  :class="draft.parallelAgentCount === n
+                    ? 'border-mauve text-mauve bg-[rgba(203,166,247,0.1)]'
+                    : 'border-border-subtle text-txt-faint hover:border-border-standard hover:text-txt-muted'"
+                  @click="setParallelCount(n)"
+                >
+                  {{ n }}
+                </button>
+              </div>
+            </div>
+            <p class="text-[11px] text-txt-faint leading-relaxed">
+              {{ draft.parallelAgentCount > 1
+                ? `On start, creates ${draft.parallelAgentCount} independent copies (X1–X${draft.parallelAgentCount}), each in its own worktree. Pick the best result.`
+                : 'Runs a single agent for this epic.' }}
+            </p>
           </div>
         </div>
       </section>
@@ -453,6 +479,7 @@ const draft = ref({
   baseBranch: null as string | null,
   dependsOn: [] as string[],
   runAfter: null as string | null,
+  parallelAgentCount: 1,
 });
 
 watch(() => props.epicId, loadDraft, { immediate: true });
@@ -484,6 +511,7 @@ function loadDraft() {
     baseBranch: e.baseBranch ?? null,
     dependsOn: [...e.dependsOn],
     runAfter: e.runAfter ?? null,
+    parallelAgentCount: e.parallelAgentCount ?? 1,
   };
 }
 
@@ -528,6 +556,13 @@ function clearRunAfter() {
   draft.value.runAfter = null;
 }
 
+function setParallelCount(n: number) {
+  draft.value.parallelAgentCount = n;
+  if (n > 1) {
+    draft.value.useWorktree = true;
+  }
+}
+
 async function save() {
   const d = draft.value;
   if (d.column !== epic.value?.column) {
@@ -552,6 +587,7 @@ async function save() {
     baseBranch: d.baseBranch,
     dependsOn: d.dependsOn,
     runAfter: d.runAfter,
+    parallelAgentCount: d.parallelAgentCount,
   });
   if (props.isNew) {
     emit('created');
