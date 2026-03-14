@@ -1,10 +1,16 @@
 <template>
   <div class="flex flex-col h-full bg-base flex-1 min-w-0">
-    <!-- Orchestrator header bar -->
+    <!-- Agent header bar -->
     <div class="px-5 py-3 border-b border-border-subtle flex items-center gap-3">
-      <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-purple-500/30 to-purple-600/30 flex items-center justify-center flex-shrink-0">
-        <svg class="w-3.5 h-3.5 text-purple-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+      <div
+        class="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+        :class="isOrchestrator ? 'bg-gradient-to-br from-purple-500/30 to-purple-600/30' : 'bg-gradient-to-br from-teal/30 to-emerald-500/30'"
+      >
+        <svg v-if="isOrchestrator" class="w-3.5 h-3.5 text-purple-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
+        </svg>
+        <svg v-else class="w-3.5 h-3.5 text-teal" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
         </svg>
       </div>
       <div class="min-w-0">
@@ -12,7 +18,8 @@
           <span class="text-sm font-semibold text-txt-primary truncate">
             {{ selectedAgent?.title || 'Select an agent' }}
           </span>
-          <span class="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-400 flex-shrink-0">orchestrator</span>
+          <span v-if="isOrchestrator" class="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-400 flex-shrink-0">orchestrator</span>
+          <span v-else class="text-[10px] px-1.5 py-0.5 rounded bg-teal/10 text-teal flex-shrink-0">agent</span>
           <span v-if="selectedAgent?.status === 'working'" class="text-[10px] px-1.5 py-0.5 rounded bg-teal/10 text-teal flex-shrink-0">running</span>
           <span v-else-if="selectedAgent?.status === 'done'" class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 flex-shrink-0">done</span>
           <span v-else-if="selectedAgent?.status === 'error'" class="text-[10px] px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 flex-shrink-0">failed</span>
@@ -104,15 +111,6 @@
             </div>
           </div>
 
-          <!-- ── Orchestrator decision (tool call with narrative text) ── -->
-          <div v-else-if="item.type === 'orchestrator-decision'" class="tree-node flex items-start gap-2 px-3 py-2 rounded-lg bg-purple-500/5 border border-purple-500/10 anim-fade-in">
-            <svg class="w-3.5 h-3.5 text-purple-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
-            </svg>
-            <span class="text-[11px] text-purple-300 orch-decision flex-1" v-html="renderInlineMd(item.message!.content)" />
-            <span v-if="item.message!.timestamp" class="text-[9px] text-txt-faint ml-auto flex-shrink-0">{{ relativeTime(item.message!.timestamp) }}</span>
-          </div>
-
           <!-- ── Orchestrator tool calls (grouped summary with diffs) ── -->
           <ToolCallGroup
             v-else-if="item.type === 'orchestrator-tools'"
@@ -159,7 +157,7 @@ import { useSessionsStore, getDatabase } from '../../stores/sessions';
 import { useProjectsStore } from '../../stores/projects';
 import { useEpicStore } from '../../stores/epics';
 import type { MessageRecord } from '../../engine/types';
-import { renderMarkdown, renderInline } from '../../utils/renderMarkdown';
+import { renderMarkdown } from '../../utils/renderMarkdown';
 import TreeBranch from './TreeBranch.vue';
 import ChatInputBar from './ChatInputBar.vue';
 import ToolCallGroup from '../chat/ToolCallGroup.vue';
@@ -168,7 +166,7 @@ import type { ToolCallInfo } from '../chat/ToolCallGroup.vue';
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'StrReplace', 'MultiEdit', 'NotebookEdit']);
 
 interface TimelineItem {
-  type: 'orchestrator-message' | 'orchestrator-decision' | 'orchestrator-tools' | 'sub-agent';
+  type: 'orchestrator-message' | 'orchestrator-tools' | 'sub-agent';
   message?: MessageRecord;
   agent?: HierarchicalAgent;
   timestamp: number;
@@ -232,6 +230,10 @@ const selectedAgent = computed(() =>
   fleetStore.agents.find((a) => a.sessionId === props.sessionId),
 );
 
+const isOrchestrator = computed(() =>
+  selectedAgent.value?.mode === 'orchestrator',
+);
+
 const isProcessing = computed(() =>
   selectedAgent.value?.status === 'working',
 );
@@ -261,7 +263,8 @@ const epicInfo = computed(() => {
 const elapsedTime = computed(() => {
   const agent = selectedAgent.value;
   if (!agent?.updatedAt) return '';
-  const ms = Date.now() - agent.updatedAt;
+  const tsMs = agent.updatedAt < 1e12 ? agent.updatedAt * 1000 : agent.updatedAt;
+  const ms = Date.now() - tsMs;
   const mins = Math.floor(ms / 60000);
   if (mins < 1) return '<1m';
   if (mins < 60) return `${mins}m`;
@@ -299,13 +302,9 @@ function renderMd(text: string): string {
   return renderMarkdown(cleaned);
 }
 
-function renderInlineMd(text: string): string {
-  if (!text) return '';
-  return renderInline(getTextContent(text));
-}
-
 function relativeTime(ts: number): string {
-  const diff = Math.floor((Date.now() - ts) / 1000);
+  const tsMs = ts < 1e12 ? ts * 1000 : ts;
+  const diff = Math.floor((Date.now() - tsMs) / 1000);
   if (diff < 60) return 'just now';
   const mins = Math.floor(diff / 60);
   if (mins < 60) return `${mins}m ago`;
@@ -349,48 +348,37 @@ const timeline = computed((): TimelineItem[] => {
     );
     const hasEdits = entries.some(e => e.isEdit);
 
-    if (pendingTools.length === 1 && pendingTools[0].msg.role === 'assistant' && pendingTools[0].msg.content?.trim()) {
-      items.push({
-        type: 'orchestrator-decision',
-        message: pendingTools[0].msg,
-        timestamp: pendingTools[0].msg.timestamp ?? Date.now(),
-      });
-    } else {
-      items.push({
-        type: 'orchestrator-tools',
-        timestamp: pendingTools[0].msg.timestamp ?? Date.now(),
-        toolCalls: entries,
-        toolCount: entries.length,
-        toolSummary: summaryParts.join(', '),
-        hasEdits,
-      });
-    }
+    items.push({
+      type: 'orchestrator-tools',
+      timestamp: pendingTools[0].msg.timestamp ?? Date.now(),
+      toolCalls: entries,
+      toolCount: entries.length,
+      toolSummary: summaryParts.join(', '),
+      hasEdits,
+    });
     pendingTools = [];
   }
 
-  for (const msg of messages.value) {
-    // Tool call messages: role='assistant'+toolName (interactive) OR role='tool'+toolName (headless)
+  const msgs = messages.value;
+  for (let i = 0; i < msgs.length; i++) {
+    const msg = msgs[i];
     const isToolCall = !!msg.toolName && (msg.role === 'assistant' || msg.role === 'tool');
 
     if (isToolCall) {
-      // If this tool-call message also has substantial text content,
-      // emit the text first as a regular message before grouping the tool call.
-      const textContent = getTextContent(msg.content);
-      if (textContent.length > 10 && msg.role === 'assistant') {
-        flushTools();
-        items.push({
-          type: 'orchestrator-message',
-          message: msg,
-          timestamp: msg.timestamp ?? Date.now(),
-        });
-      }
-
       pendingTools.push({ msg, entry: parseToolEntry(msg) });
       continue;
     }
 
     // Skip bare tool-result messages (role='tool' without toolName)
     if (msg.role === 'tool') continue;
+
+    // Skip short assistant narration between tool calls (mid-sequence only)
+    if (msg.role === 'assistant' && pendingTools.length > 0) {
+      const text = getTextContent(msg.content);
+      if (text.length < 200) {
+        continue;
+      }
+    }
 
     flushTools();
 
@@ -409,7 +397,7 @@ const timeline = computed((): TimelineItem[] => {
     items.push({
       type: 'sub-agent',
       agent,
-      timestamp: agent.updatedAt ?? Date.now(),
+      timestamp: agent.updatedAt ? (agent.updatedAt < 1e12 ? agent.updatedAt * 1000 : agent.updatedAt) : Date.now(),
     });
   }
 

@@ -170,7 +170,9 @@ const groupedItems = computed((): GroupedItem[] => {
     }
   };
 
-  for (const msg of messages.value) {
+  const msgs = messages.value;
+  for (let i = 0; i < msgs.length; i++) {
+    const msg = msgs[i];
     if (msg.role === 'tool' || (msg.toolName && msg.role !== 'user')) {
       const isEdit = EDIT_TOOLS.has(msg.toolName ?? '');
       const input = msg.toolInput ?? {};
@@ -199,6 +201,12 @@ const groupedItems = computed((): GroupedItem[] => {
         pendingGroup.push(call);
       }
     } else {
+      if (msg.role === 'assistant' && pendingGroup.length > 0) {
+        const stripped = (msg.content || '').replace(/<thinking>[\s\S]*?<\/thinking>/g, '').trim();
+        if (stripped.length < 200) {
+          continue;
+        }
+      }
       flushGroup();
       result.push({ type: 'message', msg, id: msg.id });
     }

@@ -271,8 +271,9 @@ const messageBlocks = computed((): MessageBlock[] => {
     }
   }
 
-  for (const msg of props.messages) {
-    // Tool call messages: role='assistant'+toolName (interactive) OR role='tool'+toolName (headless)
+  const allMsgs = props.messages;
+  for (let i = 0; i < allMsgs.length; i++) {
+    const msg = allMsgs[i];
     const isToolCall = !!msg.toolName && (msg.role === 'assistant' || msg.role === 'tool');
 
     if (msg.role === 'user') {
@@ -289,15 +290,6 @@ const messageBlocks = computed((): MessageBlock[] => {
     }
 
     if (isToolCall) {
-      const rawContent = msg.content || '';
-      if (msg.role === 'assistant') {
-        const textOnly = rawContent.replace(/<thinking>[\s\S]*?<\/thinking>/g, '').trim();
-        if (textOnly.length > 10) {
-          flushToolGroup();
-          emitContentBlocks(rawContent);
-        }
-      }
-
       let filePath: string | undefined;
       let summary: string | undefined;
       let isEdit = false;
@@ -325,11 +317,17 @@ const messageBlocks = computed((): MessageBlock[] => {
 
     if (msg.role === 'assistant') {
       const rawContent = msg.content || '';
+      const stripped = rawContent.replace(/<thinking>[\s\S]*?<\/thinking>/g, '').trim();
+
+      // Skip short narration between tool calls (mid-sequence only)
+      if (pendingTools.length > 0 && stripped.length < 200) {
+        continue;
+      }
 
       flushToolGroup();
 
       if (!rawContent.trim()) {
-        if (msg === props.messages[props.messages.length - 1]) {
+        if (msg === allMsgs[allMsgs.length - 1]) {
           blocks.push({ type: 'streaming' });
         }
         continue;

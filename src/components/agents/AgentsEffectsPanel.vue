@@ -328,7 +328,7 @@ function onFileEdited(evt: { sessionId: string; filePath: string; toolName: stri
 function extractEffects(messages: MessageRecord[], agentSessionId: string, agentTitle: string, results: TaggedFileChange[]) {
   const byPath = new Map<string, TaggedFileChange>();
   for (const msg of messages) {
-    if (msg.role === 'tool' && msg.toolName && EDIT_TOOLS.has(msg.toolName)) {
+    if (msg.toolName && EDIT_TOOLS.has(msg.toolName) && (msg.role === 'tool' || msg.role === 'assistant')) {
       let input: Record<string, any> = {};
       try { input = JSON.parse(msg.toolInput || '{}'); } catch { /* skip */ }
       const filePath = input.file_path || input.path || '';

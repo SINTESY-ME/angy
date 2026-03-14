@@ -115,7 +115,9 @@ const renderedHtml = computed(() => {
 
 const relativeTime = computed(() => {
   if (!props.timestamp) return '';
-  const diff = Date.now() - props.timestamp;
+  // Normalize: timestamps < 1e12 are in seconds (from DB), convert to ms
+  const tsMs = props.timestamp < 1e12 ? props.timestamp * 1000 : props.timestamp;
+  const diff = Date.now() - tsMs;
   const s = Math.floor(diff / 1000);
   if (s < 60) return 'just now';
   const m = Math.floor(s / 60);

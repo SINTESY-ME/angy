@@ -167,7 +167,7 @@ const storeHandle: AgentHandle = {
 
     const msg: MessageRecord = {
       sessionId,
-      role: 'assistant',
+      role: 'tool',
       content: summary,
       toolName,
       toolInput: toolInput ? JSON.stringify(toolInput) : undefined,

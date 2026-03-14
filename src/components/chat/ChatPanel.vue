@@ -243,7 +243,9 @@ const groupedMessages = computed((): GroupedItem[] => {
     }
   };
 
-  for (const msg of activeMessages.value) {
+  const msgs = activeMessages.value;
+  for (let i = 0; i < msgs.length; i++) {
+    const msg = msgs[i];
     if (msg.role === 'tool') {
       if (msg.toolName === 'AskUserQuestion') {
         flushGroup();
@@ -257,7 +259,6 @@ const groupedMessages = computed((): GroupedItem[] => {
       let newString: string | undefined;
       if (isEdit) {
         newString = String(input.new_string ?? input.content ?? input.contents ?? '') || undefined;
-        // Truncate large Write tool content to first 20 lines
         if (newString && msg.toolName === 'Write' && newString.split('\n').length > 30) {
           const lines = newString.split('\n');
           newString = lines.slice(0, 20).join('\n') + `\n... (${lines.length - 20} more lines)`;
@@ -286,6 +287,15 @@ const groupedMessages = computed((): GroupedItem[] => {
         pendingGroup.push(call);
       }
     } else {
+      // Skip short assistant narration between tool calls — it's redundant
+      // with the tool summary. Only skip mid-sequence (pendingGroup has items),
+      // never the first assistant message in a turn.
+      if (msg.role === 'assistant' && pendingGroup.length > 0) {
+        const stripped = (msg.content || '').replace(/<thinking>[\s\S]*?<\/thinking>/g, '').trim();
+        if (stripped.length < 200) {
+          continue;
+        }
+      }
       flushGroup();
       result.push({ type: 'message', msg, id: msg.id });
     }
