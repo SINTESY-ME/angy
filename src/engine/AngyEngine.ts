@@ -338,7 +338,7 @@ export class AngyEngine {
 
   private async runHybridPipeline(
     epicId: string,
-    _options: OrchestratorOptions,
+    options: OrchestratorOptions,
     epic: Epic,
     repos: ProjectRepo[],
   ): Promise<string> {
@@ -349,28 +349,22 @@ export class AngyEngine {
       this.sessions.persistSession(sid);
     };
 
-    // Compute workspace (same logic as spawnEpicOrchestrator)
+    // Compute workspace: prefer worktree paths from options.repoPaths (set by OrchestratorPool)
     let workspace: string;
-    if (repos.length === 0) {
+    const effectivePaths = repos.map(r => options.repoPaths[r.id] || r.path).filter(Boolean);
+    if (effectivePaths.length === 0) {
       workspace = '.';
-    } else if (repos.length === 1) {
-      workspace = repos[0].path || '.';
+    } else if (effectivePaths.length === 1) {
+      workspace = effectivePaths[0];
     } else {
-      const paths = repos.map(r => r.path).filter(Boolean);
-      if (paths.length === 0) {
-        workspace = '.';
-      } else if (paths.length === 1) {
-        workspace = paths[0];
-      } else {
-        const segments = paths.map(p => p.split('/'));
-        const commonParts: string[] = [];
-        for (let i = 0; i < segments[0].length; i++) {
-          const seg = segments[0][i];
-          if (segments.every(s => s[i] === seg)) commonParts.push(seg);
-          else break;
-        }
-        workspace = commonParts.join('/') || '/';
+      const segments = effectivePaths.map(p => p.split('/'));
+      const commonParts: string[] = [];
+      for (let i = 0; i < segments[0].length; i++) {
+        const seg = segments[0][i];
+        if (segments.every(s => s[i] === seg)) commonParts.push(seg);
+        else break;
       }
+      workspace = commonParts.join('/') || '/';
     }
 
     const detectedProfiles = await detectTechnologies(workspace);
