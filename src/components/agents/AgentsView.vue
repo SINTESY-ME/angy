@@ -38,9 +38,11 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useFleetStore } from '../../stores/fleet';
-import { useSessionsStore } from '../../stores/sessions';
+import { useSessionsStore, getDatabase, getSessionManager } from '../../stores/sessions';
 import { useUiStore } from '../../stores/ui';
-import { cancelProcess } from '../../composables/useEngine';
+import { sendMessageToEngine, cancelProcess } from '../../composables/useEngine';
+import { engineBus } from '../../engine/EventBus';
+import type { AgentHandle, MessageRecord, AttachedImage } from '../../engine/types';
 import AgentsHeader from './AgentsHeader.vue';
 import FleetSidebar from './FleetSidebar.vue';
 import OrchestratorChat from './OrchestratorChat.vue';
@@ -69,17 +71,176 @@ async function onNewAgent() {
   fleetStore.selectAgent(sessionId);
 }
 
-function onSend(_message: string) {
-  // TODO: wire to engine — send message to the selected agent's ClaudeProcess via
-  // sendMessageToEngine(selectedAgentId.value, message, handle, { workingDir, mode, model })
-  // Requires building an AgentHandle adapter for OrchestratorChat's streaming callbacks.
-  ui.addNotification('warning', 'Send not wired', 'Message sending is not yet connected to the engine.');
+// ── Per-session streaming state ──────────────────────────────────────
+
+interface StreamState {
+  turnCounter: number;
+  currentText: string;
+  thinkingText: string;
+  pendingMessages: MessageRecord[];
+}
+
+const streamStates = new Map<string, StreamState>();
+
+function getStreamState(sessionId: string): StreamState {
+  let s = streamStates.get(sessionId);
+  if (!s) {
+    const existing = sessionsStore.getMessages(sessionId);
+    const maxTurn = existing.reduce((max, m) => Math.max(max, m.turnId), 0);
+    s = { turnCounter: maxTurn, currentText: '', thinkingText: '', pendingMessages: [] };
+    streamStates.set(sessionId, s);
+  }
+  return s;
+}
+
+// ── AgentHandle adapter: routes engine events → sessionsStore ────────
+
+const storeHandle: AgentHandle = {
+  appendTextDelta(sessionId: string, text: string) {
+    const state = getStreamState(sessionId);
+    state.currentText += text;
+
+    const content = state.thinkingText
+      ? `<thinking>${state.thinkingText}</thinking>\n${state.currentText}`
+      : state.currentText;
+
+    const msgs = sessionsStore.getMessages(sessionId);
+    const last = msgs[msgs.length - 1];
+    if (last?.role === 'assistant' && !last.toolName && last.turnId === state.turnCounter) {
+      last.content = content;
+    } else {
+      const msg: MessageRecord = {
+        sessionId,
+        role: 'assistant',
+        content,
+        turnId: state.turnCounter,
+        timestamp: Math.floor(Date.now() / 1000),
+      };
+      sessionsStore.addMessage(sessionId, msg);
+      state.pendingMessages.push(msg);
+    }
+  },
+
+  appendThinkingDelta(sessionId: string, text: string) {
+    getStreamState(sessionId).thinkingText += text;
+  },
+
+  addToolUse(sessionId: string, toolName: string, summary: string, toolInput?: Record<string, any>) {
+    const state = getStreamState(sessionId);
+    state.currentText = '';
+    state.thinkingText = '';
+
+    const msg: MessageRecord = {
+      sessionId,
+      role: 'assistant',
+      content: summary,
+      toolName,
+      toolInput: toolInput ? JSON.stringify(toolInput) : undefined,
+      turnId: state.turnCounter,
+      timestamp: Math.floor(Date.now() / 1000),
+    };
+    sessionsStore.addMessage(sessionId, msg);
+    state.pendingMessages.push(msg);
+  },
+
+  markDone(sessionId: string) {
+    const state = streamStates.get(sessionId);
+    if (!state) return;
+
+    const db = getDatabase();
+    for (const msg of state.pendingMessages) {
+      db.saveMessage(msg);
+    }
+
+    state.currentText = '';
+    state.thinkingText = '';
+    state.pendingMessages = [];
+
+    fleetStore.updateAgent({ sessionId, status: 'idle', activity: '' });
+    sessionsStore.persistSession(sessionId);
+  },
+
+  showError(sessionId: string, error: string) {
+    const state = getStreamState(sessionId);
+    const msg: MessageRecord = {
+      sessionId,
+      role: 'assistant',
+      content: `**Error:** ${error.replace(/<[^>]*>/g, '')}`,
+      turnId: state.turnCounter,
+      timestamp: Math.floor(Date.now() / 1000),
+    };
+    sessionsStore.addMessage(sessionId, msg);
+    state.pendingMessages.push(msg);
+    storeHandle.markDone(sessionId);
+  },
+
+  setThinking(sessionId: string, thinking: boolean) {
+    if (!thinking) {
+      // Thinking ended; thinkingText remains for embedding in the next text message
+    }
+    void sessionId;
+    void thinking;
+  },
+
+  setRealSessionId(sessionId: string, realId: string) {
+    const info = sessionsStore.sessions.get(sessionId);
+    if (info) info.claudeSessionId = realId;
+    const mgrInfo = getSessionManager().sessionInfo(sessionId);
+    if (mgrInfo) mgrInfo.claudeSessionId = realId;
+  },
+
+  onFileEdited(sessionId: string, filePath: string, toolName: string, toolInput?: Record<string, any>) {
+    engineBus.emit('agent:fileEdited', { sessionId, filePath, toolName, toolInput });
+  },
+};
+
+// ── Send / Stop handlers ─────────────────────────────────────────────
+
+async function onSend(message: string, images: AttachedImage[] = []) {
+  const sid = selectedAgentId.value;
+  if (!sid) return;
+
+  const state = getStreamState(sid);
+  state.turnCounter++;
+  state.currentText = '';
+  state.thinkingText = '';
+  state.pendingMessages = [];
+
+  const userMsg: MessageRecord = {
+    sessionId: sid,
+    role: 'user',
+    content: message,
+    turnId: state.turnCounter,
+    timestamp: Math.floor(Date.now() / 1000),
+  };
+  sessionsStore.addMessage(sid, userMsg);
+
+  const db = getDatabase();
+  await db.saveMessage(userMsg);
+
+  fleetStore.updateAgent({ sessionId: sid, status: 'working', activity: 'Sending message...' });
+
+  const info = sessionsStore.sessions.get(sid);
+  const workingDir = info?.workspace || ui.workspacePath || '.';
+
+  const engineImages = images.length > 0
+    ? images.map(img => ({ data: img.data, mediaType: `image/${img.format}` }))
+    : undefined;
+
+  sendMessageToEngine(sid, message, storeHandle, {
+    workingDir,
+    mode: info?.mode || 'agent',
+    model: ui.currentModel,
+    resumeSessionId: info?.claudeSessionId,
+    images: engineImages,
+  });
 }
 
 function onStop() {
   const sid = selectedAgentId.value;
   if (sid) {
     cancelProcess(sid);
+    fleetStore.updateAgent({ sessionId: sid, status: 'idle', activity: '' });
   }
 }
 

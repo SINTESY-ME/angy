@@ -1,69 +1,64 @@
 <template>
-  <div class="h-full w-[480px] flex flex-col border-l border-[var(--border-subtle)] bg-[var(--bg-window)]" style="box-shadow: var(--shadow-lg)">
+  <div class="h-full w-[440px] flex flex-col border-l border-border-subtle bg-window" style="box-shadow: -12px 0 40px -8px rgba(0,0,0,0.5)">
     <!-- Header -->
-    <div class="flex items-center justify-between px-5 h-10 border-b border-[var(--border-subtle)]">
-      <span class="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider">
+    <div class="flex items-center gap-2.5 px-5 h-11 border-b border-border-subtle shrink-0">
+      <div class="w-1.5 h-1.5 rounded-full bg-mauve"></div>
+      <span class="text-[11px] font-semibold text-mauve uppercase tracking-widest">
         {{ isNew ? 'New Epic' : 'Epic Details' }}
       </span>
+      <span class="flex-1"></span>
       <button
-        class="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+        class="w-6 h-6 flex items-center justify-center rounded-md text-txt-faint hover:text-txt-primary hover:bg-raised transition-colors"
         @click="$emit('close')"
       >
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
         </svg>
       </button>
     </div>
 
-    <div v-if="epic" class="flex-1 overflow-y-auto px-5 py-4 space-y-5">
+    <div v-if="epic" class="flex-1 overflow-y-auto scroll-area">
 
-      <!-- SECTION 1: Definition (always open, no collapse) -->
-      <section class="space-y-3">
-        <h3 class="text-[var(--text-xs)] font-semibold text-[var(--text-muted)] uppercase tracking-wider">Definition</h3>
-          <!-- Title -->
-          <div>
-            <label class="text-[var(--text-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wider">Title</label>
-            <input
-              ref="titleInput"
-              v-model="draft.title"
-              class="mt-1 w-full text-sm px-2 py-1.5 rounded border border-[var(--border-subtle)]
-                     bg-[var(--bg-base)] text-[var(--text-primary)]
-                     focus:outline-none focus:border-[var(--accent-mauve)] transition-colors"
-            />
+      <!-- Definition -->
+      <div class="px-5 pt-5 pb-5 space-y-5">
+
+        <!-- Title (inline editing, no box) -->
+        <input
+          ref="titleInput"
+          v-model="draft.title"
+          type="text"
+          class="w-full text-[16px] font-semibold text-txt-primary bg-transparent outline-none border-b-2 border-transparent
+                 hover:border-border-standard focus:border-mauve pb-1.5 transition-colors placeholder:text-txt-faint placeholder:font-normal"
+          placeholder="Epic title..."
+        />
+
+        <!-- Pipeline -->
+        <div class="space-y-2">
+          <span class="field-label">Pipeline</span>
+          <div class="flex gap-1.5">
+            <button
+              v-for="pt in pipelineTypes"
+              :key="pt.value"
+              class="pipe-btn"
+              :class="draft.pipelineType === pt.value ? `active-${pt.value === 'hybrid' ? 'create' : pt.value}` : ''"
+              @click="draft.pipelineType = pt.value"
+            >
+              {{ pt.label }}
+            </button>
           </div>
+          <p class="text-[11px] text-txt-faint leading-relaxed">
+            {{ pipelineDescriptions[draft.pipelineType] }}
+          </p>
+        </div>
 
-          <!-- Pipeline Type -->
-          <div>
-            <label class="text-[var(--text-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wider">Pipeline</label>
-            <div class="mt-1 flex items-center gap-1">
-              <button
-                v-for="pt in pipelineTypes"
-                :key="pt.value"
-                class="flex-1 text-[var(--text-xs)] py-2 rounded border font-medium transition-colors"
-                :class="draft.pipelineType !== pt.value
-                  ? 'text-[var(--text-muted)] bg-[var(--bg-base)] border-[var(--border-subtle)] hover:text-[var(--text-secondary)]'
-                  : ''"
-                :style="pipelineButtonStyle(pt.value)"
-                @click="draft.pipelineType = pt.value"
-              >
-                {{ pt.label }}
-              </button>
-            </div>
-            <p class="mt-1 text-[var(--text-xs)] text-[var(--text-muted)]">
-              {{ pipelineDescriptions[draft.pipelineType] }}
-            </p>
-          </div>
-
-          <!-- Complexity (only active for hybrid/Create pipeline) -->
-          <div>
-            <label class="text-[var(--text-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wider">Complexity</label>
+        <!-- Complexity + Priority side-by-side -->
+        <div class="grid grid-cols-2 gap-3">
+          <div class="space-y-1.5">
+            <span class="field-label">Complexity</span>
             <select
               v-model="draft.complexity"
               :disabled="draft.pipelineType !== 'hybrid'"
-              class="mt-1 w-full text-sm px-2 py-1.5 rounded border border-[var(--border-subtle)]
-                     bg-[var(--bg-base)] text-[var(--text-primary)]
-                     focus:outline-none focus:border-[var(--accent-mauve)] transition-colors
-                     disabled:opacity-40 disabled:cursor-not-allowed"
+              class="field-input"
             >
               <option value="trivial">Trivial</option>
               <option value="small">Small</option>
@@ -71,63 +66,10 @@
               <option value="large">Large</option>
               <option value="epic">Epic</option>
             </select>
-            <p class="mt-1 text-[var(--text-xs)] text-[var(--text-muted)]">
-              {{ complexityDescriptions[draft.complexity] }}
-            </p>
           </div>
-
-          <!-- Description -->
-          <div>
-            <label class="text-[var(--text-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wider">Description</label>
-            <textarea
-              v-model="draft.description"
-              rows="6"
-              class="mt-1 w-full text-sm px-2 py-1.5 rounded border border-[var(--border-subtle)]
-                     bg-[var(--bg-base)] text-[var(--text-primary)] resize-y
-                     focus:outline-none focus:border-[var(--accent-mauve)] transition-colors"
-              placeholder="Markdown description..."
-            />
-          </div>
-
-          <!-- Acceptance Criteria -->
-          <div>
-            <label class="text-[var(--text-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wider">Acceptance Criteria</label>
-            <textarea
-              v-model="draft.acceptanceCriteria"
-              rows="4"
-              class="mt-1 w-full text-sm px-2 py-1.5 rounded border border-[var(--border-subtle)]
-                     bg-[var(--bg-base)] text-[var(--text-primary)] resize-y
-                     focus:outline-none focus:border-[var(--accent-mauve)] transition-colors"
-              placeholder="What defines done..."
-            />
-          </div>
-      </section>
-
-      <!-- SECTION 2: Configuration (collapsible, default expanded) -->
-      <section class="border-t border-[var(--border-subtle)] pt-4 space-y-3">
-        <button
-          class="w-full flex items-center gap-1.5 text-[var(--text-xs)] font-semibold text-[var(--text-muted)] uppercase tracking-wider hover:text-[var(--text-secondary)] transition-colors"
-          @click="configOpen = !configOpen"
-        >
-          <svg
-            class="w-3 h-3 transition-transform duration-150"
-            :class="configOpen ? 'rotate-90' : ''"
-            fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"
-          >
-            <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
-          </svg>
-          Configuration
-        </button>
-        <div v-show="configOpen" class="space-y-3">
-          <!-- Priority -->
-          <div>
-            <label class="text-[var(--text-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wider">Priority</label>
-            <select
-              v-model="draft.priorityHint"
-              class="mt-1 w-full text-sm px-2 py-1.5 rounded border border-[var(--border-subtle)]
-                     bg-[var(--bg-base)] text-[var(--text-primary)]
-                     focus:outline-none focus:border-[var(--accent-mauve)] transition-colors"
-            >
+          <div class="space-y-1.5">
+            <span class="field-label">Priority</span>
+            <select v-model="draft.priorityHint" class="field-input">
               <option value="critical">Critical</option>
               <option value="high">High</option>
               <option value="medium">Medium</option>
@@ -135,16 +77,55 @@
               <option value="none">None</option>
             </select>
           </div>
+        </div>
 
+        <p v-if="draft.pipelineType === 'hybrid'" class="text-[11px] text-txt-faint leading-relaxed -mt-2">
+          {{ complexityDescriptions[draft.complexity] }}
+        </p>
+
+        <!-- Description -->
+        <div class="space-y-1.5">
+          <span class="field-label">Description</span>
+          <textarea
+            v-model="draft.description"
+            rows="4"
+            class="field-input"
+            placeholder="What should be built and why..."
+          />
+        </div>
+
+        <!-- Acceptance Criteria -->
+        <div class="space-y-1.5">
+          <span class="field-label">Acceptance criteria</span>
+          <textarea
+            v-model="draft.acceptanceCriteria"
+            rows="3"
+            class="field-input"
+            placeholder="What defines done..."
+          />
+        </div>
+      </div>
+
+      <!-- Configuration (collapsible, default expanded) -->
+      <section class="border-t border-border-subtle">
+        <button
+          class="w-full flex items-center gap-2 px-5 h-10 hover:bg-white/[0.015] transition-colors"
+          @click="configOpen = !configOpen"
+        >
+          <svg
+            class="w-3 h-3 transition-transform duration-150 text-txt-faint"
+            :class="configOpen ? 'rotate-90' : ''"
+            fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"
+          >
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+          </svg>
+          <span class="text-[11px] font-semibold text-txt-muted uppercase tracking-wider">Configuration</span>
+        </button>
+        <div v-show="configOpen" class="px-5 pb-5 pt-1 space-y-4">
           <!-- Model -->
-          <div>
-            <label class="text-[var(--text-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wider">Model</label>
-            <select
-              v-model="draft.model"
-              class="mt-1 w-full text-sm px-2 py-1.5 rounded border border-[var(--border-subtle)]
-                     bg-[var(--bg-base)] text-[var(--text-primary)]
-                     focus:outline-none focus:border-[var(--accent-mauve)] transition-colors"
-            >
+          <div class="space-y-1.5">
+            <span class="field-label">Model</span>
+            <select v-model="draft.model" class="field-input">
               <option value="">Default (CLI default)</option>
               <option value="claude-sonnet-4-6">Sonnet 4.6</option>
               <option value="claude-opus-4-6">Opus 4.6</option>
@@ -153,71 +134,59 @@
           </div>
 
           <!-- Target Repos -->
-          <div>
-            <label class="text-[var(--text-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wider">Target Repos</label>
-            <div class="mt-1">
-              <RepoScopeSelector
-                :projectId="epic.projectId"
-                v-model="draft.targetRepoIds"
+          <div class="space-y-2">
+            <span class="field-label">Target repos</span>
+            <RepoScopeSelector
+              :projectId="epic.projectId"
+              v-model="draft.targetRepoIds"
+            />
+          </div>
+
+          <!-- Git branch -->
+          <div class="space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="field-label">Git branch</span>
+              <button
+                class="panel-toggle"
+                :class="draft.useGitBranch ? 'on' : 'off'"
+                @click="draft.useGitBranch = !draft.useGitBranch"
               />
             </div>
-          </div>
-
-          <!-- Auto branch -->
-          <div>
-            <div class="flex items-center justify-between">
-              <label class="text-[var(--text-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wider">Auto branch</label>
-              <button
-                class="relative w-7 h-4 rounded-full transition-colors"
-                :class="draft.useGitBranch ? 'bg-[var(--accent-green)]' : 'bg-[var(--bg-raised)]'"
-                @click="draft.useGitBranch = !draft.useGitBranch"
-              >
-                <span
-                  class="absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform"
-                  :class="draft.useGitBranch ? 'left-3.5' : 'left-0.5'"
-                />
-              </button>
-            </div>
-            <p class="text-[var(--text-xs)] text-[var(--text-muted)] mt-1">
+            <p class="text-[11px] text-txt-faint leading-relaxed">
               {{ draft.useGitBranch ? 'Creates a branch for this epic, restores default when done' : 'Agents work on the current branch' }}
             </p>
-          </div>
-
-          <!-- Working branch -->
-          <div v-if="branchName" class="flex items-center gap-2">
-            <label class="text-[var(--text-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wider">Branch</label>
-            <span class="text-xs font-mono text-[var(--accent-green)] bg-[var(--bg-raised)] px-2 py-0.5 rounded select-all" :title="branchName">
-              {{ branchName }}
-            </span>
+            <div v-if="branchName" class="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-base border border-border-subtle">
+              <svg class="w-3.5 h-3.5 text-teal flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/>
+              </svg>
+              <span class="text-[12px] font-mono text-teal truncate select-all" :title="branchName">
+                {{ branchName }}
+              </span>
+            </div>
           </div>
         </div>
       </section>
 
-      <!-- SECTION 3: Scheduling (collapsible, default collapsed) -->
-      <section class="border-t border-[var(--border-subtle)] pt-4 space-y-3">
+      <!-- Scheduling (collapsible, default collapsed) -->
+      <section class="border-t border-border-subtle">
         <button
-          class="w-full flex items-center gap-1.5 text-[var(--text-xs)] font-semibold text-[var(--text-muted)] uppercase tracking-wider hover:text-[var(--text-secondary)] transition-colors"
+          class="w-full flex items-center gap-2 px-5 h-10 hover:bg-white/[0.015] transition-colors"
           @click="schedOpen = !schedOpen"
         >
           <svg
-            class="w-3 h-3 transition-transform duration-150"
+            class="w-3 h-3 transition-transform duration-150 text-txt-faint"
             :class="schedOpen ? 'rotate-90' : ''"
             fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"
           >
             <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
           </svg>
-          Scheduling
+          <span class="text-[11px] font-semibold text-txt-muted uppercase tracking-wider">Scheduling</span>
         </button>
-        <div v-show="schedOpen" class="space-y-3">
+        <div v-show="schedOpen" class="px-5 pb-5 pt-1 space-y-4">
           <!-- Column -->
-          <div>
-            <label class="text-[var(--text-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wider">Column</label>
-            <select
-              v-model="draft.column"
-              class="mt-1 w-full text-sm px-2 py-1.5 rounded border border-[var(--border-subtle)]
-                     bg-[var(--bg-base)] text-[var(--text-primary)]
-                     focus:outline-none focus:border-[var(--accent-mauve)] transition-colors"
-            >
+          <div class="space-y-1.5">
+            <span class="field-label">Column</span>
+            <select v-model="draft.column" class="field-input">
               <option v-for="col in columns" :key="col" :value="col">
                 {{ col.replace(/-/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) }}
               </option>
@@ -225,68 +194,46 @@
           </div>
 
           <!-- Run after -->
-          <div>
-            <label class="text-[var(--text-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wider">Run after</label>
-            <div class="mt-1">
-              <div
-                v-if="draft.runAfter"
-                class="flex items-center justify-between px-2 py-1 rounded text-sm bg-[var(--bg-raised)]"
-              >
-                <span class="flex items-center gap-1.5 text-[var(--text-secondary)] truncate">
-                  <svg class="w-3 h-3 shrink-0 text-[var(--accent-mauve)]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M13 5l7 7-7 7M5 12h15" />
-                  </svg>
-                  {{ runAfterTitle(draft.runAfter) }}
-                </span>
-                <button
-                  class="text-[var(--text-muted)] hover:text-red-400 transition-colors ml-2 shrink-0"
-                  title="Remove"
-                  @click="clearRunAfter"
-                >
-                  <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-              <select
-                v-else-if="availableRunAfter.length > 0"
-                class="w-full text-xs px-2 py-1 rounded border border-dashed border-[var(--border-subtle)]
-                       bg-[var(--bg-base)] text-[var(--text-muted)]
-                       focus:outline-none focus:border-[var(--accent-mauve)] transition-colors"
-                @change="setRunAfter(($event.target as HTMLSelectElement).value); ($event.target as HTMLSelectElement).value = ''"
-              >
-                <option value="">Run after...</option>
-                <option v-for="e in availableRunAfter" :key="e.id" :value="e.id">{{ e.title }}</option>
-              </select>
-              <p v-else-if="availableRunAfter.length === 0 && !draft.runAfter" class="text-[11px] text-[var(--text-muted)] italic">No other epics in project</p>
+          <div class="space-y-1.5">
+            <span class="field-label">Run after</span>
+            <div v-if="draft.runAfter" class="dep-row">
+              <svg class="w-3.5 h-3.5 text-mauve flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M13 5l7 7-7 7M5 12h15" />
+              </svg>
+              <span class="text-[12px] text-txt-secondary truncate">{{ runAfterTitle(draft.runAfter) }}</span>
+              <button class="dep-remove" title="Remove" @click="clearRunAfter">
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
             </div>
+            <select
+              v-else-if="availableRunAfter.length > 0"
+              class="field-input-dashed"
+              @change="setRunAfter(($event.target as HTMLSelectElement).value); ($event.target as HTMLSelectElement).value = ''"
+            >
+              <option value="">Run after...</option>
+              <option v-for="e in availableRunAfter" :key="e.id" :value="e.id">{{ e.title }}</option>
+            </select>
+            <p v-else-if="availableRunAfter.length === 0 && !draft.runAfter" class="text-[11px] text-txt-faint italic">No other epics in project</p>
           </div>
 
           <!-- Dependencies -->
-          <div>
-            <label class="text-[var(--text-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wider">Dependencies</label>
-            <div class="mt-1 space-y-1">
-              <div
-                v-for="depId in draft.dependsOn"
-                :key="depId"
-                class="flex items-center justify-between px-2 py-1 rounded text-sm bg-[var(--bg-raised)]"
-              >
-                <span class="text-[var(--text-secondary)] truncate">{{ depTitle(depId) }}</span>
-                <button
-                  class="text-[var(--text-muted)] hover:text-red-400 transition-colors ml-2 shrink-0"
-                  @click="removeDep(depId)"
-                >
+          <div class="space-y-2">
+            <span class="field-label">Dependencies</span>
+            <div class="space-y-1.5">
+              <div v-for="depId in draft.dependsOn" :key="depId" class="dep-row">
+                <span class="w-1.5 h-1.5 rounded-full bg-ember flex-shrink-0"></span>
+                <span class="text-[12px] text-txt-secondary truncate">{{ depTitle(depId) }}</span>
+                <button class="dep-remove" @click="removeDep(depId)">
                   <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
               </div>
-              <!-- Add dependency -->
               <select
                 v-if="availableDeps.length > 0"
-                class="w-full text-xs px-2 py-1 rounded border border-dashed border-[var(--border-subtle)]
-                       bg-[var(--bg-base)] text-[var(--text-muted)]
-                       focus:outline-none focus:border-[var(--accent-mauve)] transition-colors"
+                class="field-input-dashed"
                 @change="addDep(($event.target as HTMLSelectElement).value); ($event.target as HTMLSelectElement).value = ''"
               >
                 <option value="">+ Add dependency...</option>
@@ -297,107 +244,99 @@
         </div>
       </section>
 
-      <!-- Review actions -->
-      <div v-if="epic.column === 'review'" class="space-y-2 pt-2">
+      <!-- Review actions (contextual) -->
+      <div v-if="epic.column === 'review'" class="border-t border-border-subtle px-5 py-4 space-y-3">
+        <div class="flex items-center gap-2.5">
+          <span class="text-[11px] font-semibold text-txt-muted uppercase tracking-wider">Review</span>
+          <span class="text-[10px] text-[var(--accent-peach)] bg-[rgba(250,179,135,0.08)] px-2 py-0.5 rounded-full font-medium border border-[rgba(250,179,135,0.12)]">needs review</span>
+        </div>
         <textarea
           v-model="rejectionFeedback"
           rows="2"
-          class="w-full text-xs px-2 py-1.5 rounded border border-[var(--border-subtle)]
-                 bg-[var(--bg-base)] text-[var(--text-primary)] resize-y
-                 focus:outline-none focus:border-[var(--accent-mauve)] transition-colors"
+          class="field-input"
           placeholder="Rejection feedback (optional)..."
         />
-        <div class="flex items-center gap-2">
-          <button
-            class="flex-1 text-xs py-1.5 rounded bg-[var(--accent-green)] text-[var(--bg-base)] font-medium
-                   hover:opacity-90 transition-opacity"
-            @click="approve"
-          >
+        <div class="flex gap-2">
+          <button class="btn-primary flex-1" style="background: #10b981" @click="approve">
             Approve
           </button>
-          <button
-            class="flex-1 text-xs py-1.5 rounded bg-[var(--accent-red)] text-white font-medium
-                   hover:opacity-90 transition-opacity"
-            @click="reject"
-          >
+          <button class="btn-primary flex-1" style="background: #f38ba8; color: white" @click="reject">
             Reject
           </button>
         </div>
       </div>
 
-      <!-- In-progress actions -->
-      <div v-if="epic.column === 'in-progress'" class="flex items-center gap-2 pt-2">
-        <button
-          class="flex-1 text-xs py-1.5 rounded border border-[var(--accent-blue)]
-                 text-[var(--accent-blue)] font-medium hover:bg-[var(--accent-blue)]
-                 hover:text-[var(--bg-base)] transition-colors"
-          @click="ui.navigateToEpic(epic.id, epic.projectId)"
-        >
-          Open Workspace
-        </button>
-        <button
-          class="text-xs py-1.5 px-3 rounded border border-amber-500/50
-                 text-amber-400 font-medium hover:bg-amber-500/10 transition-colors"
-          @click="suspendEpic"
-        >
-          Suspend
-        </button>
-        <button
-          class="text-xs py-1.5 px-3 rounded border border-red-500/50
-                 text-red-400 font-medium hover:bg-red-500/10 transition-colors"
-          @click="stopEpic"
-        >
-          Stop
-        </button>
+      <!-- In-progress actions (contextual) -->
+      <div v-if="epic.column === 'in-progress'" class="border-t border-border-subtle px-5 py-4">
+        <div class="flex items-center gap-2">
+          <button
+            class="flex-1 py-2 text-[13px] font-medium rounded-lg border border-blue text-blue hover:bg-[rgba(137,180,250,0.08)] transition-colors"
+            @click="ui.navigateToEpic(epic.id, epic.projectId)"
+          >
+            Open Workspace
+          </button>
+          <button
+            class="py-2 px-4 text-[13px] font-medium rounded-lg border border-[rgba(249,115,22,0.3)] text-ember-400 hover:bg-[rgba(249,115,22,0.06)] transition-colors"
+            @click="suspendEpic"
+          >
+            Suspend
+          </button>
+          <button
+            class="py-2 px-4 text-[13px] font-medium rounded-lg border border-[rgba(243,139,168,0.3)] text-[var(--accent-red)] hover:bg-[rgba(243,139,168,0.06)] transition-colors"
+            @click="stopEpic"
+          >
+            Stop
+          </button>
+        </div>
       </div>
 
-      <!-- Suspended banner -->
-      <div v-if="epic.suspendedAt && (epic.column === 'todo' || epic.column === 'backlog')" class="flex items-center gap-2 pt-2 px-3 py-2 rounded bg-amber-500/10 border border-amber-500/20">
-        <span class="text-xs text-amber-400 flex-1">This epic was suspended.</span>
+      <!-- Suspended banner (contextual) -->
+      <div
+        v-if="epic.suspendedAt && (epic.column === 'todo' || epic.column === 'backlog')"
+        class="mx-5 my-4 flex items-center gap-2 px-3 py-2.5 rounded-lg bg-[rgba(249,115,22,0.06)] border border-[rgba(249,115,22,0.12)]"
+      >
+        <span class="text-[12px] text-ember-400 flex-1">This epic was suspended.</span>
         <button
-          class="text-xs py-1 px-3 rounded bg-amber-500/20 text-amber-300 font-medium
-                 hover:bg-amber-500/30 transition-colors"
+          class="text-[12px] py-1 px-3 rounded-lg bg-[rgba(249,115,22,0.12)] text-ember-400 font-medium hover:bg-[rgba(249,115,22,0.18)] transition-colors"
           @click="resumeEpic"
         >
           Resume
         </button>
       </div>
 
-      <!-- Done actions: Create PR -->
-      <div v-if="epic.column === 'done' && branchName" class="space-y-2 pt-2">
-        <div class="flex items-center gap-2">
-          <svg class="w-3.5 h-3.5 text-[var(--text-muted)] flex-shrink-0" viewBox="0 0 16 16" fill="currentColor">
-            <path fill-rule="evenodd" d="M11.75 2.5a.75.75 0 100 1.5.75.75 0 000-1.5zm-2.25.75a2.25 2.25 0 113 2.122V6A2.5 2.5 0 0110 8.5H6a1 1 0 00-1 1v1.128a2.251 2.251 0 11-1.5 0V5.372a2.25 2.25 0 111.5 0v1.836A2.492 2.492 0 016 7h4a1 1 0 001-1v-.628A2.25 2.25 0 019.5 3.25zM4.25 12a.75.75 0 100 1.5.75.75 0 000-1.5zM3.5 3.25a.75.75 0 111.5 0 .75.75 0 01-1.5 0z"/>
+      <!-- Done actions: Create PR (contextual) -->
+      <div v-if="epic.column === 'done' && branchName" class="border-t border-border-subtle px-5 py-4 space-y-3">
+        <div class="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-base border border-border-subtle">
+          <svg class="w-3.5 h-3.5 text-teal flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/>
           </svg>
-          <span class="text-xs font-mono text-[var(--accent-green)] bg-[var(--bg-raised)] px-2 py-0.5 rounded truncate" :title="branchName">
+          <span class="text-[12px] font-mono text-teal truncate" :title="branchName">
             {{ branchName }}
           </span>
         </div>
         <button
-          class="w-full text-xs py-1.5 rounded bg-[var(--accent-green)] text-[var(--bg-base)] font-medium
-                 hover:opacity-90 transition-opacity disabled:opacity-50"
+          class="btn-primary"
+          style="background: #10b981"
           :disabled="prLoading"
           @click="createPR(epic.id, epic.projectId)"
         >
           {{ prLoading ? 'Pushing & Opening PR...' : 'Create Pull Request' }}
         </button>
-        <p v-if="prError" class="text-[var(--text-xs)] text-red-400">{{ prError }}</p>
+        <p v-if="prError" class="text-[11px] text-[var(--accent-red)]">{{ prError }}</p>
       </div>
+
+      <div class="h-2"></div>
     </div>
 
-    <!-- Footer actions -->
-    <div v-if="epic" class="flex items-center gap-2 px-5 py-3 border-t border-[var(--border-subtle)]">
-      <button
-        class="flex-1 text-[var(--text-sm)] py-2 rounded bg-[var(--accent-mauve)] text-[var(--bg-base)] font-medium
-               hover:opacity-90 transition-opacity"
-        @click="save"
-      >
+    <!-- Footer -->
+    <div v-if="epic" class="px-5 py-3 border-t border-border-subtle shrink-0 bg-window flex items-center gap-2">
+      <button class="btn-primary flex-1" style="background: #cba6f7" @click="save">
         {{ isNew ? 'Create' : 'Save' }}
       </button>
       <button
         v-if="!isNew"
-        class="text-[var(--text-sm)] py-2 px-3 rounded border border-red-500/30 text-red-400
-               hover:bg-red-500/10 transition-colors"
+        class="text-[13px] py-2.5 px-4 rounded-lg border border-[rgba(243,139,168,0.2)] text-[var(--accent-red)]
+               hover:bg-[rgba(243,139,168,0.06)] transition-colors font-medium"
         @click="remove"
       >
         Delete
@@ -406,7 +345,7 @@
 
     <!-- Empty state -->
     <div v-if="!epic" class="flex-1 flex items-center justify-center">
-      <p class="text-xs text-[var(--text-muted)] italic">No epic selected</p>
+      <p class="text-[12px] text-txt-muted italic">No epic selected</p>
     </div>
   </div>
 </template>
@@ -436,13 +375,6 @@ const pipelineTypes: Array<{ value: EpicPipelineType; label: string }> = [
   { value: 'plan', label: 'Plan' },
 ];
 
-const pipelineColors: Record<EpicPipelineType, string> = {
-  hybrid: 'var(--accent-green)',
-  fix: 'var(--accent-peach)',
-  investigate: 'var(--accent-blue)',
-  plan: 'var(--accent-lavender)',
-};
-
 const pipelineDescriptions: Record<EpicPipelineType, string> = {
   hybrid: 'Plan → Incremental Build → Verify → Review → Test',
   fix: 'Diagnose → Debug → Fix → Test → Review',
@@ -457,16 +389,6 @@ const complexityDescriptions: Record<ComplexityEstimate, string> = {
   large: 'Multi-turn architect + design system + scoped builders. For large features.',
   epic: 'Full pipeline with verification protocol + integration testing. For new projects.',
 };
-
-function pipelineButtonStyle(ptValue: EpicPipelineType) {
-  if (draft.value.pipelineType !== ptValue) return {};
-  const color = pipelineColors[ptValue];
-  return {
-    color: color,
-    backgroundColor: `color-mix(in srgb, ${color} 12%, transparent)`,
-    borderColor: `color-mix(in srgb, ${color} 30%, transparent)`,
-  };
-}
 
 const epic = computed(() => epicStore.epicById(props.epicId));
 const branchName = computed(() => epicStore.epicBranchName(props.epicId));
@@ -622,3 +544,175 @@ async function reject() {
   loadDraft();
 }
 </script>
+
+<style scoped>
+.scroll-area::-webkit-scrollbar { width: 5px; }
+.scroll-area::-webkit-scrollbar-track { background: transparent; }
+.scroll-area::-webkit-scrollbar-thumb { background: rgba(100,116,139,0.25); border-radius: 3px; }
+.scroll-area::-webkit-scrollbar-thumb:hover { background: rgba(100,116,139,0.4); }
+
+.field-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+  line-height: 1;
+  display: block;
+}
+
+.field-input {
+  width: 100%;
+  font-size: 13px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-base);
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  font-family: 'Inter', sans-serif;
+}
+.field-input:hover { border-color: var(--border-standard); }
+.field-input:focus { border-color: var(--accent-mauve); box-shadow: 0 0 0 2px rgba(203,166,247,0.12); }
+.field-input::placeholder { color: var(--text-faint); }
+.field-input:disabled { opacity: 0.4; cursor: not-allowed; }
+
+select.field-input {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%2364748b' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 28px;
+  color-scheme: dark;
+}
+
+textarea.field-input {
+  resize: vertical;
+  line-height: 1.6;
+}
+
+.field-input-dashed {
+  width: 100%;
+  font-size: 11px;
+  color: var(--text-faint);
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px dashed var(--border-standard);
+  background: var(--bg-base);
+  outline: none;
+  transition: border-color 0.15s, color 0.15s;
+  font-family: 'Inter', sans-serif;
+  color-scheme: dark;
+  cursor: pointer;
+}
+.field-input-dashed:hover { border-color: rgba(203,166,247,0.25); color: var(--text-secondary); }
+.field-input-dashed:focus { border-color: var(--accent-mauve); outline: none; }
+
+.pipe-btn {
+  flex: 1;
+  padding: 7px 0;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-window);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+  text-align: center;
+}
+.pipe-btn:hover {
+  color: var(--text-secondary);
+  border-color: var(--border-standard);
+  background: var(--bg-surface);
+}
+.pipe-btn.active-create {
+  color: var(--accent-green);
+  background: rgba(166,227,161,0.06);
+  border-color: rgba(166,227,161,0.20);
+  box-shadow: inset 0 0 20px -10px rgba(166,227,161,0.12);
+}
+.pipe-btn.active-fix {
+  color: var(--accent-peach);
+  background: rgba(250,179,135,0.06);
+  border-color: rgba(250,179,135,0.20);
+  box-shadow: inset 0 0 20px -10px rgba(250,179,135,0.12);
+}
+.pipe-btn.active-investigate {
+  color: var(--accent-blue);
+  background: rgba(137,180,250,0.06);
+  border-color: rgba(137,180,250,0.20);
+  box-shadow: inset 0 0 20px -10px rgba(137,180,250,0.12);
+}
+.pipe-btn.active-plan {
+  color: #b4befe;
+  background: rgba(180,190,254,0.06);
+  border-color: rgba(180,190,254,0.20);
+  box-shadow: inset 0 0 20px -10px rgba(180,190,254,0.12);
+}
+
+.panel-toggle {
+  position: relative;
+  width: 34px;
+  height: 20px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.2s;
+  border: none;
+  outline: none;
+  flex-shrink: 0;
+}
+.panel-toggle::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--text-primary);
+  transition: transform 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+}
+.panel-toggle.on { background: var(--accent-teal); }
+.panel-toggle.on::after { transform: translateX(14px); }
+.panel-toggle.off { background: var(--text-faint); }
+
+.dep-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  border-radius: 8px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+}
+
+.dep-remove {
+  color: var(--text-faint);
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+  display: flex;
+  margin-left: auto;
+  flex-shrink: 0;
+  transition: color 0.15s;
+}
+.dep-remove:hover { color: var(--accent-red); }
+
+.btn-primary {
+  width: 100%;
+  padding: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 8px;
+  border: none;
+  color: var(--bg-base);
+  cursor: pointer;
+  transition: all 0.15s;
+  letter-spacing: 0.01em;
+}
+.btn-primary:hover { filter: brightness(1.1); }
+.btn-primary:active { transform: scale(0.99); }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; filter: none; }
+</style>

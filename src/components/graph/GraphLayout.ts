@@ -113,11 +113,11 @@ export class GraphLayout {
       const node = nodes[i];
 
       if (node.type === 'agent') {
-        // Agents tend toward the left side
+        // Agents tend toward the left column
         fx[i] += (cx * 0.35 - node.x) * this.clusterStrength * 0.01;
       } else if (node.type === 'file') {
-        // Files tend toward the right side
-        fx[i] += (cx * 1.65 - node.x) * this.clusterStrength * 0.01;
+        // Files tend toward the right column
+        fx[i] += (cx * 1.7 - node.x) * this.clusterStrength * 0.015;
       } else if (node.type === 'tool' && node.parentNodeId) {
         // Tool nodes orbit their parent agent
         const pi = nodeIndex.get(node.parentNodeId);
@@ -279,7 +279,7 @@ export class GraphLayout {
     }
   }
 
-  /** Vertical timeline layout: Y = time order, X = hierarchy depth. Ideal for narrow sidebar panels. */
+  /** Vertical timeline layout: Y = time order, X = type column (agents left, tools center, files right). */
   verticalTimelineLayout(nodes: GraphNode[], _edges: GraphEdge[]): void {
     if (nodes.length === 0) return;
 
@@ -287,65 +287,45 @@ export class GraphLayout {
     const usableW = this.viewWidth - padding * 2;
     const usableH = this.viewHeight - padding * 2;
 
-    // Build parent→children adjacency from parentNodeId
-    const childrenOf = new Map<string, GraphNode[]>();
-    const roots: GraphNode[] = [];
-    for (const n of nodes) {
-      if (n.parentNodeId) {
-        const list = childrenOf.get(n.parentNodeId) ?? [];
-        list.push(n);
-        childrenOf.set(n.parentNodeId, list);
-      } else if (n.type === 'agent') {
-        roots.push(n);
-      }
+    // Three columns: agents (left), tools (center), files (right)
+    const COL_AGENT = 0;
+    const COL_TOOL  = 1;
+    const COL_FILE  = 2;
+    const NUM_COLS  = 3;
+
+    function typeColumn(n: GraphNode): number {
+      if (n.type === 'agent' || n.type === 'milestone' || n.type === 'checkpoint' || n.type === 'validation') return COL_AGENT;
+      if (n.type === 'tool') return COL_TOOL;
+      if (n.type === 'file') return COL_FILE;
+      return COL_TOOL;
     }
 
-    // Compute depth (X layer) via BFS from roots
-    const depthOf = new Map<string, number>();
-    const queue: GraphNode[] = [...roots];
-    for (const r of roots) depthOf.set(r.id, 0);
-    while (queue.length > 0) {
-      const node = queue.shift()!;
-      const d = depthOf.get(node.id) ?? 0;
-      for (const child of (childrenOf.get(node.id) ?? [])) {
-        if (!depthOf.has(child.id)) {
-          depthOf.set(child.id, d + 1);
-          queue.push(child);
-        }
-      }
-    }
-    // Assign unparented nodes to depth 0
-    for (const n of nodes) {
-      if (!depthOf.has(n.id)) depthOf.set(n.id, 0);
-    }
-
-    // Sort nodes by turnId/timestamp for Y ordering (vertical = time axis)
+    // Sort all nodes by turnId/timestamp for Y ordering
     const sorted = [...nodes].sort((a, b) => {
       const ta = a.timestamp ?? a.turnId ?? 0;
       const tb = b.timestamp ?? b.turnId ?? 0;
       return ta - tb;
     });
 
-    // Group by depth layer for X spacing
-    const maxDepth = Math.max(0, ...depthOf.values());
-    const xStep = maxDepth > 0 ? usableW / (maxDepth + 1) : usableW / 2;
+    // Column X positions (agents get more space)
+    const colXPositions = [
+      padding + usableW * 0.18,
+      padding + usableW * 0.50,
+      padding + usableW * 0.82,
+    ];
 
-    // Within each depth layer, spread nodes evenly by time order (vertically)
-    const layerCounters = new Map<number, number>();
-    const layerTotals = new Map<number, number>();
-    for (const n of sorted) {
-      const d = depthOf.get(n.id) ?? 0;
-      layerTotals.set(d, (layerTotals.get(d) ?? 0) + 1);
-    }
+    // Per-column Y counters
+    const colCounters: number[] = [0, 0, 0];
+    const colTotals: number[] = [0, 0, 0];
+    for (const n of sorted) colTotals[typeColumn(n)]++;
 
     for (const n of sorted) {
-      const d = depthOf.get(n.id) ?? 0;
-      const idx = layerCounters.get(d) ?? 0;
-      layerCounters.set(d, idx + 1);
-      const total = layerTotals.get(d) ?? 1;
+      const col = typeColumn(n);
+      const idx = colCounters[col]++;
+      const total = colTotals[col] || 1;
       const yStep = usableH / Math.max(total, 1);
 
-      n.x = padding + xStep * (d + 0.5);
+      n.x = colXPositions[col];
       n.y = padding + yStep * (idx + 0.5);
       n.vx = 0;
       n.vy = 0;

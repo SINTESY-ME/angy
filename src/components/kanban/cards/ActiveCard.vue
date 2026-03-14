@@ -15,7 +15,6 @@
       <!-- Top row: Epic ID + project dot + project name + priority | progress ring -->
       <div class="flex items-center justify-between mb-2">
         <div class="flex items-center gap-2">
-          <span class="text-[10px] text-txt-faint font-mono">{{ epicShortId }}</span>
           <span class="w-1.5 h-1.5 rounded-full" :style="{ backgroundColor: projectColor }" />
           <span class="text-[10px] text-txt-faint">{{ projectName }}</span>
           <PriorityBadge :priority="epic.priorityHint" />
@@ -27,7 +26,15 @@
       <p class="text-sm text-txt-primary font-semibold leading-snug mb-1.5">{{ epic.title }}</p>
 
       <!-- Description -->
-      <p v-if="epic.description" class="text-[11px] text-txt-muted leading-relaxed mb-3">{{ epic.description }}</p>
+      <p v-if="epic.description" class="text-[11px] text-txt-muted leading-relaxed mb-2">{{ epic.description }}</p>
+
+      <!-- Branch -->
+      <div v-if="actions.branchName.value" class="flex items-center gap-1 mb-3">
+        <svg class="w-3 h-3 text-teal flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="6" y1="3" x2="6" y2="15" /><circle cx="18" cy="6" r="3" /><circle cx="6" cy="18" r="3" /><path d="M18 9a9 9 0 0 1-9 9" />
+        </svg>
+        <span class="text-[10px] text-teal font-mono truncate">{{ actions.branchName.value }}</span>
+      </div>
 
       <!-- Agent activity strip -->
       <div class="flex items-center gap-2 pt-2.5 border-t border-border-subtle">
@@ -100,8 +107,6 @@ const actions = useEpicCardActions({
   selected: toRef(props, 'selected'),
   emit,
 });
-
-const epicShortId = computed(() => 'E-' + props.epic.id.slice(0, 2).toUpperCase());
 
 const projectName = computed(() => {
   const p = projectsStore.projects.find(p => p.id === props.epic.projectId);

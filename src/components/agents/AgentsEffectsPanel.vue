@@ -41,28 +41,47 @@
       <span v-if="totalCost > 0" class="text-txt-faint">${{ totalCost.toFixed(2) }}</span>
     </div>
 
-    <!-- File list (effects tab) -->
-    <div v-if="activeTab === 'effects'" class="flex-1 overflow-y-auto py-2 space-y-1 px-2">
-      <template v-if="fileChanges.length > 0">
-        <div
-          v-for="change in fileChanges"
-          :key="change.filePath"
-          class="flex items-center gap-2 px-2 py-1 rounded-md cursor-pointer hover:bg-white/[0.03] transition-colors"
-          @click="$emit('file-clicked', change.filePath)"
+    <!-- File list (effects tab) — grouped by agent -->
+    <div v-if="activeTab === 'effects'" class="flex-1 overflow-y-auto py-1">
+      <template v-if="effectGroups.length > 0">
+        <details
+          v-for="group in effectGroups"
+          :key="group.agentSessionId"
+          open
+          class="group"
         >
-          <!-- Status badge -->
-          <span
-            class="text-[10px] px-1 rounded flex-shrink-0"
-            :class="changeTypeBadge(change.changeType)"
-          >{{ changeTypeLabel(change.changeType) }}</span>
-          <!-- File path -->
-          <span class="text-[11px] text-txt-secondary truncate font-mono">{{ change.filePath }}</span>
-          <!-- Line counts -->
-          <span class="flex-shrink-0 text-[9px] font-mono">
-            <span v-if="change.linesAdded" class="text-emerald-400">+{{ change.linesAdded }}</span>
-            <span v-if="change.linesRemoved" class="text-accent-red ml-0.5">-{{ change.linesRemoved }}</span>
-          </span>
-        </div>
+          <!-- Agent group header -->
+          <summary class="flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-white/[0.03] transition-colors select-none">
+            <svg class="w-2.5 h-2.5 text-txt-faint flex-shrink-0 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
+            <span class="text-[10px] font-medium text-txt-secondary truncate">{{ group.agentTitle }}</span>
+            <span class="flex-1" />
+            <span class="text-[9px] text-txt-faint flex-shrink-0">{{ group.changes.length }} file{{ group.changes.length !== 1 ? 's' : '' }}</span>
+            <span class="text-[9px] font-mono flex-shrink-0">
+              <span class="text-emerald-400">+{{ group.totalAdded }}</span>
+              <span class="text-accent-red ml-0.5">-{{ group.totalRemoved }}</span>
+            </span>
+          </summary>
+
+          <!-- File rows -->
+          <div class="space-y-0.5 px-2 pb-1">
+            <div
+              v-for="change in group.changes"
+              :key="change.filePath"
+              class="flex items-center gap-2 px-2 py-1 rounded-md cursor-pointer hover:bg-white/[0.03] transition-colors ml-2"
+              @click="$emit('file-clicked', change.filePath)"
+            >
+              <span
+                class="text-[10px] px-1 rounded flex-shrink-0"
+                :class="changeTypeBadge(change.changeType)"
+              >{{ changeTypeLabel(change.changeType) }}</span>
+              <span class="text-[11px] text-txt-secondary truncate font-mono">{{ change.filePath }}</span>
+              <span class="flex-shrink-0 text-[9px] font-mono">
+                <span v-if="change.linesAdded" class="text-emerald-400">+{{ change.linesAdded }}</span>
+                <span v-if="change.linesRemoved" class="text-accent-red ml-0.5">-{{ change.linesRemoved }}</span>
+              </span>
+            </div>
+          </div>
+        </details>
       </template>
 
       <!-- Empty state -->
@@ -79,20 +98,37 @@
       </div>
     </div>
 
-    <!-- Graph tab placeholder -->
-    <div v-else class="flex-1 flex flex-col items-center justify-center text-center px-6">
-      <svg class="w-6 h-6 mb-2 opacity-30 text-txt-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3">
-        <circle cx="12" cy="12" r="3" />
-        <circle cx="4" cy="6" r="2" />
-        <circle cx="20" cy="6" r="2" />
-        <circle cx="4" cy="18" r="2" />
-        <circle cx="20" cy="18" r="2" />
-        <path d="M9.5 10.5L5.5 7.5M14.5 10.5L18.5 7.5M9.5 13.5L5.5 16.5M14.5 13.5L18.5 16.5" />
-      </svg>
-      <span class="text-[11px] text-txt-muted">Agent graph coming soon</span>
+    <!-- Graph tab — agent hierarchy visualization -->
+    <div v-else class="flex-1 min-h-0 relative">
+      <AgentGraph
+        v-if="graphStore.visibleNodes.length > 0"
+        :nodes="graphStore.visibleNodes"
+        :edges="graphStore.visibleEdges"
+        :is-live="graphStore.isLive"
+        :min-turn="graphStore.minTurn"
+        :max-turn="graphStore.maxTurn"
+        :vertical="true"
+        @agent-selected="(nodeId: string) => $emit('file-clicked', nodeId)"
+        @file-clicked="(path: string) => $emit('file-clicked', path)"
+      />
+      <div
+        v-else
+        class="flex flex-col items-center justify-center h-full text-center px-6"
+      >
+        <svg class="w-6 h-6 mb-2 opacity-30 text-txt-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3">
+          <circle cx="12" cy="12" r="3" />
+          <circle cx="4" cy="6" r="2" />
+          <circle cx="20" cy="6" r="2" />
+          <circle cx="4" cy="18" r="2" />
+          <circle cx="20" cy="18" r="2" />
+          <path d="M9.5 10.5L5.5 7.5M14.5 10.5L18.5 7.5M9.5 13.5L5.5 16.5M14.5 13.5L18.5 16.5" />
+        </svg>
+        <span class="text-[11px] text-txt-muted">No graph data</span>
+        <span class="text-[10px] text-txt-faint mt-1">Select an orchestrator to view the agent graph</span>
+      </div>
     </div>
 
-    <!-- Approve / Reject — hidden when no pending approval -->
+    <!-- Approve / Reject -->
     <div v-if="hasPendingApproval" class="px-3 py-3 border-t border-border-subtle flex gap-2 justify-end">
       <button
         class="flex items-center gap-1 bg-white/[0.04] border border-white/[0.06] text-xs text-txt-secondary rounded-lg h-8 px-3 hover:bg-white/[0.06] transition-colors"
@@ -121,7 +157,24 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import type { FileChange, MessageRecord } from '../../engine/types';
 import { engineBus } from '../../engine/EventBus';
 import { getDatabase } from '../../stores/sessions';
+import { useFleetStore } from '../../stores/fleet';
+import { useGraphStore } from '../../stores/graph';
+import { useGraphBuilder } from '../../composables/useGraphBuilder';
 import { DiffEngine } from '../../engine/DiffEngine';
+import AgentGraph from '../graph/AgentGraph.vue';
+
+interface TaggedFileChange extends FileChange {
+  agentSessionId: string;
+  agentTitle: string;
+}
+
+interface EffectsGroup {
+  agentSessionId: string;
+  agentTitle: string;
+  changes: TaggedFileChange[];
+  totalAdded: number;
+  totalRemoved: number;
+}
 
 const props = defineProps<{
   sessionId: string;
@@ -133,13 +186,26 @@ defineEmits<{
   reject: [];
 }>();
 
+const fleetStore = useFleetStore();
+const graphStore = useGraphStore();
+const graphBuilder = useGraphBuilder();
+
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'StrReplace', 'MultiEdit', 'NotebookEdit']);
 const diffEngine = new DiffEngine();
 
+const childSessionIds = computed(() => {
+  const ids = new Set<string>();
+  for (const a of fleetStore.hierarchicalAgents) {
+    if (a.parentSessionId === props.sessionId) {
+      ids.add(a.sessionId);
+    }
+  }
+  return ids;
+});
+
 const scope = ref<'session' | 'all'>('session');
 const activeTab = ref<'effects' | 'graph'>('effects');
-const fileChanges = ref<FileChange[]>([]);
-// TODO: wire to engine — track pending tool-use approval state per session
+const fileChanges = ref<TaggedFileChange[]>([]);
 const hasPendingApproval = ref(false);
 
 const tabs = [
@@ -149,7 +215,30 @@ const tabs = [
 
 const totalAdded = computed(() => fileChanges.value.reduce((sum, c) => sum + c.linesAdded, 0));
 const totalRemoved = computed(() => fileChanges.value.reduce((sum, c) => sum + c.linesRemoved, 0));
-const totalCost = computed(() => 0); // Cost tracked at agent level, not file level
+const totalCost = computed(() => 0);
+
+const effectGroups = computed((): EffectsGroup[] => {
+  const groupMap = new Map<string, TaggedFileChange[]>();
+  const titleMap = new Map<string, string>();
+
+  for (const change of fileChanges.value) {
+    let list = groupMap.get(change.agentSessionId);
+    if (!list) {
+      list = [];
+      groupMap.set(change.agentSessionId, list);
+      titleMap.set(change.agentSessionId, change.agentTitle);
+    }
+    list.push(change);
+  }
+
+  return [...groupMap.entries()].map(([agentSessionId, changes]) => ({
+    agentSessionId,
+    agentTitle: titleMap.get(agentSessionId) ?? 'Unknown',
+    changes,
+    totalAdded: changes.reduce((s, c) => s + c.linesAdded, 0),
+    totalRemoved: changes.reduce((s, c) => s + c.linesRemoved, 0),
+  }));
+});
 
 function changeTypeBadge(type: FileChange['changeType']): string {
   switch (type) {
@@ -167,7 +256,6 @@ function changeTypeLabel(type: FileChange['changeType']): string {
   }
 }
 
-// Compute real line counts from toolInput using DiffEngine
 function computeLineCounts(filePath: string, toolName: string, toolInput?: Record<string, any>): { linesAdded: number; linesRemoved: number } {
   let linesAdded = 0;
   let linesRemoved = 0;
@@ -201,9 +289,13 @@ function computeLineCounts(filePath: string, toolName: string, toolInput?: Recor
   return { linesAdded, linesRemoved };
 }
 
-// Handle incoming file edit events
+function resolveAgentTitle(sessionId: string): string {
+  const agent = fleetStore.agents.find(a => a.sessionId === sessionId);
+  return agent?.title ?? 'Orchestrator';
+}
+
 function onFileEdited(evt: { sessionId: string; filePath: string; toolName: string; toolInput?: Record<string, any> }) {
-  if (scope.value === 'session' && evt.sessionId !== props.sessionId) return;
+  if (scope.value === 'session' && evt.sessionId !== props.sessionId && !childSessionIds.value.has(evt.sessionId)) return;
 
   let changeType: FileChange['changeType'];
   if (evt.toolName === 'Delete') {
@@ -216,7 +308,7 @@ function onFileEdited(evt: { sessionId: string; filePath: string; toolName: stri
 
   const { linesAdded, linesRemoved } = computeLineCounts(evt.filePath, evt.toolName, evt.toolInput);
 
-  const existing = fileChanges.value.find((c) => c.filePath === evt.filePath);
+  const existing = fileChanges.value.find((c) => c.filePath === evt.filePath && c.agentSessionId === evt.sessionId);
   if (existing) {
     existing.changeType = changeType;
     existing.linesAdded = linesAdded;
@@ -227,21 +319,15 @@ function onFileEdited(evt: { sessionId: string; filePath: string; toolName: stri
       changeType,
       linesAdded,
       linesRemoved,
+      agentSessionId: evt.sessionId,
+      agentTitle: resolveAgentTitle(evt.sessionId),
     });
   }
 }
 
-// Clear and reload on session change — load historical file changes from DB
-watch(() => props.sessionId, async (sessionId) => {
-  fileChanges.value = [];
-
-  if (!sessionId) return;
-
-  const db = getDatabase();
-  const dbMessages: MessageRecord[] = await db.loadMessages(sessionId);
-
-  const byPath = new Map<string, FileChange>();
-  for (const msg of dbMessages) {
+function extractEffects(messages: MessageRecord[], agentSessionId: string, agentTitle: string, results: TaggedFileChange[]) {
+  const byPath = new Map<string, TaggedFileChange>();
+  for (const msg of messages) {
     if (msg.role === 'tool' && msg.toolName && EDIT_TOOLS.has(msg.toolName)) {
       let input: Record<string, any> = {};
       try { input = JSON.parse(msg.toolInput || '{}'); } catch { /* skip */ }
@@ -253,12 +339,43 @@ watch(() => props.sessionId, async (sessionId) => {
           changeType: (msg.toolName === 'Write' ? 'created' : 'modified') as FileChange['changeType'],
           linesAdded,
           linesRemoved,
+          agentSessionId,
+          agentTitle,
         });
       }
     }
   }
+  for (const change of byPath.values()) {
+    results.push(change);
+  }
+}
 
-  fileChanges.value = Array.from(byPath.values());
+watch(() => props.sessionId, async (sessionId) => {
+  fileChanges.value = [];
+
+  if (!sessionId) return;
+
+  const db = getDatabase();
+  const results: TaggedFileChange[] = [];
+
+  const mainMsgs = await db.loadMessages(sessionId);
+  extractEffects(mainMsgs, sessionId, resolveAgentTitle(sessionId), results);
+
+  const children = fleetStore.hierarchicalAgents.filter(a => a.parentSessionId === sessionId);
+  if (children.length > 0) {
+    await Promise.all(children.map(async (child) => {
+      const childMsgs = await db.loadMessages(child.sessionId);
+      extractEffects(childMsgs, child.sessionId, child.title || 'Untitled', results);
+    }));
+  }
+
+  fileChanges.value = results;
+}, { immediate: true });
+
+watch([() => props.sessionId, activeTab], async ([sessionId, tab]) => {
+  if (tab === 'graph' && sessionId) {
+    await graphBuilder.buildFromHistory(sessionId);
+  }
 }, { immediate: true });
 
 onMounted(() => {

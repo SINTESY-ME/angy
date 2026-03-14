@@ -1,7 +1,7 @@
 <template>
   <div class="flex flex-col bg-window/50 border-b border-border-subtle">
     <!-- Row 1: Title + Actions -->
-    <div class="flex items-center gap-3 px-4 py-2.5">
+    <div class="h-12 flex items-center gap-3 px-5">
       <span class="text-sm font-semibold text-txt-primary">Agents</span>
       <span class="text-xs text-txt-muted">{{ subtitle }}</span>
 
@@ -21,12 +21,12 @@
 
       <!-- +New Agent -->
       <button
-        class="flex items-center gap-1 text-xs text-txt-muted hover:text-txt-primary px-2 py-1 rounded-md hover:bg-raised transition-colors"
+        class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-base bg-gradient-to-r from-ember-500 to-ember-600 hover:brightness-110 transition"
         @click="$emit('new-agent')"
         title="New agent"
       >
-        <svg class="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
-          <path d="M8 3v10M3 8h10" />
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
         </svg>
         New Agent
       </button>
@@ -82,7 +82,7 @@ const runningCount = computed(() =>
 
 const projectCount = computed(() => {
   const grouped = fleetStore.agentsGroupedByProject;
-  return grouped.filter((g) => g.projectId !== '__orchestrators__').length;
+  return grouped.filter((g) => g.projectId !== '__unattached__').length;
 });
 
 const subtitle = computed(() => {

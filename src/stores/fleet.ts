@@ -175,10 +175,11 @@ export const useFleetStore = defineStore('fleet', () => {
 
   // ── Project-grouped agents ────────────────────────────────────────
 
-  /** Agents grouped by project, with '__orchestrators__' for unattached orchestrators */
+  /** Agents grouped by project, with '__unattached__' for sessions not linked to any project */
   const agentsGroupedByProject = computed(() => {
     const epicStore = useEpicStore();
     const projectsStore = useProjectsStore();
+    const sessionsStore = useSessionsStore();
 
     const groupMap = new Map<string, {
       projectId: string;
@@ -187,24 +188,74 @@ export const useFleetStore = defineStore('fleet', () => {
       agents: HierarchicalAgent[];
     }>();
 
+    function projectMeta(project: { id: string; name: string }) {
+      const idx = projectsStore.projects.findIndex((p) => p.id === project.id);
+      return { id: project.id, name: project.name, color: PROJECT_COLORS[idx % PROJECT_COLORS.length] };
+    }
+
+    // Pass 1: resolve agents that have an epicId (guaranteed project link)
+    // and collect workspace → project mappings from those resolved agents.
+    const workspaceToProject = new Map<string, { id: string; name: string; color: string }>();
+    const unresolvedAgents: HierarchicalAgent[] = [];
+
     for (const agent of hierarchicalAgents.value) {
-      let projectId = '__orchestrators__';
-      let projectName = 'Orchestrators';
-      let projectColor = '#64748b';
+      let resolved: { id: string; name: string; color: string } | null = null;
 
       if (agent.epicId) {
         const epic = epicStore.epicById(agent.epicId);
         if (epic?.projectId) {
           const project = projectsStore.projectById(epic.projectId);
-          if (project) {
-            projectId = project.id;
-            projectName = project.name;
-            // Deterministic color from project index
-            const idx = projectsStore.projects.findIndex((p) => p.id === project.id);
-            projectColor = PROJECT_COLORS[idx % PROJECT_COLORS.length];
+          if (project) resolved = projectMeta(project);
+        }
+      }
+
+      if (resolved) {
+        // Learn the workspace → project mapping from this resolved agent
+        const info = sessionsStore.sessions.get(agent.sessionId);
+        if (info?.workspace && !workspaceToProject.has(info.workspace)) {
+          workspaceToProject.set(info.workspace, resolved);
+        }
+
+        let group = groupMap.get(resolved.id);
+        if (!group) {
+          group = { projectId: resolved.id, projectName: resolved.name, projectColor: resolved.color, agents: [] };
+          groupMap.set(resolved.id, group);
+        }
+        group.agents.push(agent);
+      } else {
+        unresolvedAgents.push(agent);
+      }
+    }
+
+    // Also seed from ProjectRepo paths
+    for (const repo of projectsStore.repos) {
+      if (!workspaceToProject.has(repo.path)) {
+        const project = projectsStore.projectById(repo.projectId);
+        if (project) workspaceToProject.set(repo.path, projectMeta(project));
+      }
+    }
+
+    // Pass 2: resolve remaining agents via workspace matching
+    for (const agent of unresolvedAgents) {
+      let resolved: { id: string; name: string; color: string } | null = null;
+
+      const info = sessionsStore.sessions.get(agent.sessionId);
+      if (info?.workspace) {
+        // Exact match first, then prefix match
+        resolved = workspaceToProject.get(info.workspace) ?? null;
+        if (!resolved) {
+          for (const [repoPath, proj] of workspaceToProject) {
+            if (info.workspace.startsWith(repoPath + '/') || repoPath.startsWith(info.workspace + '/')) {
+              resolved = proj;
+              break;
+            }
           }
         }
       }
+
+      const projectId = resolved?.id ?? '__unattached__';
+      const projectName = resolved?.name ?? 'Standalone';
+      const projectColor = resolved?.color ?? '#64748b';
 
       let group = groupMap.get(projectId);
       if (!group) {
@@ -220,10 +271,9 @@ export const useFleetStore = defineStore('fleet', () => {
       totalCost: g.agents.reduce((sum, a) => sum + (a.costUsd ?? 0), 0),
     }));
 
-    // Sort: project groups alphabetically first, __orchestrators__ last
     groups.sort((a, b) => {
-      if (a.projectId === '__orchestrators__') return 1;
-      if (b.projectId === '__orchestrators__') return -1;
+      if (a.projectId === '__unattached__') return 1;
+      if (b.projectId === '__unattached__') return -1;
       return a.projectName.localeCompare(b.projectName);
     });
 

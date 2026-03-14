@@ -108,92 +108,97 @@ export function useGraphBuilder() {
     // File node deduplication
     const fileNodes = new Map<string, string>(); // filePath -> nodeId
 
-    // Process messages and file changes for each session
+    // Process messages and file changes for each session.
+    // Tool calls are grouped by (agent, toolName) so "Read ×5" instead of 5 separate nodes.
     for (const session of treeSessions) {
       const messages = await db.loadMessages(session.sessionId);
       const agentNodeId = `agent:${session.sessionId}`;
-      let toolIndex = 0;
+
+      // First pass: collect tool calls grouped by name, and their touched files
+      const toolGroups = new Map<string, { count: number; turnId: number; timestamp: number; filePaths: Set<string> }>();
 
       for (const msg of messages) {
-        // Track turn range
         if (msg.turnId > globalTurnOffset) globalTurnOffset = msg.turnId;
 
-        // Tool-use messages → create tool nodes
         if (msg.toolName) {
-          const toolNodeId = `tool:${session.sessionId}:${msg.turnId}:${toolIndex++}`;
+          let group = toolGroups.get(msg.toolName);
+          if (!group) {
+            group = { count: 0, turnId: msg.turnId, timestamp: msg.timestamp, filePaths: new Set() };
+            toolGroups.set(msg.toolName, group);
+          }
+          group.count++;
 
           let toolInput: Record<string, any> | undefined;
           if (msg.toolInput) {
-            try {
-              toolInput = JSON.parse(msg.toolInput);
-            } catch {
-              // malformed JSON, skip
-            }
+            try { toolInput = JSON.parse(msg.toolInput); } catch { /* skip */ }
           }
-
-          const toolNode: GraphNode = {
-            id: toolNodeId,
-            type: 'tool',
-            label: msg.toolName,
-            ...randomPos(),
-            vx: 0,
-            vy: 0,
-            pinned: false,
-            toolName: msg.toolName,
-            toolInput,
-            turnId: msg.turnId,
-            timestamp: msg.timestamp,
-            parentNodeId: agentNodeId,
-          };
-          graphStore.addNode(toolNode);
-
-          // Agent → tool edge
-          const toolEdge: GraphEdge = {
-            id: `tool-call:${agentNodeId}->${toolNodeId}`,
-            source: agentNodeId,
-            target: toolNodeId,
-            type: 'tool-call',
-            label: msg.toolName,
-            turnId: msg.turnId,
-            timestamp: msg.timestamp,
-          };
-          graphStore.addEdge(toolEdge);
-
-          // Extract file_path from toolInput → create/link file nodes
           if (toolInput) {
             const filePath = toolInput.file_path || toolInput.path || toolInput.filePath;
             if (filePath && typeof filePath === 'string') {
-              let fileNodeId = fileNodes.get(filePath);
-              if (!fileNodeId) {
-                fileNodeId = `file:${filePath}`;
-                const fileNode: GraphNode = {
-                  id: fileNodeId,
-                  type: 'file',
-                  label: filePath.split('/').pop() || filePath,
-                  ...randomPos(),
-                  vx: 0,
-                  vy: 0,
-                  pinned: false,
-                  filePath,
-                  turnId: msg.turnId,
-                  timestamp: msg.timestamp,
-                };
-                graphStore.addNode(fileNode);
-                fileNodes.set(filePath, fileNodeId);
-              }
-
-              // Tool → file edge
-              const fileEdge: GraphEdge = {
-                id: `file-touch:${toolNodeId}->${fileNodeId}`,
-                source: toolNodeId,
-                target: fileNodeId,
-                type: 'file-touch',
-                turnId: msg.turnId,
-                timestamp: msg.timestamp,
-              };
-              graphStore.addEdge(fileEdge);
+              group.filePaths.add(filePath);
             }
           }
+        }
+      }
+
+      // Second pass: create one tool node per group
+      for (const [toolName, group] of toolGroups) {
+        const toolNodeId = `tool:${session.sessionId}:${toolName}`;
+        const label = group.count > 1 ? `${toolName} ×${group.count}` : toolName;
+
+        const toolNode: GraphNode = {
+          id: toolNodeId,
+          type: 'tool',
+          label,
+          ...randomPos(),
+          vx: 0,
+          vy: 0,
+          pinned: false,
+          toolName,
+          turnId: group.turnId,
+          timestamp: group.timestamp,
+          parentNodeId: agentNodeId,
+        };
+        graphStore.addNode(toolNode);
+
+        graphStore.addEdge({
+          id: `tool-call:${agentNodeId}->${toolNodeId}`,
+          source: agentNodeId,
+          target: toolNodeId,
+          type: 'tool-call',
+          label: toolName,
+          turnId: group.turnId,
+          timestamp: group.timestamp,
+        });
+
+        // Create/link file nodes for all files touched by this tool group
+        for (const filePath of group.filePaths) {
+          let fileNodeId = fileNodes.get(filePath);
+          if (!fileNodeId) {
+            fileNodeId = `file:${filePath}`;
+            graphStore.addNode({
+              id: fileNodeId,
+              type: 'file',
+              label: filePath.split('/').pop() || filePath,
+              ...randomPos(),
+              vx: 0,
+              vy: 0,
+              pinned: false,
+              filePath,
+              turnId: group.turnId,
+              timestamp: group.timestamp,
+            });
+            fileNodes.set(filePath, fileNodeId);
+          }
+
+          graphStore.addEdge({
+            id: `file-touch:${toolNodeId}->${fileNodeId}`,
+            source: toolNodeId,
+            target: fileNodeId,
+            type: 'file-touch',
+            turnId: group.turnId,
+            timestamp: group.timestamp,
+          });
         }
       }
 
@@ -598,89 +603,95 @@ export function useGraphBuilder() {
         }
       }
 
-      // Process messages and file changes for each session in this tree
+      // Process messages and file changes for each session in this tree.
+      // Tool calls are grouped by (agent, toolName).
       for (const session of treeSessions) {
         const messages = await db.loadMessages(session.sessionId);
         const agentNodeId = `agent:${session.sessionId}`;
-        let toolIndex = 0;
+
+        const toolGroups = new Map<string, { count: number; turnId: number; timestamp: number; filePaths: Set<string> }>();
 
         for (const msg of messages) {
           if (msg.turnId > globalTurnOffset) globalTurnOffset = msg.turnId;
 
           if (msg.toolName) {
-            const toolNodeId = `tool:${session.sessionId}:${msg.turnId}:${toolIndex++}`;
+            let group = toolGroups.get(msg.toolName);
+            if (!group) {
+              group = { count: 0, turnId: msg.turnId, timestamp: msg.timestamp, filePaths: new Set() };
+              toolGroups.set(msg.toolName, group);
+            }
+            group.count++;
 
             let toolInput: Record<string, any> | undefined;
             if (msg.toolInput) {
-              try {
-                toolInput = JSON.parse(msg.toolInput);
-              } catch {
-                // malformed JSON, skip
-              }
+              try { toolInput = JSON.parse(msg.toolInput); } catch { /* skip */ }
             }
-
-            const toolNode: GraphNode = {
-              id: toolNodeId,
-              type: 'tool',
-              label: msg.toolName,
-              ...randomPos(),
-              vx: 0,
-              vy: 0,
-              pinned: false,
-              toolName: msg.toolName,
-              toolInput,
-              turnId: msg.turnId,
-              timestamp: msg.timestamp,
-              parentNodeId: agentNodeId,
-              groupIndex,
-            };
-            graphStore.addNode(toolNode);
-
-            const toolEdge: GraphEdge = {
-              id: `tool-call:${agentNodeId}->${toolNodeId}`,
-              source: agentNodeId,
-              target: toolNodeId,
-              type: 'tool-call',
-              label: msg.toolName,
-              turnId: msg.turnId,
-              timestamp: msg.timestamp,
-            };
-            graphStore.addEdge(toolEdge);
-
             if (toolInput) {
               const filePath = toolInput.file_path || toolInput.path || toolInput.filePath;
               if (filePath && typeof filePath === 'string') {
-                let fileNodeId = fileNodes.get(filePath);
-                if (!fileNodeId) {
-                  fileNodeId = `file:${filePath}`;
-                  const fileNode: GraphNode = {
-                    id: fileNodeId,
-                    type: 'file',
-                    label: filePath.split('/').pop() || filePath,
-                    ...randomPos(),
-                    vx: 0,
-                    vy: 0,
-                    pinned: false,
-                    filePath,
-                    turnId: msg.turnId,
-                    timestamp: msg.timestamp,
-                    groupIndex,
-                  };
-                  graphStore.addNode(fileNode);
-                  fileNodes.set(filePath, fileNodeId);
-                }
-
-                const fileEdge: GraphEdge = {
-                  id: `file-touch:${toolNodeId}->${fileNodeId}`,
-                  source: toolNodeId,
-                  target: fileNodeId,
-                  type: 'file-touch',
-                  turnId: msg.turnId,
-                  timestamp: msg.timestamp,
-                };
-                graphStore.addEdge(fileEdge);
+                group.filePaths.add(filePath);
               }
             }
+          }
+        }
+
+        for (const [toolName, group] of toolGroups) {
+          const toolNodeId = `tool:${session.sessionId}:${toolName}`;
+          const label = group.count > 1 ? `${toolName} ×${group.count}` : toolName;
+
+          graphStore.addNode({
+            id: toolNodeId,
+            type: 'tool',
+            label,
+            ...randomPos(),
+            vx: 0,
+            vy: 0,
+            pinned: false,
+            toolName,
+            turnId: group.turnId,
+            timestamp: group.timestamp,
+            parentNodeId: agentNodeId,
+            groupIndex,
+          });
+
+          graphStore.addEdge({
+            id: `tool-call:${agentNodeId}->${toolNodeId}`,
+            source: agentNodeId,
+            target: toolNodeId,
+            type: 'tool-call',
+            label: toolName,
+            turnId: group.turnId,
+            timestamp: group.timestamp,
+          });
+
+          for (const filePath of group.filePaths) {
+            let fileNodeId = fileNodes.get(filePath);
+            if (!fileNodeId) {
+              fileNodeId = `file:${filePath}`;
+              graphStore.addNode({
+                id: fileNodeId,
+                type: 'file',
+                label: filePath.split('/').pop() || filePath,
+                ...randomPos(),
+                vx: 0,
+                vy: 0,
+                pinned: false,
+                filePath,
+                turnId: group.turnId,
+                timestamp: group.timestamp,
+                groupIndex,
+              });
+              fileNodes.set(filePath, fileNodeId);
+            }
+
+            graphStore.addEdge({
+              id: `file-touch:${toolNodeId}->${fileNodeId}`,
+              source: toolNodeId,
+              target: fileNodeId,
+              type: 'file-touch',
+              turnId: group.turnId,
+              timestamp: group.timestamp,
+            });
           }
         }
 

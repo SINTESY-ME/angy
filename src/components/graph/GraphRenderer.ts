@@ -3,35 +3,54 @@ import type { GraphNode, GraphEdge } from './GraphTypes';
 // ── Canvas 2D rendering engine for the agent graph ───────────────────────
 
 // Node style constants
-const AGENT_RADIUS = 24;
-const TOOL_WIDTH = 40;
-const TOOL_HEIGHT = 24;
-const FILE_SIZE = 20;
-const MILESTONE_RADIUS = 20;
-const VALIDATION_RADIUS = 14;
-const CHECKPOINT_RADIUS = 16;
+const AGENT_RADIUS = 22;
+const CARD_HEIGHT = 26;
+const CARD_PAD_X = 10;
+const CARD_MIN_W = 52;
+const CARD_R = 6;
+const MILESTONE_RADIUS = 18;
+const VALIDATION_RADIUS = 13;
+const CHECKPOINT_RADIUS = 14;
 
-// Colors
+// ── Catppuccin Mocha palette ─────────────────────────────────────────────
+const BG_BASE      = '#0f1117';
+const BG_SURFACE   = '#1c1f2a';
+const BG_RAISED    = '#252836';
+const BORDER_SUB   = 'rgba(255,255,255,0.04)';
+const BORDER_STD   = 'rgba(255,255,255,0.08)';
+const TEXT_PRIMARY  = '#e2e8f0';
+const TEXT_SECOND   = '#94a3b8';
+const TEXT_MUTED    = '#64748b';
+const TEXT_FAINT    = '#475569';
+const ACCENT_MAUVE  = '#cba6f7';
+const ACCENT_BLUE   = '#89b4fa';
+const ACCENT_TEAL   = '#10b981';
+const ACCENT_EMBER  = '#f59e0b';
+const ACCENT_CYAN   = '#22d3ee';
+const ACCENT_ROSE   = '#FF6B8A';
+const GREEN         = '#a6e3a1';
+const RED           = '#f38ba8';
+const GHOST         = '#45475a';
+
 const STATUS_COLORS: Record<string, string> = {
-  idle: '#6b7280',
-  working: '#14b8a6',
-  done: '#22c55e',
-  error: '#ef4444',
-  blocked: '#f59e0b',
+  idle:    TEXT_MUTED,
+  working: ACCENT_TEAL,
+  done:    GREEN,
+  error:   RED,
+  blocked: ACCENT_EMBER,
 };
-const TOOL_COLOR = '#3b82f6';
-const FILE_COLOR = '#a855f7';
-const CHECKPOINT_COLOR = '#22c55e';
-const GHOST_COLOR = '#6c7086';
 
-// Edge styles
+const TOOL_COLOR       = ACCENT_BLUE;
+const FILE_COLOR       = ACCENT_CYAN;
+const CHECKPOINT_COLOR = GREEN;
+
 const EDGE_COLORS: Record<string, string> = {
-  delegation: '#cba6f7',
-  'tool-call': '#89b4fa',
-  'file-touch': '#45475a',
-  'peer-message': '#f9e2af',
-  validation: '#22c55e',
-  checkpoint: '#22c55e',
+  delegation:     ACCENT_MAUVE,
+  'tool-call':    ACCENT_BLUE,
+  'file-touch':   'rgba(34,211,238,0.45)',
+  'peer-message': ACCENT_EMBER,
+  validation:     GREEN,
+  checkpoint:     GREEN,
 };
 
 const FONT_SANS = '"Inter", -apple-system, sans-serif';
@@ -54,11 +73,9 @@ export class GraphRenderer {
   private hoveredNodeId: string | null = null;
   private selectedNodeId: string | null = null;
 
-  // Time slice — nodes with turnId > currentTurn are rendered as grey/transparent ghosts
   private currentTurn = Infinity;
   private maxTurn = 0;
 
-  // Node index for quick lookup during hit testing
   private nodeById = new Map<string, GraphNode>();
 
   constructor(canvas: HTMLCanvasElement) {
@@ -73,7 +90,7 @@ export class GraphRenderer {
   start(): void {
     if (this.animFrameId !== null) return;
     const loop = () => {
-      this.time += 16; // ~60fps time accumulator
+      this.time += 16;
       if (this.dirty) {
         this.render();
         this.dirty = this.hasAnimatedElements();
@@ -135,13 +152,11 @@ export class GraphRenderer {
     this.dirty = true;
   }
 
-  /** Check if a node is within the current time slice. */
   private isInTimeSlice(node: GraphNode): boolean {
     if (this.currentTurn >= this.maxTurn) return true;
     return node.turnId === undefined || node.turnId <= this.currentTurn;
   }
 
-  /** Check if an edge is within the current time slice. */
   private isEdgeInTimeSlice(edge: GraphEdge): boolean {
     if (this.currentTurn >= this.maxTurn) return true;
     return edge.turnId === undefined || edge.turnId <= this.currentTurn;
@@ -150,11 +165,9 @@ export class GraphRenderer {
   // ── Hit testing ──────────────────────────────────────────────────────
 
   hitTest(screenX: number, screenY: number): GraphNode | null {
-    // Convert screen coords to world coords
     const worldX = (screenX - this.panX) / this.zoom;
     const worldY = (screenY - this.panY) / this.zoom;
 
-    // Iterate in reverse so topmost nodes (drawn last) are hit first
     for (let i = this.nodes.length - 1; i >= 0; i--) {
       const node = this.nodes[i];
       const dx = worldX - node.x;
@@ -166,14 +179,13 @@ export class GraphRenderer {
           break;
         }
         case 'tool': {
-          const hw = TOOL_WIDTH / 2;
-          const hh = TOOL_HEIGHT / 2;
-          if (Math.abs(dx) <= hw && Math.abs(dy) <= hh) return node;
+          const tw = this.measureCardWidth(node);
+          if (Math.abs(dx) <= tw / 2 && Math.abs(dy) <= CARD_HEIGHT / 2) return node;
           break;
         }
         case 'file': {
-          // Diamond hit test: |dx|/s + |dy|/s <= 1
-          if (Math.abs(dx) / FILE_SIZE + Math.abs(dy) / FILE_SIZE <= 1) return node;
+          const fw = this.measureCardWidth(node);
+          if (Math.abs(dx) <= fw / 2 && Math.abs(dy) <= CARD_HEIGHT / 2) return node;
           break;
         }
         case 'validation': {
@@ -199,27 +211,38 @@ export class GraphRenderer {
   private render(): void {
     const { ctx, canvas } = this;
     const dpr = window.devicePixelRatio || 1;
+    const w = canvas.width / dpr;
+    const h = canvas.height / dpr;
 
-    // Clear
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
+    ctx.clearRect(0, 0, w, h);
 
-    // Apply view transform
+    // Subtle dot grid background
+    this.drawGrid(w, h);
+
     ctx.save();
     ctx.translate(this.panX, this.panY);
     ctx.scale(this.zoom, this.zoom);
 
-    // Draw edges first (below nodes)
     for (const edge of this.edges) {
       this.drawEdge(edge);
     }
-
-    // Draw nodes on top
     for (const node of this.nodes) {
       this.drawNode(node);
     }
 
     ctx.restore();
+  }
+
+  private drawGrid(w: number, h: number): void {
+    const { ctx } = this;
+    const step = 24;
+    ctx.fillStyle = 'rgba(255,255,255,0.02)';
+    for (let x = (this.panX % step + step) % step; x < w; x += step) {
+      for (let y = (this.panY % step + step) % step; y < h; y += step) {
+        ctx.fillRect(x, y, 1, 1);
+      }
+    }
   }
 
   // ── Edge drawing ─────────────────────────────────────────────────────
@@ -232,29 +255,27 @@ export class GraphRenderer {
     const { ctx } = this;
     ctx.save();
 
-    // Grey/transparent for out-of-slice edges
     if (!this.isEdgeInTimeSlice(edge)) {
-      ctx.globalAlpha = 0.2;
+      ctx.globalAlpha = 0.12;
     }
 
-    const color = EDGE_COLORS[edge.type] || '#6c7086';
-    const isConnectedToHover =
+    const color = EDGE_COLORS[edge.type] || GHOST;
+    const isHoverConnected =
       this.hoveredNodeId !== null &&
       (edge.source === this.hoveredNodeId || edge.target === this.hoveredNodeId);
-    const lwBoost = isConnectedToHover ? 2 : 0;
+    const lwBoost = isHoverConnected ? 1.5 : 0;
 
-    if (isConnectedToHover) {
+    if (isHoverConnected) {
       ctx.shadowColor = color;
-      ctx.shadowBlur = 8;
+      ctx.shadowBlur = 10;
     }
 
     switch (edge.type) {
       case 'delegation': {
-        // Slight glow on delegation edges
         ctx.shadowColor = color;
-        ctx.shadowBlur = 4;
+        ctx.shadowBlur = 6;
         ctx.strokeStyle = color;
-        ctx.lineWidth = 3 + lwBoost;
+        ctx.lineWidth = 2 + lwBoost;
         this.drawBezierEdge(src, tgt);
         ctx.shadowBlur = 0;
         this.drawArrowhead(src, tgt, color);
@@ -262,9 +283,9 @@ export class GraphRenderer {
       }
       case 'tool-call': {
         ctx.strokeStyle = color;
-        ctx.lineWidth = 1.5 + lwBoost;
+        ctx.lineWidth = 1.2 + lwBoost;
         if (edge.animated) {
-          ctx.setLineDash([6, 4]);
+          ctx.setLineDash([5, 3]);
           ctx.lineDashOffset = -(this.time * 0.05);
         }
         this.drawStraightEdge(src, tgt);
@@ -274,32 +295,31 @@ export class GraphRenderer {
       case 'file-touch': {
         ctx.strokeStyle = color;
         ctx.lineWidth = 1 + lwBoost;
-        ctx.setLineDash([2, 4]);
+        ctx.setLineDash([3, 3]);
         this.drawStraightEdge(src, tgt);
         break;
       }
       case 'peer-message': {
         ctx.strokeStyle = color;
-        ctx.lineWidth = 2 + lwBoost;
-        ctx.setLineDash([8, 4]);
+        ctx.lineWidth = 1.5 + lwBoost;
+        ctx.setLineDash([6, 3]);
         this.drawStraightEdge(src, tgt);
-        // Bidirectional arrows
         this.drawArrowhead(src, tgt, color);
         this.drawArrowhead(tgt, src, color);
         break;
       }
       case 'validation': {
         const pass = edge.label !== 'fail';
-        const vColor = pass ? '#22c55e' : '#ef4444';
+        const vColor = pass ? GREEN : RED;
         ctx.strokeStyle = vColor;
-        ctx.lineWidth = 2 + lwBoost;
+        ctx.lineWidth = 1.5 + lwBoost;
         this.drawStraightEdge(src, tgt);
         this.drawArrowhead(src, tgt, vColor);
         break;
       }
       case 'checkpoint': {
         ctx.strokeStyle = CHECKPOINT_COLOR;
-        ctx.lineWidth = 2 + lwBoost;
+        ctx.lineWidth = 1.5 + lwBoost;
         this.drawStraightEdge(src, tgt);
         this.drawArrowhead(src, tgt, CHECKPOINT_COLOR);
         break;
@@ -313,14 +333,9 @@ export class GraphRenderer {
     const { ctx } = this;
     const dx = tgt.x - src.x;
     const dy = tgt.y - src.y;
-    const cx1 = src.x + dx * 0.4;
-    const cy1 = src.y;
-    const cx2 = tgt.x - dx * 0.4;
-    const cy2 = tgt.y;
-
     ctx.beginPath();
     ctx.moveTo(src.x, src.y);
-    ctx.bezierCurveTo(cx1, cy1 + dy * 0.1, cx2, cy2 - dy * 0.1, tgt.x, tgt.y);
+    ctx.bezierCurveTo(src.x + dx * 0.4, src.y + dy * 0.1, tgt.x - dx * 0.4, tgt.y - dy * 0.1, tgt.x, tgt.y);
     ctx.stroke();
   }
 
@@ -335,23 +350,16 @@ export class GraphRenderer {
   private drawArrowhead(src: GraphNode, tgt: GraphNode, color: string): void {
     const { ctx } = this;
     const angle = Math.atan2(tgt.y - src.y, tgt.x - src.x);
-    const size = 8;
-    // Position arrowhead slightly before target center
-    const tipX = tgt.x - Math.cos(angle) * 16;
-    const tipY = tgt.y - Math.sin(angle) * 16;
+    const size = 7;
+    const tipX = tgt.x - Math.cos(angle) * 14;
+    const tipY = tgt.y - Math.sin(angle) * 14;
 
     ctx.save();
     ctx.fillStyle = color;
     ctx.beginPath();
     ctx.moveTo(tipX, tipY);
-    ctx.lineTo(
-      tipX - Math.cos(angle - Math.PI / 6) * size,
-      tipY - Math.sin(angle - Math.PI / 6) * size,
-    );
-    ctx.lineTo(
-      tipX - Math.cos(angle + Math.PI / 6) * size,
-      tipY - Math.sin(angle + Math.PI / 6) * size,
-    );
+    ctx.lineTo(tipX - Math.cos(angle - Math.PI / 6) * size, tipY - Math.sin(angle - Math.PI / 6) * size);
+    ctx.lineTo(tipX - Math.cos(angle + Math.PI / 6) * size, tipY - Math.sin(angle + Math.PI / 6) * size);
     ctx.closePath();
     ctx.fill();
     ctx.restore();
@@ -367,7 +375,7 @@ export class GraphRenderer {
 
     if (!inSlice) {
       ctx.save();
-      ctx.globalAlpha = 0.25;
+      ctx.globalAlpha = 0.2;
     }
 
     switch (node.type) {
@@ -384,403 +392,335 @@ export class GraphRenderer {
     }
   }
 
+  // ── Agent node: circle with status glow ─────────────────────────────
+
   private drawAgentNode(node: GraphNode, hovered: boolean, selected: boolean, inSlice = true): void {
     const { ctx } = this;
     const status = node.status || 'idle';
-    const color = inSlice ? (STATUS_COLORS[status] || STATUS_COLORS.idle) : GHOST_COLOR;
+    const color = inSlice ? (STATUS_COLORS[status] || STATUS_COLORS.idle) : GHOST;
 
     ctx.save();
 
-    // Always-on subtle drop shadow
-    ctx.shadowColor = 'rgba(0,0,0,0.4)';
-    ctx.shadowBlur = 6;
+    ctx.shadowColor = 'rgba(0,0,0,0.5)';
+    ctx.shadowBlur = 8;
     ctx.shadowOffsetY = 2;
 
-    // Glow effect for hover
     if (hovered) {
       ctx.shadowColor = color;
-      ctx.shadowBlur = 20;
+      ctx.shadowBlur = 24;
       ctx.shadowOffsetY = 0;
     }
 
-    // Pulsing ring for 'working' status
+    // Pulse ring for working agents
     if (status === 'working' && inSlice) {
       const prevAlpha = ctx.globalAlpha;
-      const pulse = Math.sin(this.time * 0.004) * 0.3 + 0.7;
+      const pulse = Math.sin(this.time * 0.003) * 0.3 + 0.5;
       ctx.beginPath();
-      ctx.arc(node.x, node.y, AGENT_RADIUS + 6, 0, Math.PI * 2);
+      ctx.arc(node.x, node.y, AGENT_RADIUS + 5, 0, Math.PI * 2);
       ctx.strokeStyle = color;
-      ctx.globalAlpha = prevAlpha * pulse * 0.4;
-      ctx.lineWidth = 2;
+      ctx.globalAlpha = prevAlpha * pulse * 0.5;
+      ctx.lineWidth = 1.5;
       ctx.stroke();
       ctx.globalAlpha = prevAlpha;
       this.dirty = true;
     }
 
-    // Main circle with radial gradient
+    // Outer ring (border)
     ctx.beginPath();
     ctx.arc(node.x, node.y, AGENT_RADIUS, 0, Math.PI * 2);
+    ctx.fillStyle = BG_SURFACE;
+    ctx.fill();
+    ctx.strokeStyle = inSlice ? color : GHOST;
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+
+    // Inner fill with subtle gradient
+    ctx.beginPath();
+    ctx.arc(node.x, node.y, AGENT_RADIUS - 3, 0, Math.PI * 2);
     if (inSlice) {
-      const grad = ctx.createRadialGradient(
-        node.x - 4, node.y - 4, 2,
-        node.x, node.y, AGENT_RADIUS,
-      );
-      grad.addColorStop(0, this.lightenColor(color, 40));
-      grad.addColorStop(1, color);
+      const grad = ctx.createRadialGradient(node.x - 3, node.y - 3, 1, node.x, node.y, AGENT_RADIUS - 3);
+      grad.addColorStop(0, this.colorWithAlpha(color, 0.25));
+      grad.addColorStop(1, this.colorWithAlpha(color, 0.08));
       ctx.fillStyle = grad;
     } else {
-      ctx.fillStyle = GHOST_COLOR;
+      ctx.fillStyle = this.colorWithAlpha(GHOST, 0.15);
     }
     ctx.fill();
 
-    // Inner ring highlight
-    ctx.beginPath();
-    ctx.arc(node.x, node.y, AGENT_RADIUS - 3, 0, Math.PI * 2);
-    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
-    ctx.lineWidth = 1;
-    ctx.stroke();
-
-    // Selected outline
     if (selected) {
       ctx.beginPath();
-      ctx.arc(node.x, node.y, AGENT_RADIUS, 0, Math.PI * 2);
-      ctx.strokeStyle = '#cdd6f4';
-      ctx.lineWidth = 3;
+      ctx.arc(node.x, node.y, AGENT_RADIUS + 1, 0, Math.PI * 2);
+      ctx.strokeStyle = TEXT_PRIMARY;
+      ctx.lineWidth = 2;
       ctx.stroke();
     }
 
     ctx.shadowBlur = 0;
     ctx.shadowOffsetY = 0;
 
-    // First letter icon inside the circle
+    // Letter
     const letter = (node.label || 'A').charAt(0).toUpperCase();
-    ctx.fillStyle = '#ffffff';
-    ctx.font = `bold 14px ${FONT_SANS}`;
+    ctx.fillStyle = inSlice ? color : GHOST;
+    ctx.font = `bold 13px ${FONT_SANS}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(letter, node.x, node.y);
 
     // Label below
-    ctx.fillStyle = inSlice ? '#cdd6f4' : '#585b70';
-    ctx.font = `11px ${FONT_MONO}`;
+    ctx.fillStyle = inSlice ? TEXT_SECOND : TEXT_FAINT;
+    ctx.font = `10px ${FONT_MONO}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
-    ctx.fillText(this.truncateLabel(node.label, 14), node.x, node.y + AGENT_RADIUS + 6);
+    ctx.fillText(this.truncateLabel(node.label, 12), node.x, node.y + AGENT_RADIUS + 5);
 
     ctx.restore();
+  }
+
+  // ── Tool node: rounded pill ─────────────────────────────────────────
+
+  /** Resolve the status colour of the parent agent node. */
+  private parentAgentColor(node: GraphNode): string {
+    if (!node.parentNodeId) return TEXT_MUTED;
+    const parent = this.nodeById.get(node.parentNodeId);
+    if (!parent) return TEXT_MUTED;
+    return STATUS_COLORS[parent.status || 'idle'] || TEXT_MUTED;
+  }
+
+  private measureCardWidth(node: GraphNode): number {
+    const { ctx } = this;
+    ctx.font = `600 9px ${FONT_MONO}`;
+    const textW = ctx.measureText(node.label).width;
+    return Math.max(CARD_MIN_W, textW + CARD_PAD_X * 2);
   }
 
   private drawToolNode(node: GraphNode, hovered: boolean, selected: boolean, inSlice = true): void {
     const { ctx } = this;
-    const hw = TOOL_WIDTH / 2;
-    const hh = TOOL_HEIGHT / 2;
-    const r = 6;
-    const baseColor = inSlice ? TOOL_COLOR : GHOST_COLOR;
+    const agentColor = inSlice ? this.parentAgentColor(node) : GHOST;
+    const w = this.measureCardWidth(node);
+    const hw = w / 2;
+    const hh = CARD_HEIGHT / 2;
 
     ctx.save();
 
-    // Always-on subtle shadow
-    ctx.shadowColor = 'rgba(0,0,0,0.35)';
-    ctx.shadowBlur = 5;
-    ctx.shadowOffsetY = 2;
+    ctx.shadowColor = 'rgba(0,0,0,0.4)';
+    ctx.shadowBlur = 6;
+    ctx.shadowOffsetY = 1;
+    if (hovered) { ctx.shadowColor = agentColor; ctx.shadowBlur = 16; ctx.shadowOffsetY = 0; }
 
-    if (hovered) {
-      ctx.shadowColor = baseColor;
-      ctx.shadowBlur = 16;
-      ctx.shadowOffsetY = 0;
-    }
-
-    // Rounded rect path
-    this.roundedRectPath(node.x - hw, node.y - hh, TOOL_WIDTH, TOOL_HEIGHT, r);
-
-    // Linear gradient fill
-    if (inSlice) {
-      const grad = ctx.createLinearGradient(node.x - hw, node.y - hh, node.x + hw, node.y + hh);
-      grad.addColorStop(0, TOOL_COLOR);
-      grad.addColorStop(1, this.darkenColor(TOOL_COLOR, 30));
-      ctx.fillStyle = grad;
-    } else {
-      ctx.fillStyle = GHOST_COLOR;
-    }
+    this.roundedRectPath(node.x - hw, node.y - hh, w, CARD_HEIGHT, CARD_R);
+    ctx.fillStyle = BG_SURFACE;
     ctx.fill();
-
-    // Inner border highlight
-    ctx.strokeStyle = 'rgba(255,255,255,0.1)';
-    ctx.lineWidth = 1;
+    ctx.strokeStyle = inSlice ? agentColor : this.colorWithAlpha(GHOST, 0.4);
+    ctx.lineWidth = 1.5;
     ctx.stroke();
 
-    if (selected) {
-      ctx.strokeStyle = '#cdd6f4';
-      ctx.lineWidth = 2;
-      ctx.stroke();
-    }
+    if (selected) { ctx.strokeStyle = TEXT_PRIMARY; ctx.lineWidth = 2; ctx.stroke(); }
 
     ctx.shadowBlur = 0;
     ctx.shadowOffsetY = 0;
 
-    // Tool name inside
-    ctx.fillStyle = '#ffffff';
-    ctx.font = `9px ${FONT_MONO}`;
+    ctx.font = `600 9px ${FONT_MONO}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(this.truncateLabel(node.toolName || node.label, 7), node.x, node.y);
+
+    const label = node.label;
+    const xIdx = label.indexOf(' ×');
+    if (xIdx > 0) {
+      const name = label.slice(0, xIdx);
+      const count = label.slice(xIdx);
+      const nameW = ctx.measureText(name).width;
+      const countW = ctx.measureText(count).width;
+      const totalW = nameW + countW;
+      const startX = node.x - totalW / 2;
+
+      ctx.fillStyle = inSlice ? agentColor : GHOST;
+      ctx.textAlign = 'left';
+      ctx.fillText(name, startX, node.y);
+
+      ctx.fillStyle = inSlice ? TEXT_SECOND : GHOST;
+      ctx.font = `500 8px ${FONT_MONO}`;
+      ctx.fillText(count, startX + nameW, node.y);
+    } else {
+      ctx.fillStyle = inSlice ? agentColor : GHOST;
+      ctx.fillText(label, node.x, node.y);
+    }
 
     ctx.restore();
   }
+
+  // ── File node: rounded pill with filename ───────────────────────────
 
   private drawFileNode(node: GraphNode, hovered: boolean, selected: boolean, inSlice = true): void {
     const { ctx } = this;
-    const s = FILE_SIZE;
-    const baseColor = inSlice ? FILE_COLOR : GHOST_COLOR;
+    const baseColor = inSlice ? FILE_COLOR : GHOST;
 
-    ctx.save();
-
-    // Always-on subtle shadow
-    ctx.shadowColor = 'rgba(0,0,0,0.35)';
-    ctx.shadowBlur = 5;
-    ctx.shadowOffsetY = 2;
-
-    if (hovered) {
-      ctx.shadowColor = baseColor;
-      ctx.shadowBlur = 16;
-      ctx.shadowOffsetY = 0;
-    }
-
-    // Diamond (rotated square)
-    ctx.beginPath();
-    ctx.moveTo(node.x, node.y - s);
-    ctx.lineTo(node.x + s, node.y);
-    ctx.lineTo(node.x, node.y + s);
-    ctx.lineTo(node.x - s, node.y);
-    ctx.closePath();
-
-    // Gradient fill
-    if (inSlice) {
-      const grad = ctx.createLinearGradient(node.x - s, node.y - s, node.x + s, node.y + s);
-      grad.addColorStop(0, this.lightenColor(FILE_COLOR, 25));
-      grad.addColorStop(1, FILE_COLOR);
-      ctx.fillStyle = grad;
-    } else {
-      ctx.fillStyle = GHOST_COLOR;
-    }
-    ctx.fill();
-
-    // Thin stroke border
-    ctx.strokeStyle = 'rgba(255,255,255,0.12)';
-    ctx.lineWidth = 1;
-    ctx.stroke();
-
-    if (selected) {
-      ctx.strokeStyle = '#cdd6f4';
-      ctx.lineWidth = 2;
-      ctx.stroke();
-    }
-
-    ctx.shadowBlur = 0;
-    ctx.shadowOffsetY = 0;
-
-    // Filename label below
+    ctx.font = `600 9px ${FONT_MONO}`;
     const filename = node.filePath ? node.filePath.split('/').pop() || node.label : node.label;
-    ctx.fillStyle = inSlice ? '#a6adc8' : '#585b70';
-    ctx.font = `10px ${FONT_MONO}`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    ctx.fillText(this.truncateLabel(filename, 16), node.x, node.y + s + 4);
-
-    ctx.restore();
-  }
-
-  private drawValidationNode(node: GraphNode, hovered: boolean, selected: boolean, inSlice = true): void {
-    const { ctx } = this;
-    const pass = node.status !== 'error';
-    const rawColor = pass ? '#22c55e' : '#ef4444';
-    const color = inSlice ? rawColor : GHOST_COLOR;
-    const r = VALIDATION_RADIUS;
-
-    ctx.save();
-
-    ctx.shadowColor = 'rgba(0,0,0,0.35)';
-    ctx.shadowBlur = 5;
-    ctx.shadowOffsetY = 2;
-
-    if (hovered) {
-      ctx.shadowColor = color;
-      ctx.shadowBlur = 16;
-      ctx.shadowOffsetY = 0;
-    }
-
-    // Octagon
-    ctx.beginPath();
-    for (let i = 0; i < 8; i++) {
-      const angle = (Math.PI * 2 * i) / 8 - Math.PI / 8;
-      const px = node.x + Math.cos(angle) * r;
-      const py = node.y + Math.sin(angle) * r;
-      if (i === 0) ctx.moveTo(px, py);
-      else ctx.lineTo(px, py);
-    }
-    ctx.closePath();
-
-    if (inSlice) {
-      const grad = ctx.createRadialGradient(node.x, node.y, 1, node.x, node.y, r);
-      grad.addColorStop(0, this.lightenColor(rawColor, 30));
-      grad.addColorStop(1, rawColor);
-      ctx.fillStyle = grad;
-    } else {
-      ctx.fillStyle = GHOST_COLOR;
-    }
-    ctx.fill();
-
-    // Inner highlight
-    ctx.strokeStyle = 'rgba(255,255,255,0.12)';
-    ctx.lineWidth = 1;
-    ctx.stroke();
-
-    if (selected) {
-      ctx.strokeStyle = '#cdd6f4';
-      ctx.lineWidth = 2;
-      ctx.stroke();
-    }
-
-    ctx.shadowBlur = 0;
-    ctx.shadowOffsetY = 0;
-
-    // Checkmark or X icon inside
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 2;
-    ctx.lineCap = 'round';
-    if (pass) {
-      ctx.beginPath();
-      ctx.moveTo(node.x - 5, node.y);
-      ctx.lineTo(node.x - 1, node.y + 4);
-      ctx.lineTo(node.x + 6, node.y - 4);
-      ctx.stroke();
-    } else {
-      ctx.beginPath();
-      ctx.moveTo(node.x - 4, node.y - 4);
-      ctx.lineTo(node.x + 4, node.y + 4);
-      ctx.moveTo(node.x + 4, node.y - 4);
-      ctx.lineTo(node.x - 4, node.y + 4);
-      ctx.stroke();
-    }
-
-    // Label below
-    ctx.fillStyle = inSlice ? '#a6adc8' : '#585b70';
-    ctx.font = `10px ${FONT_SANS}`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    ctx.fillText(this.truncateLabel(node.label, 14), node.x, node.y + r + 4);
-
-    ctx.restore();
-  }
-
-  private drawMilestoneNode(node: GraphNode, hovered: boolean, selected: boolean, inSlice = true): void {
-    const { ctx } = this;
-    const pass = node.status !== 'error';
-    const r = MILESTONE_RADIUS;
-    const rawColor = pass ? '#22c55e' : '#ef4444';
+    const displayName = this.truncateLabel(filename, 16);
+    const w = Math.max(CARD_MIN_W, ctx.measureText(displayName).width + CARD_PAD_X * 2);
+    const hw = w / 2;
+    const hh = CARD_HEIGHT / 2;
 
     ctx.save();
 
     ctx.shadowColor = 'rgba(0,0,0,0.35)';
     ctx.shadowBlur = 6;
-    ctx.shadowOffsetY = 2;
+    ctx.shadowOffsetY = 1;
+    if (hovered) { ctx.shadowColor = baseColor; ctx.shadowBlur = 16; ctx.shadowOffsetY = 0; }
 
-    if (hovered) {
-      ctx.shadowColor = inSlice ? rawColor : GHOST_COLOR;
-      ctx.shadowBlur = 20;
-      ctx.shadowOffsetY = 0;
-    }
-
-    if (pass) {
-      this.drawStar(node.x, node.y, 5, r, r * 0.45);
-    } else {
-      this.drawXShape(node.x, node.y, r);
-    }
-
-    if (inSlice) {
-      const grad = ctx.createRadialGradient(node.x, node.y, 1, node.x, node.y, r);
-      grad.addColorStop(0, this.lightenColor(rawColor, 35));
-      grad.addColorStop(1, rawColor);
-      ctx.fillStyle = grad;
-    } else {
-      ctx.fillStyle = GHOST_COLOR;
-    }
+    this.roundedRectPath(node.x - hw, node.y - hh, w, CARD_HEIGHT, CARD_R);
+    ctx.fillStyle = BG_SURFACE;
     ctx.fill();
-
-    // Inner highlight
-    ctx.strokeStyle = 'rgba(255,255,255,0.12)';
-    ctx.lineWidth = 1;
+    ctx.strokeStyle = inSlice ? this.colorWithAlpha(FILE_COLOR, 0.55) : this.colorWithAlpha(GHOST, 0.3);
+    ctx.lineWidth = 1.5;
     ctx.stroke();
 
-    if (selected) {
-      ctx.strokeStyle = '#cdd6f4';
-      ctx.lineWidth = 2;
-      ctx.stroke();
-    }
+    if (selected) { ctx.strokeStyle = TEXT_PRIMARY; ctx.lineWidth = 2; ctx.stroke(); }
 
     ctx.shadowBlur = 0;
     ctx.shadowOffsetY = 0;
 
-    // Label below
-    ctx.fillStyle = inSlice ? '#cdd6f4' : '#585b70';
-    ctx.font = `11px ${FONT_SANS}`;
+    ctx.fillStyle = inSlice ? FILE_COLOR : GHOST;
+    ctx.font = `600 9px ${FONT_MONO}`;
     ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    ctx.fillText(this.truncateLabel(node.label, 14), node.x, node.y + r + 6);
+    ctx.textBaseline = 'middle';
+    ctx.fillText(displayName, node.x, node.y);
 
     ctx.restore();
   }
 
-  private drawCheckpointNode(node: GraphNode, hovered: boolean, selected: boolean, inSlice = true): void {
+  // ── Validation node: octagon ────────────────────────────────────────
+
+  private drawValidationNode(node: GraphNode, hovered: boolean, selected: boolean, inSlice = true): void {
     const { ctx } = this;
-    const r = CHECKPOINT_RADIUS;
-    const baseColor = inSlice ? CHECKPOINT_COLOR : GHOST_COLOR;
+    const pass = node.status !== 'error';
+    const rawColor = pass ? GREEN : RED;
+    const color = inSlice ? rawColor : GHOST;
+    const r = VALIDATION_RADIUS;
+
+    ctx.save();
+
+    ctx.shadowColor = 'rgba(0,0,0,0.35)';
+    ctx.shadowBlur = 4;
+    ctx.shadowOffsetY = 1;
+    if (hovered) { ctx.shadowColor = color; ctx.shadowBlur = 14; ctx.shadowOffsetY = 0; }
+
+    ctx.beginPath();
+    for (let i = 0; i < 8; i++) {
+      const angle = (Math.PI * 2 * i) / 8 - Math.PI / 8;
+      const px = node.x + Math.cos(angle) * r;
+      const py = node.y + Math.sin(angle) * r;
+      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+
+    ctx.fillStyle = BG_SURFACE;
+    ctx.fill();
+    ctx.strokeStyle = inSlice ? this.colorWithAlpha(rawColor, 0.5) : this.colorWithAlpha(GHOST, 0.3);
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    if (selected) { ctx.strokeStyle = TEXT_PRIMARY; ctx.lineWidth = 2; ctx.stroke(); }
+
+    ctx.shadowBlur = 0;
+    ctx.shadowOffsetY = 0;
+
+    ctx.strokeStyle = inSlice ? rawColor : GHOST;
+    ctx.lineWidth = 1.5;
+    ctx.lineCap = 'round';
+    if (pass) {
+      ctx.beginPath();
+      ctx.moveTo(node.x - 4, node.y);
+      ctx.lineTo(node.x - 1, node.y + 3);
+      ctx.lineTo(node.x + 5, node.y - 3);
+      ctx.stroke();
+    } else {
+      ctx.beginPath();
+      ctx.moveTo(node.x - 3, node.y - 3);
+      ctx.lineTo(node.x + 3, node.y + 3);
+      ctx.moveTo(node.x + 3, node.y - 3);
+      ctx.lineTo(node.x - 3, node.y + 3);
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = inSlice ? TEXT_SECOND : TEXT_FAINT;
+    ctx.font = `9px ${FONT_SANS}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText(this.truncateLabel(node.label, 12), node.x, node.y + r + 4);
+
+    ctx.restore();
+  }
+
+  // ── Milestone node: star/x ──────────────────────────────────────────
+
+  private drawMilestoneNode(node: GraphNode, hovered: boolean, selected: boolean, inSlice = true): void {
+    const { ctx } = this;
+    const pass = node.status !== 'error';
+    const r = MILESTONE_RADIUS;
+    const rawColor = pass ? GREEN : RED;
 
     ctx.save();
 
     ctx.shadowColor = 'rgba(0,0,0,0.35)';
     ctx.shadowBlur = 5;
     ctx.shadowOffsetY = 2;
+    if (hovered) { ctx.shadowColor = inSlice ? rawColor : GHOST; ctx.shadowBlur = 18; ctx.shadowOffsetY = 0; }
 
-    if (hovered) {
-      ctx.shadowColor = baseColor;
-      ctx.shadowBlur = 20;
-      ctx.shadowOffsetY = 0;
-    }
+    if (pass) this.drawStar(node.x, node.y, 5, r, r * 0.45);
+    else this.drawXShape(node.x, node.y, r);
 
-    // Outer circle with gradient
-    ctx.beginPath();
-    ctx.arc(node.x, node.y, r, 0, Math.PI * 2);
-    if (inSlice) {
-      const grad = ctx.createRadialGradient(node.x - 2, node.y - 2, 1, node.x, node.y, r);
-      grad.addColorStop(0, this.lightenColor(CHECKPOINT_COLOR, 30));
-      grad.addColorStop(1, CHECKPOINT_COLOR);
-      ctx.fillStyle = grad;
-    } else {
-      ctx.fillStyle = GHOST_COLOR;
-    }
+    ctx.fillStyle = BG_SURFACE;
     ctx.fill();
-
-    // Inner highlight ring
-    ctx.strokeStyle = 'rgba(255,255,255,0.12)';
-    ctx.lineWidth = 1;
+    ctx.strokeStyle = inSlice ? this.colorWithAlpha(rawColor, 0.6) : this.colorWithAlpha(GHOST, 0.3);
+    ctx.lineWidth = 1.5;
     ctx.stroke();
 
-    if (selected) {
-      ctx.strokeStyle = '#cdd6f4';
-      ctx.lineWidth = 2;
-      ctx.stroke();
-    }
+    if (selected) { ctx.strokeStyle = TEXT_PRIMARY; ctx.lineWidth = 2; ctx.stroke(); }
 
     ctx.shadowBlur = 0;
     ctx.shadowOffsetY = 0;
 
-    // Git-commit icon: inner circle with vertical lines extending out
-    const innerR = 5;
-    const lineLen = 7;
+    ctx.fillStyle = inSlice ? TEXT_SECOND : TEXT_FAINT;
+    ctx.font = `10px ${FONT_SANS}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText(this.truncateLabel(node.label, 12), node.x, node.y + r + 5);
 
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 2;
+    ctx.restore();
+  }
+
+  // ── Checkpoint node: circle with commit icon ────────────────────────
+
+  private drawCheckpointNode(node: GraphNode, hovered: boolean, selected: boolean, inSlice = true): void {
+    const { ctx } = this;
+    const r = CHECKPOINT_RADIUS;
+    const baseColor = inSlice ? CHECKPOINT_COLOR : GHOST;
+
+    ctx.save();
+
+    ctx.shadowColor = 'rgba(0,0,0,0.35)';
+    ctx.shadowBlur = 4;
+    ctx.shadowOffsetY = 1;
+    if (hovered) { ctx.shadowColor = baseColor; ctx.shadowBlur = 18; ctx.shadowOffsetY = 0; }
+
+    ctx.beginPath();
+    ctx.arc(node.x, node.y, r, 0, Math.PI * 2);
+    ctx.fillStyle = BG_SURFACE;
+    ctx.fill();
+    ctx.strokeStyle = inSlice ? this.colorWithAlpha(GREEN, 0.5) : this.colorWithAlpha(GHOST, 0.3);
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    if (selected) { ctx.strokeStyle = TEXT_PRIMARY; ctx.lineWidth = 2; ctx.stroke(); }
+
+    ctx.shadowBlur = 0;
+    ctx.shadowOffsetY = 0;
+
+    const innerR = 4;
+    const lineLen = 5;
+    ctx.strokeStyle = inSlice ? GREEN : GHOST;
+    ctx.lineWidth = 1.5;
     ctx.lineCap = 'round';
     ctx.beginPath();
     ctx.moveTo(node.x, node.y - innerR - lineLen);
@@ -789,22 +729,18 @@ export class GraphRenderer {
     ctx.lineTo(node.x, node.y + innerR + lineLen);
     ctx.stroke();
 
-    // Inner circle (hollow)
     ctx.beginPath();
     ctx.arc(node.x, node.y, innerR, 0, Math.PI * 2);
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = inSlice ? GREEN : GHOST;
+    ctx.lineWidth = 1.5;
     ctx.stroke();
 
-    // Label below
-    const label = node.commitHash
-      ? node.commitHash.slice(0, 7)
-      : node.label;
-    ctx.fillStyle = inSlice ? '#a6e3a1' : '#585b70';
-    ctx.font = `10px ${FONT_MONO}`;
+    const label = node.commitHash ? node.commitHash.slice(0, 7) : node.label;
+    ctx.fillStyle = inSlice ? GREEN : TEXT_FAINT;
+    ctx.font = `9px ${FONT_MONO}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
-    ctx.fillText(this.truncateLabel(label, 14), node.x, node.y + r + 4);
+    ctx.fillText(this.truncateLabel(label, 12), node.x, node.y + r + 4);
 
     ctx.restore();
   }
@@ -819,8 +755,7 @@ export class GraphRenderer {
       const angle = (Math.PI * i) / points - Math.PI / 2;
       const px = cx + Math.cos(angle) * r;
       const py = cy + Math.sin(angle) * r;
-      if (i === 0) ctx.moveTo(px, py);
-      else ctx.lineTo(px, py);
+      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
     }
     ctx.closePath();
   }
@@ -829,7 +764,6 @@ export class GraphRenderer {
     const { ctx } = this;
     const arm = size * 0.3;
     ctx.beginPath();
-    // Draw a thick X as a polygon
     ctx.moveTo(cx - arm, cy - size);
     ctx.lineTo(cx + arm, cy - size);
     ctx.lineTo(cx + arm, cy - arm);
@@ -873,6 +807,14 @@ export class GraphRenderer {
   private truncateLabel(text: string, maxLen: number): string {
     if (text.length <= maxLen) return text;
     return text.slice(0, maxLen - 1) + '\u2026';
+  }
+
+  private colorWithAlpha(hex: string, alpha: number): string {
+    const num = parseInt(hex.replace('#', ''), 16);
+    const r = (num >> 16) & 0xff;
+    const g = (num >> 8) & 0xff;
+    const b = num & 0xff;
+    return `rgba(${r},${g},${b},${alpha})`;
   }
 
   /** Lighten a hex color by a given amount (0-255). */

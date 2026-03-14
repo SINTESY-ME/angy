@@ -45,6 +45,53 @@
         >
           Schedule Now
         </button>
+
+        <!-- Separator -->
+        <div class="w-px h-4 bg-border-subtle" />
+
+        <!-- Git Tree -->
+        <button
+          class="text-txt-muted hover:text-txt-primary transition-colors"
+          title="Git branch tree"
+          @click="showGitTree = true"
+        >
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="6" y1="3" x2="6" y2="15" />
+            <circle cx="18" cy="6" r="3" />
+            <circle cx="6" cy="18" r="3" />
+            <path d="M18 9a9 9 0 0 1-9 9" />
+          </svg>
+        </button>
+
+        <!-- Git Ops -->
+        <button
+          class="text-txt-muted hover:text-txt-primary transition-colors"
+          title="Toggle git status panel"
+          @click="showGitOps = !showGitOps"
+        >
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M6 3v12" />
+            <circle cx="18" cy="6" r="3" />
+            <circle cx="6" cy="18" r="3" />
+            <path d="M18 9a9 9 0 0 1-9 9" />
+          </svg>
+        </button>
+
+        <!-- Merge Epics -->
+        <button
+          class="text-txt-muted hover:text-txt-primary transition-colors"
+          :class="mergeMode ? 'text-[var(--accent-teal)]' : ''"
+          title="Toggle merge mode"
+          @click="toggleMergeMode"
+        >
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="18" cy="18" r="3" />
+            <circle cx="6" cy="6" r="3" />
+            <circle cx="6" cy="18" r="3" />
+            <path d="M6 9v3a6 6 0 0 0 6 6h3" />
+            <path d="M6 9v9" />
+          </svg>
+        </button>
       </div>
 
       <!-- Row 2: Project filter chips -->
@@ -63,7 +110,7 @@
     <div class="flex flex-1 overflow-hidden">
       <!-- Columns -->
       <div class="flex-1 flex flex-col overflow-hidden">
-        <div class="flex-1 flex gap-3 p-4 overflow-x-auto min-w-max">
+        <div class="flex-1 flex gap-3 p-4 overflow-x-auto">
           <KanbanColumn
             v-for="col in boardColumns"
             :key="col.key"
@@ -303,6 +350,13 @@ function onToggleSelect(epicId: string) {
   }
 }
 
+function toggleMergeMode() {
+  mergeMode.value = !mergeMode.value;
+  if (!mergeMode.value) {
+    selectedEpicIds.value = [];
+  }
+}
+
 function exitMergeMode() {
   mergeMode.value = false;
   selectedEpicIds.value = [];
@@ -321,12 +375,7 @@ defineExpose({
   openGitTree: () => { showGitTree.value = true },
   openSchedulerConfig: () => { showSchedulerConfig.value = true },
   toggleGitOps: () => { showGitOps.value = !showGitOps.value },
-  toggleMergeMode: () => {
-    mergeMode.value = !mergeMode.value;
-    if (!mergeMode.value) {
-      selectedEpicIds.value = [];
-    }
-  },
+  toggleMergeMode,
 });
 </script>
 

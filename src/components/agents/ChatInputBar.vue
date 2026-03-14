@@ -1,77 +1,451 @@
 <template>
-  <div class="flex items-end gap-2 px-4 py-3 bg-base border-t border-border-subtle">
-    <!-- Agent picker placeholder -->
-    <button
-      class="text-xs text-txt-muted hover:text-txt-secondary px-2 py-1 rounded-md hover:bg-raised transition-colors flex items-center gap-1 flex-shrink-0"
-      title="Select agent"
-    >
-      <svg class="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3">
-        <circle cx="8" cy="5" r="3" />
-        <path d="M2 14c0-3.3 2.7-6 6-6s6 2.7 6 6" />
-      </svg>
-      <span class="text-[10px]">Agent</span>
-    </button>
+  <div class="bg-base border-t border-border-subtle">
+    <!-- Image thumbnails -->
+    <div v-if="images.length > 0" class="flex gap-2 px-4 pt-3">
+      <div
+        v-for="(img, i) in images"
+        :key="i"
+        class="relative w-14 h-14 rounded-lg overflow-hidden border border-border-subtle group"
+      >
+        <img
+          :src="'data:image/' + img.format + ';base64,' + img.data"
+          class="w-full h-full object-cover"
+        />
+        <button
+          @click="removeImage(i)"
+          class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+        >
+          <svg class="w-3.5 h-3.5 text-white" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 4l8 8M12 4l-8 8" />
+          </svg>
+        </button>
+      </div>
+    </div>
 
-    <!-- Text input -->
-    <input
-      ref="inputRef"
-      type="text"
-      v-model="draft"
-      @keydown.enter.prevent="sendMessage"
-      placeholder="Send a message..."
-      class="flex-1 bg-transparent text-[13px] text-txt-primary placeholder:text-txt-faint outline-none min-h-[32px]"
-    />
-
-    <!-- Model selector -->
-    <ModelSelector v-model="selectedModel" />
-
-    <!-- Stop / Send button -->
-    <button
-      v-if="processing"
-      class="text-xs text-txt-faint hover:text-red-400 px-2 py-1 rounded hover:bg-red-500/10 transition-colors flex-shrink-0 flex items-center gap-1"
-      @click="$emit('stop')"
-      title="Stop"
+    <!-- Textarea -->
+    <div
+      class="px-4 pt-3"
+      @dragenter.prevent="isDragging = true"
+      @dragover.prevent
+      @dragleave.self="isDragging = false"
+      @drop.prevent="onDrop($event)"
     >
-      <svg class="w-3.5 h-3.5" viewBox="0 0 16 16" fill="currentColor">
-        <rect x="3" y="3" width="10" height="10" rx="1" />
-      </svg>
-    </button>
-    <button
-      v-else
-      class="bg-gradient-to-r from-ember-500 to-ember-600 text-base text-xs font-medium rounded-lg h-8 px-4 flex items-center gap-1 flex-shrink-0 transition-colors"
-      :class="!draft.trim() ? 'opacity-40 cursor-not-allowed' : ''"
-      :disabled="!draft.trim()"
-      @click="sendMessage"
-    >
-      <svg class="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
-        <path d="M2 8h12M10 4l4 4-4 4" />
-      </svg>
-      Send
-    </button>
+      <textarea
+        ref="inputEl"
+        v-model="draft"
+        @keydown="onKeydown"
+        @paste="onPaste"
+        @dragover.prevent
+        :placeholder="'Send a message...'"
+        rows="1"
+        class="w-full bg-transparent text-[13px] text-txt-primary placeholder:text-txt-faint resize-none outline-none ring-0 border-0"
+        :style="{ height: textareaHeight + 'px', maxHeight: '200px' }"
+        :class="isDragging ? 'opacity-50' : ''"
+        :disabled="processing"
+      />
+    </div>
+
+    <!-- Footer controls -->
+    <div class="flex items-center justify-between px-3 pb-3 pt-1">
+      <div class="flex items-center gap-1">
+        <!-- Mode dropdown -->
+        <div class="relative" ref="modeRoot">
+          <button
+            @click="modeOpen = !modeOpen"
+            class="flex items-center gap-1 text-[10px] px-2 py-1 rounded-md text-txt-muted hover:text-txt-secondary hover:bg-raised transition-colors"
+          >
+            <svg class="w-3 h-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3">
+              <template v-if="selectedMode === 'agent'">
+                <circle cx="8" cy="5" r="3" /><path d="M2 14c0-3.3 2.7-6 6-6s6 2.7 6 6" />
+              </template>
+              <template v-else-if="selectedMode === 'plan'">
+                <path d="M4 3h8M4 6.5h8M4 10h5" /><circle cx="12" cy="12" r="2.5" />
+              </template>
+              <template v-else>
+                <circle cx="8" cy="8" r="6" /><path d="M6.5 6.5a1.8 1.8 0 013 1.3c0 1.2-1.5 1.2-1.5 2.2M8 12.5v.01" />
+              </template>
+            </svg>
+            <span class="capitalize">{{ selectedMode }}</span>
+            <svg class="w-2 h-2 opacity-50" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2.5 4L5 6.5L7.5 4"/></svg>
+          </button>
+          <div
+            v-if="modeOpen"
+            class="absolute bottom-full left-0 mb-1 bg-raised border border-border-standard rounded-lg shadow-lg overflow-hidden z-20 min-w-[140px]"
+          >
+            <div
+              v-for="mode in modes"
+              :key="mode.id"
+              @click="selectMode(mode.id)"
+              class="flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-white/[0.05] transition-colors"
+              :class="mode.id === selectedMode ? 'text-ember' : ''"
+            >
+              <div>
+                <div class="text-[11px] text-txt-primary">{{ mode.label }}</div>
+                <div class="text-[9px] text-txt-faint">{{ mode.desc }}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Model dropdown -->
+        <div class="relative" ref="modelRoot">
+          <button
+            @click="modelOpen = !modelOpen"
+            class="flex items-center gap-1 text-[10px] px-2 py-1 rounded-md text-txt-muted hover:text-txt-secondary hover:bg-raised transition-colors"
+          >
+            <svg class="w-3 h-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3">
+              <rect x="2" y="3" width="12" height="10" rx="2" /><path d="M5 7h6M5 9.5h4" />
+            </svg>
+            <span>{{ modelShortName }}</span>
+            <svg class="w-2 h-2 opacity-50" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2.5 4L5 6.5L7.5 4"/></svg>
+          </button>
+          <div
+            v-if="modelOpen"
+            class="absolute bottom-full left-0 mb-1 bg-raised border border-border-standard rounded-lg shadow-lg overflow-hidden z-20 min-w-[160px]"
+          >
+            <div
+              v-for="model in models"
+              :key="model.id"
+              @click="selectModel(model.id)"
+              class="flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-white/[0.05] transition-colors"
+              :class="model.id === selectedModel ? 'text-ember' : ''"
+            >
+              <div>
+                <div class="text-[11px] text-txt-primary">{{ model.name }}</div>
+                <div class="text-[9px] text-txt-faint">{{ model.desc }}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Profile multi-select -->
+        <div class="relative" ref="profileRoot">
+          <button
+            @click="profileOpen = !profileOpen"
+            class="flex items-center gap-1 text-[10px] px-2 py-1 rounded-md text-txt-muted hover:text-txt-secondary hover:bg-raised transition-colors"
+          >
+            <svg class="w-3 h-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3">
+              <path d="M2 3h12M2 8h12M2 13h12" />
+            </svg>
+            <span>{{ selectedProfiles.length > 0 ? `${selectedProfiles.length} profile${selectedProfiles.length > 1 ? 's' : ''}` : 'Profiles' }}</span>
+            <svg class="w-2 h-2 opacity-50" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2.5 4L5 6.5L7.5 4"/></svg>
+          </button>
+          <div
+            v-if="profileOpen"
+            class="absolute bottom-full left-0 mb-1 w-52 bg-raised border border-border-standard rounded-lg shadow-lg overflow-hidden z-20 max-h-48 overflow-y-auto"
+          >
+            <div v-if="profiles.length === 0" class="px-3 py-2 text-[10px] text-txt-faint">
+              No profiles available
+            </div>
+            <label
+              v-for="profile in profiles"
+              :key="profile.id"
+              class="flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-white/[0.05] transition-colors"
+            >
+              <input
+                type="checkbox"
+                :value="profile.id"
+                v-model="selectedProfiles"
+                class="w-3 h-3 rounded border-border-standard accent-ember"
+              />
+              <span class="text-[11px] text-txt-primary truncate">{{ profile.name }}</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Image upload button -->
+        <button
+          @click="openImagePicker"
+          :disabled="processing"
+          class="flex items-center gap-1 text-[10px] px-2 py-1 rounded-md text-txt-muted hover:text-txt-secondary hover:bg-raised transition-colors"
+          title="Attach images"
+        >
+          <svg class="w-3 h-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="2" width="12" height="12" rx="2" />
+            <circle cx="5.5" cy="5.5" r="1" />
+            <path d="M14 10l-3-3-5 5" />
+          </svg>
+        </button>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <span v-if="draft.length > 0" class="text-[9px] text-txt-faint tabular-nums">
+          {{ draft.length }}
+        </span>
+        <button
+          v-if="processing"
+          @click="$emit('stop')"
+          class="px-3 py-1.5 rounded-lg text-[11px] font-medium text-red-400 bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 transition-colors cursor-pointer"
+        >
+          Stop
+        </button>
+        <button
+          v-else
+          @click="sendMessage"
+          :disabled="!canSend"
+          class="px-4 py-1.5 rounded-lg text-[11px] font-medium transition-all"
+          :class="
+            canSend
+              ? 'bg-gradient-to-r from-ember-500 to-ember-600 text-base cursor-pointer hover:brightness-110'
+              : 'bg-raised text-txt-faint cursor-not-allowed'
+          "
+        >
+          Send
+        </button>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
-import ModelSelector from '../input/ModelSelector.vue';
+import { ref, computed, nextTick, watch, onMounted, onUnmounted } from 'vue';
+import { open } from '@tauri-apps/plugin-dialog';
+import { readFile } from '@tauri-apps/plugin-fs';
+import { getCurrentWebview } from '@tauri-apps/api/webview';
+import { ProfileManager, type PersonalityProfile } from '../../engine/ProfileManager';
+import type { AttachedImage } from '../../engine/types';
 
 defineProps<{
   processing: boolean;
 }>();
 
 const emit = defineEmits<{
-  send: [message: string];
+  send: [message: string, images: AttachedImage[]];
   stop: [];
 }>();
 
+// ── State ─────────────────────────────────────────────────────────────
+
 const draft = ref('');
+const inputEl = ref<HTMLTextAreaElement | null>(null);
+const textareaHeight = ref(28);
+const isDragging = ref(false);
+const images = ref<AttachedImage[]>([]);
+
+// Mode
+const selectedMode = ref('agent');
+const modeOpen = ref(false);
+const modeRoot = ref<HTMLElement | null>(null);
+const modes = [
+  { id: 'agent', label: 'Agent', desc: 'Full capabilities' },
+  { id: 'plan', label: 'Plan', desc: 'Plan before acting' },
+  { id: 'ask', label: 'Ask', desc: 'Read-only questions' },
+];
+
+// Model
 const selectedModel = ref('claude-sonnet-4-6');
-const inputRef = ref<HTMLInputElement | null>(null);
+const modelOpen = ref(false);
+const modelRoot = ref<HTMLElement | null>(null);
+const models = [
+  { id: 'claude-sonnet-4-6', name: 'Sonnet 4.6', desc: 'Fast & capable' },
+  { id: 'claude-opus-4-6', name: 'Opus 4.6', desc: 'Most powerful' },
+  { id: 'claude-haiku-4-5-20251001', name: 'Haiku 4.5', desc: 'Fastest' },
+];
+
+// Profiles
+const selectedProfiles = ref<string[]>([]);
+const profileOpen = ref(false);
+const profileRoot = ref<HTMLElement | null>(null);
+const profiles = ref<PersonalityProfile[]>([]);
+const profileManager = new ProfileManager();
+
+const MIN_HEIGHT = 28;
+
+// ── Computed ──────────────────────────────────────────────────────────
+
+const canSend = computed(() => draft.value.trim().length > 0 || images.value.length > 0);
+
+const modelShortName = computed(() =>
+  models.find(m => m.id === selectedModel.value)?.name || selectedModel.value,
+);
+
+// ── Auto-height textarea ─────────────────────────────────────────────
+
+function autoGrow() {
+  nextTick(() => {
+    const el = inputEl.value;
+    if (!el) return;
+    el.style.height = 'auto';
+    textareaHeight.value = Math.min(Math.max(el.scrollHeight, MIN_HEIGHT), 200);
+  });
+}
+
+watch(draft, () => autoGrow());
+
+// ── Send ──────────────────────────────────────────────────────────────
 
 function sendMessage() {
   const text = draft.value.trim();
-  if (!text) return;
-  emit('send', text);
+  if (!text && images.value.length === 0) return;
+  emit('send', text, [...images.value]);
   draft.value = '';
+  images.value = [];
+  textareaHeight.value = MIN_HEIGHT;
+  nextTick(() => autoGrow());
 }
+
+// ── Keydown ───────────────────────────────────────────────────────────
+
+function onKeydown(e: KeyboardEvent) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+}
+
+// ── Dropdown selection ────────────────────────────────────────────────
+
+function selectMode(id: string) {
+  selectedMode.value = id;
+  modeOpen.value = false;
+}
+
+function selectModel(id: string) {
+  selectedModel.value = id;
+  modelOpen.value = false;
+}
+
+// ── Click outside to close dropdowns ─────────────────────────────────
+
+function onClickOutside(e: MouseEvent) {
+  const target = e.target as Node;
+  if (modeRoot.value && !modeRoot.value.contains(target)) modeOpen.value = false;
+  if (modelRoot.value && !modelRoot.value.contains(target)) modelOpen.value = false;
+  if (profileRoot.value && !profileRoot.value.contains(target)) profileOpen.value = false;
+}
+
+// ── Image handling ────────────────────────────────────────────────────
+
+function onPaste(e: ClipboardEvent) {
+  const items = e.clipboardData?.items;
+  if (!items) return;
+  for (const item of items) {
+    if (item.type.startsWith('image/')) {
+      e.preventDefault();
+      const file = item.getAsFile();
+      if (file) readImageFromFile(file);
+      return;
+    }
+  }
+}
+
+function onDrop(e: DragEvent) {
+  e.preventDefault();
+  isDragging.value = false;
+  const files = e.dataTransfer?.files;
+  if (!files) return;
+  for (const file of files) {
+    if (file.type.startsWith('image/')) readImageFromFile(file);
+  }
+}
+
+function readImageFromFile(file: File) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    const result = reader.result as string;
+    const match = result.match(/^data:image\/(\w+);base64,(.+)$/);
+    if (match) {
+      images.value.push({
+        data: match[2],
+        format: match[1],
+        displayName: file.name || 'pasted-image',
+      });
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+function removeImage(index: number) {
+  images.value.splice(index, 1);
+}
+
+const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp'];
+
+async function openImagePicker() {
+  const selected = await open({
+    multiple: true,
+    title: 'Select Images',
+    filters: [{ name: 'Images', extensions: IMAGE_EXTENSIONS }],
+  });
+  if (!selected) return;
+  const paths = Array.isArray(selected) ? selected : [selected];
+  for (const filePath of paths) {
+    const ext = filePath.split('.').pop()?.toLowerCase() || 'png';
+    const format = ext === 'jpg' ? 'jpeg' : ext;
+    try {
+      const bytes = await readFile(filePath);
+      const base64 = uint8ArrayToBase64(bytes);
+      const fileName = filePath.split('/').pop() || filePath.split('\\').pop() || 'image';
+      images.value.push({ data: base64, format, displayName: fileName });
+    } catch (err) {
+      console.error('Failed to read image:', filePath, err);
+    }
+  }
+}
+
+function uint8ArrayToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
+// ── Tauri OS file drop (Finder → window) ─────────────────────────────
+
+let unlistenDrop: (() => void) | null = null;
+
+onMounted(async () => {
+  inputEl.value?.focus();
+  document.addEventListener('click', onClickOutside);
+
+  await profileManager.init();
+  profiles.value = profileManager.userProfiles();
+
+  try {
+    unlistenDrop = await getCurrentWebview().onDragDropEvent(async (event) => {
+      if (event.payload.type === 'enter' || event.payload.type === 'over') {
+        isDragging.value = true;
+      } else if (event.payload.type === 'leave') {
+        isDragging.value = false;
+      } else if (event.payload.type === 'drop') {
+        isDragging.value = false;
+        for (const filePath of event.payload.paths) {
+          const ext = filePath.split('.').pop()?.toLowerCase() ?? '';
+          if (IMAGE_EXTENSIONS.includes(ext)) {
+            const format = ext === 'jpg' ? 'jpeg' : ext;
+            try {
+              const bytes = await readFile(filePath);
+              const base64 = uint8ArrayToBase64(bytes);
+              const fileName = filePath.split('/').pop() || 'image';
+              images.value.push({ data: base64, format, displayName: fileName });
+            } catch (err) {
+              console.error('Failed to read dropped image:', filePath, err);
+            }
+          }
+        }
+      }
+    });
+  } catch {
+    // Tauri drag-drop not available (e.g. in browser dev mode)
+  }
+});
+
+onUnmounted(() => {
+  document.removeEventListener('click', onClickOutside);
+  unlistenDrop?.();
+});
+
+defineExpose({ selectedMode, selectedModel, selectedProfiles });
 </script>
+
+<style scoped>
+textarea {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.5;
+}
+textarea::placeholder {
+  color: var(--text-faint);
+}
+</style>
