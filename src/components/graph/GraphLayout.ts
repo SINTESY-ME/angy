@@ -291,7 +291,6 @@ export class GraphLayout {
     const COL_AGENT = 0;
     const COL_TOOL  = 1;
     const COL_FILE  = 2;
-    const NUM_COLS  = 3;
 
     function typeColumn(n: GraphNode): number {
       if (n.type === 'agent' || n.type === 'milestone' || n.type === 'checkpoint' || n.type === 'validation') return COL_AGENT;

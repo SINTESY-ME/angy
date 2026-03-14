@@ -13,11 +13,7 @@ const VALIDATION_RADIUS = 13;
 const CHECKPOINT_RADIUS = 14;
 
 // ── Catppuccin Mocha palette ─────────────────────────────────────────────
-const BG_BASE      = '#0f1117';
 const BG_SURFACE   = '#1c1f2a';
-const BG_RAISED    = '#252836';
-const BORDER_SUB   = 'rgba(255,255,255,0.04)';
-const BORDER_STD   = 'rgba(255,255,255,0.08)';
 const TEXT_PRIMARY  = '#e2e8f0';
 const TEXT_SECOND   = '#94a3b8';
 const TEXT_MUTED    = '#64748b';
@@ -27,7 +23,6 @@ const ACCENT_BLUE   = '#89b4fa';
 const ACCENT_TEAL   = '#10b981';
 const ACCENT_EMBER  = '#f59e0b';
 const ACCENT_CYAN   = '#22d3ee';
-const ACCENT_ROSE   = '#FF6B8A';
 const GREEN         = '#a6e3a1';
 const RED           = '#f38ba8';
 const GHOST         = '#45475a';
@@ -40,7 +35,6 @@ const STATUS_COLORS: Record<string, string> = {
   blocked: ACCENT_EMBER,
 };
 
-const TOOL_COLOR       = ACCENT_BLUE;
 const FILE_COLOR       = ACCENT_CYAN;
 const CHECKPOINT_COLOR = GREEN;
 
@@ -817,21 +811,4 @@ export class GraphRenderer {
     return `rgba(${r},${g},${b},${alpha})`;
   }
 
-  /** Lighten a hex color by a given amount (0-255). */
-  private lightenColor(hex: string, amount: number): string {
-    const num = parseInt(hex.replace('#', ''), 16);
-    const r = Math.min(255, ((num >> 16) & 0xff) + amount);
-    const g = Math.min(255, ((num >> 8) & 0xff) + amount);
-    const b = Math.min(255, (num & 0xff) + amount);
-    return `rgb(${r},${g},${b})`;
-  }
-
-  /** Darken a hex color by a given amount (0-255). */
-  private darkenColor(hex: string, amount: number): string {
-    const num = parseInt(hex.replace('#', ''), 16);
-    const r = Math.max(0, ((num >> 16) & 0xff) - amount);
-    const g = Math.max(0, ((num >> 8) & 0xff) - amount);
-    const b = Math.max(0, (num & 0xff) - amount);
-    return `rgb(${r},${g},${b})`;
-  }
 }
