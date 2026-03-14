@@ -24,7 +24,6 @@ export const useAnalyticsStore = defineStore('analytics', () => {
       const db = getDatabase()
       const days = timeRange.value === '7d' ? 7 : timeRange.value === '30d' ? 30 : timeRange.value === '90d' ? 90 : 3650
       const pid = selectedProjectId.value
-      const weeks = Math.max(1, Math.ceil(days / 7))
       const log = (label: string) => (err: unknown) => {
         console.warn(`[Analytics] ${label} failed:`, err)
       }
@@ -33,7 +32,7 @@ export const useAnalyticsStore = defineStore('analytics', () => {
         db.getAnalyticsCostByDay(days, pid).then(r => { costByDay.value = r }).catch(log('costByDay')),
         db.getAnalyticsModelUsage(days, pid).then(r => { modelUsage.value = r }).catch(log('modelUsage')),
         db.getAnalyticsSessionsByMode(days).then(r => { sessionsByMode.value = r }).catch(log('sessionsByMode')),
-        db.getAnalyticsEpicThroughput(weeks, pid).then(r => { epicThroughput.value = r }).catch(log('epicThroughput')),
+        db.getAnalyticsEpicThroughput(days, pid).then(r => { epicThroughput.value = r }).catch(log('epicThroughput')),
         db.getAnalyticsComplexityStats(days, pid).then(r => { complexityStats.value = r }).catch(log('complexityStats')),
         db.getAnalyticsProjectSummaries(days).then(r => { projectSummaries.value = r }).catch(log('projectSummaries')),
         db.getAnalyticsEpicsDetail(pid, 50, 0, days).then(r => { epicsDetail.value = r }).catch(log('epicsDetail')),

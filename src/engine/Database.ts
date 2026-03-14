@@ -1089,16 +1089,17 @@ export class Database {
     const empty: GlobalSummary = { total_cost_usd: 0, total_input_tokens: 0, total_output_tokens: 0, total_sessions: 0, total_epics: 0, total_projects: 0, completed_epics: 0, active_epics: 0 }
     if (!this.db) return empty
     const params: (string | number)[] = [days]
-    const costProjWhere = projectId
-      ? `AND (epic_id IN (SELECT id FROM epics WHERE project_id = $2) OR session_id IN (SELECT root_session_id FROM epics WHERE project_id = $2 AND root_session_id IS NOT NULL))`
+    // cost_log.session_id stores Claude session IDs; join via sessions.claude_session_id
+    const costProjJoin = projectId
+      ? `JOIN sessions _s ON _s.claude_session_id = c.session_id JOIN epics _e ON _e.id = _s.epic_id AND _e.project_id = $2`
       : ''
     const epicProjWhere = projectId ? `AND project_id = $2` : ''
     if (projectId) params.push(projectId)
     const rows = await this.db.select<GlobalSummary[]>(`
       SELECT
-        COALESCE((SELECT SUM(cost_usd) FROM cost_log WHERE timestamp >= DATE('now', '-' || $1 || ' days') ${costProjWhere}), 0) AS total_cost_usd,
-        COALESCE((SELECT SUM(input_tokens) FROM cost_log WHERE timestamp >= DATE('now', '-' || $1 || ' days') ${costProjWhere}), 0) AS total_input_tokens,
-        COALESCE((SELECT SUM(output_tokens) FROM cost_log WHERE timestamp >= DATE('now', '-' || $1 || ' days') ${costProjWhere}), 0) AS total_output_tokens,
+        COALESCE((SELECT SUM(c.cost_usd) FROM cost_log c ${costProjJoin} WHERE c.timestamp >= DATE('now', '-' || $1 || ' days')), 0) AS total_cost_usd,
+        COALESCE((SELECT SUM(c.input_tokens) FROM cost_log c ${costProjJoin} WHERE c.timestamp >= DATE('now', '-' || $1 || ' days')), 0) AS total_input_tokens,
+        COALESCE((SELECT SUM(c.output_tokens) FROM cost_log c ${costProjJoin} WHERE c.timestamp >= DATE('now', '-' || $1 || ' days')), 0) AS total_output_tokens,
         COALESCE((SELECT COUNT(*) FROM sessions WHERE created_at >= CAST(strftime('%s','now') AS INTEGER) - $1 * 86400), 0) AS total_sessions,
         COALESCE((SELECT COUNT(*) FROM epics WHERE created_at >= DATE('now', '-' || $1 || ' days') ${epicProjWhere}), 0) AS total_epics,
         COALESCE((SELECT COUNT(DISTINCT project_id) FROM epics WHERE created_at >= DATE('now', '-' || $1 || ' days') ${epicProjWhere}), 0) AS total_projects,
@@ -1111,18 +1112,22 @@ export class Database {
   async getAnalyticsCostByDay(days: number, projectId: string | null): Promise<CostByDay[]> {
     if (!this.db) return []
     const params: (string | number)[] = [days]
-    const projWhere = projectId
-      ? `AND (epic_id IN (SELECT id FROM epics WHERE project_id = $2) OR session_id IN (SELECT root_session_id FROM epics WHERE project_id = $2 AND root_session_id IS NOT NULL))`
-      : ''
-    if (projectId) params.push(projectId)
+    // Join through sessions.claude_session_id for project filtering
+    let fromClause = 'FROM cost_log c'
+    let projWhere = ''
+    if (projectId) {
+      fromClause = 'FROM cost_log c JOIN sessions s ON s.claude_session_id = c.session_id JOIN epics e ON e.id = s.epic_id'
+      projWhere = `AND e.project_id = $2`
+      params.push(projectId)
+    }
     return this.db.select<CostByDay[]>(`
       SELECT
-        DATE(timestamp) AS day,
-        SUM(cost_usd) AS cost_usd,
-        SUM(input_tokens) AS input_tokens,
-        SUM(output_tokens) AS output_tokens
-      FROM cost_log
-      WHERE timestamp >= DATE('now', '-' || $1 || ' days') ${projWhere}
+        DATE(c.timestamp) AS day,
+        SUM(c.cost_usd) AS cost_usd,
+        SUM(c.input_tokens) AS input_tokens,
+        SUM(c.output_tokens) AS output_tokens
+      ${fromClause}
+      WHERE c.timestamp >= DATE('now', '-' || $1 || ' days') ${projWhere}
       GROUP BY day
       ORDER BY day ASC
     `, params)
@@ -1133,6 +1138,7 @@ export class Database {
     const params: (string | number)[] = [days]
     const projWhere = projectId ? `AND e.project_id = $2` : ''
     if (projectId) params.push(projectId)
+    // Join cost through sessions.claude_session_id -> sessions.epic_id
     return this.db.select<ModelUsage[]>(`
       SELECT
         e.model,
@@ -1141,10 +1147,11 @@ export class Database {
         COALESCE(SUM(costs.total_tokens), 0) AS total_tokens
       FROM epics e
       LEFT JOIN (
-        SELECT epic_id, SUM(cost_usd) AS cost_usd, SUM(input_tokens + output_tokens) AS total_tokens
-        FROM cost_log
-        WHERE timestamp >= DATE('now', '-' || $1 || ' days')
-        GROUP BY epic_id
+        SELECT s.epic_id, SUM(c.cost_usd) AS cost_usd, SUM(c.input_tokens + c.output_tokens) AS total_tokens
+        FROM cost_log c
+        JOIN sessions s ON s.claude_session_id = c.session_id
+        WHERE c.timestamp >= DATE('now', '-' || $1 || ' days')
+        GROUP BY s.epic_id
       ) costs ON costs.epic_id = e.id
       WHERE e.model IS NOT NULL AND e.model != ''
         AND e.created_at >= DATE('now', '-' || $1 || ' days')
@@ -1156,9 +1163,10 @@ export class Database {
 
   async getAnalyticsSessionsByMode(days: number): Promise<SessionsByMode[]> {
     if (!this.db) return []
+    // Join cost via sessions.claude_session_id
     return this.db.select<SessionsByMode[]>(`
       SELECT
-        mode,
+        s.mode,
         COUNT(*) AS session_count,
         COALESCE(SUM(c.cost_usd), 0) AS total_cost_usd
       FROM sessions s
@@ -1167,16 +1175,16 @@ export class Database {
         FROM cost_log
         WHERE timestamp >= DATE('now', '-' || $1 || ' days')
         GROUP BY session_id
-      ) c ON c.session_id = s.session_id
+      ) c ON c.session_id = s.claude_session_id
       WHERE s.created_at >= CAST(strftime('%s','now') AS INTEGER) - $1 * 86400
-      GROUP BY mode
+      GROUP BY s.mode
       ORDER BY session_count DESC
     `, [days])
   }
 
-  async getAnalyticsEpicThroughput(weeks: number, projectId: string | null): Promise<EpicThroughput[]> {
+  async getAnalyticsEpicThroughput(days: number, projectId: string | null): Promise<EpicThroughput[]> {
     if (!this.db) return []
-    const params: (string | number)[] = [weeks]
+    const params: (string | number)[] = [days]
     const projWhere = projectId ? `AND project_id = $2` : ''
     if (projectId) params.push(projectId)
     return this.db.select<EpicThroughput[]>(`
@@ -1185,7 +1193,7 @@ export class Database {
         COUNT(*) AS started,
         SUM(CASE WHEN "column" = 'done' THEN 1 ELSE 0 END) AS completed
       FROM epics
-      WHERE created_at >= DATE('now', '-' || $1 || ' weeks') ${projWhere}
+      WHERE created_at >= DATE('now', '-' || $1 || ' days') ${projWhere}
       GROUP BY week
       ORDER BY week ASC
     `, params)
@@ -1196,11 +1204,12 @@ export class Database {
     const params: (string | number)[] = [days]
     const projWhere = projectId ? `AND e.project_id = $2` : ''
     if (projectId) params.push(projectId)
+    // Join cost through sessions.claude_session_id -> sessions.epic_id
     return this.db.select<ComplexityStats[]>(`
       SELECT
         complexity,
         COUNT(*) AS epic_count,
-        AVG(COALESCE(c.total_cost, 0)) AS avg_cost_usd,
+        AVG(COALESCE(costs.total_cost, 0)) AS avg_cost_usd,
         AVG(
           CASE WHEN "column" = 'done' AND completed_at IS NOT NULL
           THEN (julianday(completed_at) - julianday(created_at)) * 24
@@ -1209,11 +1218,12 @@ export class Database {
         CAST(SUM(CASE WHEN "column" = 'done' THEN 1 ELSE 0 END) AS REAL) / COUNT(*) AS completion_rate
       FROM epics e
       LEFT JOIN (
-        SELECT epic_id, SUM(cost_usd) AS total_cost
-        FROM cost_log
-        WHERE timestamp >= DATE('now', '-' || $1 || ' days')
-        GROUP BY epic_id
-      ) c ON c.epic_id = e.id
+        SELECT s.epic_id, SUM(c.cost_usd) AS total_cost
+        FROM cost_log c
+        JOIN sessions s ON s.claude_session_id = c.session_id
+        WHERE c.timestamp >= DATE('now', '-' || $1 || ' days')
+        GROUP BY s.epic_id
+      ) costs ON costs.epic_id = e.id
       WHERE complexity IS NOT NULL AND complexity != ''
         AND e.created_at >= DATE('now', '-' || $1 || ' days')
         ${projWhere}
@@ -1224,22 +1234,24 @@ export class Database {
 
   async getAnalyticsProjectSummaries(days: number): Promise<ProjectCostSummary[]> {
     if (!this.db) return []
+    // Join cost through sessions.claude_session_id -> sessions.epic_id
     return this.db.select<ProjectCostSummary[]>(`
       SELECT
         p.id AS project_id,
         p.name AS project_name,
         p.color AS project_color,
-        COALESCE(SUM(c.cost_usd), 0) AS total_cost_usd,
+        COALESCE(SUM(costs.cost_usd), 0) AS total_cost_usd,
         COUNT(DISTINCT e.id) AS epic_count,
         SUM(CASE WHEN e."column" = 'done' THEN 1 ELSE 0 END) AS completed_epics
       FROM projects p
       LEFT JOIN epics e ON e.project_id = p.id
       LEFT JOIN (
-        SELECT epic_id, SUM(cost_usd) AS cost_usd
-        FROM cost_log
-        WHERE timestamp >= DATE('now', '-' || $1 || ' days')
-        GROUP BY epic_id
-      ) c ON c.epic_id = e.id
+        SELECT s.epic_id, SUM(c.cost_usd) AS cost_usd
+        FROM cost_log c
+        JOIN sessions s ON s.claude_session_id = c.session_id
+        WHERE c.timestamp >= DATE('now', '-' || $1 || ' days')
+        GROUP BY s.epic_id
+      ) costs ON costs.epic_id = e.id
       GROUP BY p.id
       ORDER BY total_cost_usd DESC
     `, [days])
@@ -1250,6 +1262,7 @@ export class Database {
     const params: (string | number)[] = [days, limit, offset]
     const projWhere = projectId ? `AND e.project_id = $4` : ''
     if (projectId) params.push(projectId)
+    // Join cost through sessions.claude_session_id -> sessions.epic_id
     return this.db.select<EpicAnalyticsDetail[]>(`
       SELECT
         e.id,
@@ -1258,9 +1271,9 @@ export class Database {
         p.name AS project_name,
         e."column" AS status,
         e.complexity,
-        COALESCE(c.total_cost_usd, 0) AS total_cost_usd,
-        COALESCE(c.input_tokens, 0) AS input_tokens,
-        COALESCE(c.output_tokens, 0) AS output_tokens,
+        COALESCE(costs.total_cost_usd, 0) AS total_cost_usd,
+        COALESCE(costs.input_tokens, 0) AS input_tokens,
+        COALESCE(costs.output_tokens, 0) AS output_tokens,
         e.created_at,
         e.completed_at,
         CASE WHEN e.completed_at IS NOT NULL
@@ -1270,14 +1283,15 @@ export class Database {
       FROM epics e
       LEFT JOIN projects p ON p.id = e.project_id
       LEFT JOIN (
-        SELECT epic_id,
-          SUM(cost_usd) AS total_cost_usd,
-          SUM(input_tokens) AS input_tokens,
-          SUM(output_tokens) AS output_tokens
-        FROM cost_log
-        WHERE timestamp >= DATE('now', '-' || $1 || ' days')
-        GROUP BY epic_id
-      ) c ON c.epic_id = e.id
+        SELECT s.epic_id,
+          SUM(c.cost_usd) AS total_cost_usd,
+          SUM(c.input_tokens) AS input_tokens,
+          SUM(c.output_tokens) AS output_tokens
+        FROM cost_log c
+        JOIN sessions s ON s.claude_session_id = c.session_id
+        WHERE c.timestamp >= DATE('now', '-' || $1 || ' days')
+        GROUP BY s.epic_id
+      ) costs ON costs.epic_id = e.id
       WHERE e.created_at >= DATE('now', '-' || $1 || ' days') ${projWhere}
       ORDER BY e.created_at DESC
       LIMIT $2 OFFSET $3
