@@ -138,7 +138,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
+import { ref, computed } from 'vue';
 import type { SchedulerConfig } from '@/engine/KosTypes';
 import { useUiStore } from '@/stores/ui';
 import { useEpicStore } from '@/stores/epics';
@@ -158,13 +158,6 @@ const ui = useUiStore();
 const epicStore = useEpicStore();
 const projectsStore = useProjectsStore();
 const filterStore = useFilterStore();
-
-// Sync filter store from ui.kanbanProjectIds (ui is the write target, filterStore is the read target)
-watch(
-  () => ui.kanbanProjectIds,
-  (ids) => filterStore.applySelection(ids),
-  { immediate: true },
-);
 
 const gitOpsPanelRef = ref<InstanceType<typeof GitOpsPanel> | null>(null);
 const selectedEpicId = ref<string | null>(null);
@@ -286,7 +279,7 @@ async function onSchedulerConfigSaved(config: SchedulerConfig) {
 }
 
 function onFilterToggle(projectId: string) {
-  ui.toggleKanbanProject(projectId);
+  filterStore.toggleProject(projectId);
 }
 
 function onToggleSelect(epicId: string) {

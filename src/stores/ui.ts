@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
+import { useFilterStore } from '@/stores/filter';
 
 export type ViewMode = 'home' | 'kanban' | 'agents' | 'code' | 'mission-control';
 
@@ -30,7 +31,7 @@ export const useUiStore = defineStore('ui', () => {
   const rightPanelMode = ref<'effects' | 'graph'>('effects');
   const missionControlFilter = ref<string | null>(null);
   const autoCommitEnabled = ref(false);
-  const kanbanProjectIds = ref<string[]>([]);
+
   const notifications = ref<AppNotification[]>([]);
   const repoSwitchOnly = ref(false);
   const kanbanFilterText = ref('');
@@ -51,6 +52,7 @@ export const useUiStore = defineStore('ui', () => {
   const editorSizes = ref([40, 210, -1, 320, 0]);
 
   function switchToMode(mode: ViewMode) {
+    window.dispatchEvent(new CustomEvent('angy:close-popovers'));
     viewMode.value = mode;
   }
 
@@ -139,56 +141,49 @@ export const useUiStore = defineStore('ui', () => {
   }
 
   function navigateHome() {
+    window.dispatchEvent(new CustomEvent('angy:close-popovers'));
     viewMode.value = 'home';
     activeProjectId.value = null;
     activeEpicId.value = null;
   }
 
   function navigateToProject(projectId: string) {
+    window.dispatchEvent(new CustomEvent('angy:close-popovers'));
     activeProjectId.value = projectId;
-    kanbanProjectIds.value = [projectId];
+    useFilterStore().applySelection([projectId]);
     viewMode.value = 'kanban';
   }
 
   function navigateToEpic(epicId: string, projectId: string) {
+    window.dispatchEvent(new CustomEvent('angy:close-popovers'));
     activeProjectId.value = projectId;
     activeEpicId.value = epicId;
     viewMode.value = 'agents';
   }
 
   function navigateToKanban(projectId: string) {
+    window.dispatchEvent(new CustomEvent('angy:close-popovers'));
     activeProjectId.value = projectId;
-    if (!kanbanProjectIds.value.includes(projectId)) {
-      kanbanProjectIds.value = [projectId];
+    const filterStore = useFilterStore();
+    if (!filterStore.selectedProjectIds.includes(projectId)) {
+      filterStore.applySelection([projectId]);
     }
     activeEpicId.value = null;
     viewMode.value = 'kanban';
-  }
-
-  function toggleKanbanProject(projectId: string) {
-    const idx = kanbanProjectIds.value.indexOf(projectId);
-    if (idx >= 0) {
-      // Don't allow removing the last project
-      if (kanbanProjectIds.value.length > 1) {
-        kanbanProjectIds.value = kanbanProjectIds.value.filter(id => id !== projectId);
-      }
-    } else {
-      kanbanProjectIds.value = [...kanbanProjectIds.value, projectId];
-    }
   }
 
   return {
     viewMode, activeProjectId, activeEpicId, terminalVisible, activeLeftTab,
     workspacePath, currentFile, currentBranch, currentModel, isProcessing,
     inlinePreviewFile, effectsPanelVisible, editorChatVisible, rightPanelMode, diffView,
-    missionControlFilter, autoCommitEnabled, kanbanProjectIds, notifications, repoSwitchOnly,
+    missionControlFilter, autoCommitEnabled, notifications, repoSwitchOnly,
     managerSizes, editorSizes, kanbanFilterText, pipelineActivity, pipelineTodoProgress,
     switchToMode, toggleViewMode, toggleTerminal, dismissInlinePreview,
     toggleEffectsPanel, toggleEditorChat, toggleRightPanelMode, setRightPanelMode,
     showDiffView, closeDiffView,
     enterMissionControl, exitMissionControl, setMissionControlFilter, toggleAutoCommit,
     addNotification, dismissNotification, clearNotifications,
-    navigateHome, navigateToProject, navigateToEpic, navigateToKanban, toggleKanbanProject,
+    navigateHome, navigateToProject, navigateToEpic, navigateToKanban,
     openCommandPalette,
   };
 });
