@@ -36,16 +36,18 @@
         <span class="hero-title-accent">multi-agent pipelines</span>
       </h1>
       <p class="hero-tagline">
-        Angy is a fleet manager for <strong>Claude Code</strong> agents. It spawns each specialist as a separate <code>claude</code> CLI process, orchestrates them through a multi-phase pipeline, and ships verified code — with dependency graphs, adversarial counterparts, and git worktree isolation.
+        Angy is a fleet manager, scheduler and IDE for <strong>Claude Code</strong> agents. It spawns each specialist as a separate <code>claude</code> CLI process, orchestrates them through a multi-phase pipeline, and ships verified code — with dependency graphs, adversarial counterparts, and git worktree isolation.
       </p>
       <div class="hero-actions">
-        <a href="https://github.com/alice-viola/angy" target="_blank" rel="noopener noreferrer" class="btn-primary">
+        <a href="https://github.com/alice-viola/angy/releases/latest" target="_blank" rel="noopener noreferrer" class="btn-primary">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-            <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+            <path d="M8 0a1 1 0 0 1 1 1v5.586l2.293-2.293a1 1 0 1 1 1.414 1.414l-4 4a1 1 0 0 1-1.414 0l-4-4a1 1 0 0 1 1.414-1.414L7 6.586V1a1 1 0 0 1 1-1zM1 12a1 1 0 0 1 1 1v1h12v-1a1 1 0 1 1 2 0v2a1 1 0 0 1-1 1H1a1 1 0 0 1-1-1v-2a1 1 0 0 1 1-1z"/>
           </svg>
-          Get Started on GitHub
+          Download for macOS
         </a>
-        <a href="#hybrid-pipeline" class="btn-ghost">How the Pipeline Works</a>
+        <a href="https://github.com/alice-viola/angy" target="_blank" rel="noopener noreferrer" class="btn-ghost">
+          View on GitHub
+        </a>
       </div>
       <div class="hero-screenshot">
         <img src="img/agents.png" alt="Angy overview screenshot">
@@ -80,6 +82,35 @@
           <span class="feature-icon" aria-hidden="true">🌳</span>
           <h3 class="feature-title">Git Worktrees</h3>
           <p class="feature-desc">Each epic runs in an isolated git worktree, bypassing repo locks so multiple epics can build on the same repository in parallel without branch conflicts.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="divider">
+
+  <!-- ── Why Angy ─────────────────────────────────────────────────────────── -->
+  <section id="why" class="section">
+    <div class="container">
+      <h2 class="section-title">Why we built Angy</h2>
+      <p class="section-subtitle">
+        Angy was born from a simple frustration: existing AI coding tools could generate impressive-looking code, but the results rarely worked end-to-end without significant manual intervention. We wanted a tool that could <strong>build an entire product autonomously</strong> — from specification to a running application — with the most accurate results possible.
+      </p>
+      <p class="section-subtitle" style="margin-top: 1rem;">
+        Single-pass code generation breaks down when subsystems need to talk to each other. A beautifully architected state machine that is never connected to the HTTP layer, a schema mismatch between frontend and backend, a Docker config that references the wrong hostname — these are the bugs that only surface when the full stack runs together. Angy's multi-agent pipeline with adversarial verification and iterative build-test cycles catches these integration failures <em>before</em> delivery.
+      </p>
+      <div style="margin-top: 2rem; padding: 1.5rem; background: var(--surface-secondary); border: 1px solid var(--border-primary); border-radius: 12px; display: flex; align-items: flex-start; gap: 1.25rem;">
+        <div>
+          <h4 style="color: var(--text-primary); font-size: 0.9375rem; margin: 0 0 0.5rem;">See the benchmarks</h4>
+          <p style="color: var(--text-secondary); font-size: 0.875rem; line-height: 1.6; margin: 0 0 0.75rem;">
+            We tested Angy against Cursor and Claude Code on a deliberately hard full-stack specification — 12 database tables, a 7-state machine, WebSocket pipelines, and 25+ API endpoints. Angy v2 was the only implementation to pass the <code>docker compose up</code> benchmark without a single manual code fix, with ~9 of 10 pages functional after seeding.
+          </p>
+          <a href="https://github.com/alice-viola/angy-benchmarks" target="_blank" rel="noopener noreferrer" class="btn-primary" style="display: inline-flex; font-size: 0.875rem; padding: 0.5rem 1rem;">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+            </svg>
+            View Benchmarks on GitHub
+          </a>
         </div>
       </div>
     </div>
