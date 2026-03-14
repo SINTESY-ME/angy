@@ -32,11 +32,11 @@
         <span class="badge badge-teal">AI-Powered</span>
       </div>
       <h1 class="hero-title">
-        Orchestrate AI agents<br>
-        <span class="hero-title-accent">at epic scale</span>
+        A scheduling engine for<br>
+        <span class="hero-title-accent">multi-agent pipelines</span>
       </h1>
       <p class="hero-tagline">
-        Angy is a multi-agent orchestration platform that breaks complex software goals into structured epics, assigns specialist AI agents, and ships code — autonomously.
+        Angy is a fleet manager for <strong>Claude Code</strong> agents. It spawns each specialist as a separate <code>claude</code> CLI process, orchestrates them through a multi-phase pipeline, and ships verified code — with dependency graphs, adversarial counterparts, and git worktree isolation.
       </p>
       <div class="hero-actions">
         <a href="https://github.com/alice-viola/angy" target="_blank" rel="noopener noreferrer" class="btn-primary">
@@ -45,10 +45,10 @@
           </svg>
           Get Started on GitHub
         </a>
-        <a href="#features" class="btn-ghost">See Features</a>
+        <a href="#hybrid-pipeline" class="btn-ghost">How the Pipeline Works</a>
       </div>
       <div class="hero-screenshot">
-        <img src="img/overview.png" alt="Angy overview screenshot">
+        <img src="img/agents.png" alt="Angy overview screenshot">
       </div>
     </div>
   </section>
@@ -58,28 +58,28 @@
   <!-- ── Feature Grid ───────────────────────────────────────────────────────── -->
   <section id="features" class="section">
     <div class="container">
-      <h2 class="section-title">Everything you need to ship with AI</h2>
-      <p class="section-subtitle">A complete platform for defining, orchestrating, and reviewing AI-driven development — from goal to merged PR.</p>
+      <h2 class="section-title">Designed around orchestration, not conversation</h2>
+      <p class="section-subtitle">Most AI coding tools give you one agent and one chat. Angy wraps the <strong>Claude Code CLI</strong> — each agent is a separate <code>claude</code> process with streaming JSON I/O, managed by a coded state machine that dispatches multi-phase pipelines with adversarial verification at every stage.</p>
       <div class="features-grid">
         <div class="feature-card card-lift">
-          <span class="feature-icon" aria-hidden="true">🗂️</span>
-          <h3 class="feature-title">Kanban Pipeline</h3>
-          <p class="feature-desc">Visualize every epic and task across columns — Backlog, In Progress, Review, Done. Drag, reprioritize, and track progress at a glance.</p>
+          <span class="feature-icon" aria-hidden="true">⚙️</span>
+          <h3 class="feature-title">Pipeline</h3>
+          <p class="feature-desc">A coded state machine that drives Plan → Incremental Build → Integration Review → Final Testing. No LLM decides what happens next — the pipeline is deterministic.</p>
         </div>
         <div class="feature-card card-lift">
-          <span class="feature-icon" aria-hidden="true">🤖</span>
-          <h3 class="feature-title">Agent Fleet</h3>
-          <p class="feature-desc">Architect, Implementer, Reviewer, and Tester agents collaborate in parallel. Each specialist handles its role autonomously within a scoped epic branch.</p>
+          <span class="feature-icon" aria-hidden="true">⚔️</span>
+          <h3 class="feature-title">Adversarial Counterparts</h3>
+          <p class="feature-desc">A persistent counterpart agent independently verifies plans and reviews code. It challenges the architect, audits the builder, and blocks approval until every claim checks out.</p>
         </div>
         <div class="feature-card card-lift">
-          <span class="feature-icon" aria-hidden="true">💻</span>
-          <h3 class="feature-title">Code View</h3>
-          <p class="feature-desc">Inspect live agent output, diffs, and file changes directly in the UI. Full syntax highlighting and real-time streaming as agents write code.</p>
+          <span class="feature-icon" aria-hidden="true">🔗</span>
+          <h3 class="feature-title">Epic Dependencies</h3>
+          <p class="feature-desc">Chain epics with <code>dependsOn</code> for prerequisite gates, or <code>runAfter</code> for sequential continuation with branch inheritance. The scheduler respects the full dependency graph.</p>
         </div>
         <div class="feature-card card-lift">
-          <span class="feature-icon" aria-hidden="true">⏱️</span>
-          <h3 class="feature-title">Scheduler</h3>
-          <p class="feature-desc">Queue epics, set priorities, and let the scheduler orchestrate agents across projects automatically — even while you sleep.</p>
+          <span class="feature-icon" aria-hidden="true">🌳</span>
+          <h3 class="feature-title">Git Worktrees</h3>
+          <p class="feature-desc">Each epic runs in an isolated git worktree, bypassing repo locks so multiple epics can build on the same repository in parallel without branch conflicts.</p>
         </div>
       </div>
     </div>
@@ -87,46 +87,44 @@
 
   <hr class="divider">
 
-  <!-- ── How It Works ───────────────────────────────────────────────────────── -->
-  <section id="how-it-works" class="section">
+  <!-- ── Hybrid Pipeline ─────────────────────────────────────────────────── -->
+  <section id="hybrid-pipeline" class="section">
     <div class="container">
-      <h2 class="section-title">How It Works</h2>
-      <p class="section-subtitle">Define a goal. Angy handles the rest — planning, implementing, reviewing, and testing through a structured multi-agent pipeline.</p>
+      <h2 class="section-title">The Pipeline</h2>
+      <p class="section-subtitle">The core of Angy is the <strong>PipelineRunner</strong> — a TypeScript state machine that drives multi-agent builds incrementally, with verification gates at every step. Instead of building everything at once and testing at the end, it splits work into sequential increments and verifies each one before starting the next.</p>
+
       <div class="pipeline">
         <div class="pipeline-step">
-          <div class="pipeline-step-num">01</div>
-          <div class="pipeline-step-title">Goal</div>
-          <div class="pipeline-step-desc">Describe what you want to build in plain language</div>
+          <div class="pipeline-step-num">Phase 1</div>
+          <div class="pipeline-step-title">Plan</div>
+          <div class="pipeline-step-desc">Architect designs the solution. Counterpart adversarially verifies the plan. Challenge loop until approved.</div>
         </div>
         <div class="pipeline-arrow" aria-hidden="true">→</div>
         <div class="pipeline-step">
-          <div class="pipeline-step-num">02</div>
-          <div class="pipeline-step-title">Architect</div>
-          <div class="pipeline-step-desc">Plans the implementation, identifies files, defines scope</div>
-        </div>
-        <div class="pipeline-arrow" aria-hidden="true">→</div>
-        <div class="pipeline-step">
-          <div class="pipeline-step-num">03</div>
-          <div class="pipeline-step-title">Implementer</div>
-          <div class="pipeline-step-desc">Writes the code on an isolated epic branch</div>
-        </div>
-        <div class="pipeline-arrow" aria-hidden="true">→</div>
-        <div class="pipeline-step">
-          <div class="pipeline-step-num">04</div>
-          <div class="pipeline-step-title">Reviewer</div>
-          <div class="pipeline-step-desc">Audits logic, security, and correctness</div>
-        </div>
-        <div class="pipeline-arrow" aria-hidden="true">→</div>
-        <div class="pipeline-step">
-          <div class="pipeline-step-num">05</div>
-          <div class="pipeline-step-title">Tester</div>
-          <div class="pipeline-step-desc">Writes and runs tests, validates coverage</div>
+          <div class="pipeline-step-num">Phase 2</div>
+          <div class="pipeline-step-title">Incremental Build</div>
+          <div class="pipeline-step-desc">Splitter breaks the plan into 4–8 sequential todos. Each todo: Builder implements → Tester verifies → fix loop if needed.</div>
         </div>
         <div class="pipeline-arrow" aria-hidden="true">→</div>
         <div class="pipeline-step card-glow-active">
-          <div class="pipeline-step-num">✓</div>
-          <div class="pipeline-step-title">Done</div>
-          <div class="pipeline-step-desc">PR ready for merge with full audit trail</div>
+          <div class="pipeline-step-num">Phase 3</div>
+          <div class="pipeline-step-title">Finalize</div>
+          <div class="pipeline-step-desc">Counterpart code review + integration test. Failures generate fix-todos that feed back into Phase 2. Up to 5 cycles.</div>
+        </div>
+      </div>
+
+      <div style="margin-top:3rem;display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1.5rem;">
+        <div style="padding:1.25rem;background:var(--surface-secondary);border:1px solid var(--border-primary);border-radius:12px;">
+          <h4 style="color:var(--text-primary);font-size:0.9375rem;margin:0 0 0.5rem;">Why incremental?</h4>
+          <p style="color:var(--text-secondary);font-size:0.875rem;line-height:1.6;margin:0;">When you build 50 files at once, a wrong field name in the data model cascades into broken APIs and a broken frontend. With incremental builds, errors are caught before anyone builds on top of them. The blast radius is one increment deep.</p>
+        </div>
+        <div style="padding:1.25rem;background:var(--surface-secondary);border:1px solid var(--border-primary);border-radius:12px;">
+          <h4 style="color:var(--text-primary);font-size:0.9375rem;margin:0 0 0.5rem;">No LLM routing</h4>
+          <p style="color:var(--text-secondary);font-size:0.875rem;line-height:1.6;margin:0;">The pipeline is a coded TypeScript state machine — no LLM decides what step comes next. Each agent is a <code>claude</code> CLI process spawned via Tauri's shell plugin with <code>--input-format stream-json</code> / <code>--output-format stream-json</code>. Structured JSON schema extraction drives verdicts, increment plans, and test results.</p>
+        </div>
+        <div style="padding:1.25rem;background:var(--surface-secondary);border:1px solid var(--border-primary);border-radius:12px;">
+          <h4 style="color:var(--text-primary);font-size:0.9375rem;margin:0 0 0.5rem;">Complexity-driven depth</h4>
+          <p style="color:var(--text-secondary);font-size:0.875rem;line-height:1.6;margin:0;">Pipeline depth adapts to epic complexity. Trivial epics skip the architect and counterpart entirely. Large/epic complexity gets 3 architect turns, a persistent counterpart, and an optional design system phase. Medium sits in between.</p>
         </div>
       </div>
     </div>
@@ -134,43 +132,19 @@
 
   <hr class="divider">
 
-  <!-- ── Kanban Section ────────────────────────────────────────────────────── -->
-  <section id="kanban" class="section">
+  <!-- ── Counterpart ────────────────────────────────────────────────────────── -->
+  <section id="counterpart" class="section">
     <div class="container">
       <div class="screenshot-section">
         <div class="screenshot-text">
-          <span class="badge badge-ember" style="margin-bottom:16px;display:inline-flex;">Epic Flow</span>
-          <h2 class="section-title">Visual Kanban for every epic</h2>
-          <p class="section-subtitle">Track each epic as it moves through the pipeline. The Kanban board gives you a real-time view of agent activity, blockers, and progress across all your projects simultaneously.</p>
+          <span class="badge badge-mauve" style="margin-bottom:16px;display:inline-flex;">Adversarial Verification</span>
+          <h2 class="section-title">The counterpart: your built-in skeptic</h2>
+          <p class="section-subtitle">The counterpart is a persistent agent that acts as an adversarial reviewer throughout the entire pipeline. It independently verifies claims, runs code, and blocks approval until every issue is resolved.</p>
           <ul style="color:var(--text-secondary);font-size:0.9375rem;line-height:2;padding-left:0;list-style:none;">
-            <li>✦ &nbsp;Drag epics between stages manually or let the scheduler drive them</li>
-            <li>✦ &nbsp;Color-coded agent status indicators per card</li>
-            <li>✦ &nbsp;Inline preview of latest agent output</li>
-            <li>✦ &nbsp;Filter by project, agent type, or priority</li>
-          </ul>
-        </div>
-        <div class="screenshot-image">
-          <img src="img/kanban.png" alt="Kanban board screenshot">
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <hr class="divider">
-
-  <!-- ── Agent Fleet Section ───────────────────────────────────────────────── -->
-  <section id="agents" class="section">
-    <div class="container">
-      <div class="screenshot-section reverse">
-        <div class="screenshot-text">
-          <span class="badge badge-mauve" style="margin-bottom:16px;display:inline-flex;">Specialist Roles</span>
-          <h2 class="section-title">A fleet of specialist AI agents</h2>
-          <p class="section-subtitle">Each agent is a Claude subprocess with a defined role, scoped context, and clear deliverables. Agents collaborate on a shared epic branch without stepping on each other.</p>
-          <ul style="color:var(--text-secondary);font-size:0.9375rem;line-height:2;padding-left:0;list-style:none;">
-            <li><span style="color:var(--accent-mauve);font-weight:600;">Architect</span> &nbsp;— Plans, decomposes, and defines file ownership</li>
-            <li><span style="color:var(--accent-blue);font-weight:600;">Implementer</span> &nbsp;— Writes code from the plan</li>
-            <li><span style="color:var(--accent-teal);font-weight:600;">Reviewer</span> &nbsp;— Audits quality, security, correctness</li>
-            <li><span style="color:var(--accent-ember);font-weight:600;">Tester</span> &nbsp;— Writes tests and validates behaviour</li>
+            <li><span style="color:var(--accent-mauve);font-weight:600;">Plan review</span> — Challenges the architect's plan against acceptance criteria. Can correct the plan or reject it entirely, forcing a rewrite.</li>
+            <li><span style="color:var(--accent-blue);font-weight:600;">Code review</span> — Reads actual files, runs the code, and audits the builder's output. Issues are classified as CRITICAL, MAJOR, or NIT.</li>
+            <li><span style="color:var(--accent-teal);font-weight:600;">Fix generation</span> — On REQUEST_CHANGES, the counterpart's issues are turned into fix-todos that feed back into Phase 2 for a fresh builder to resolve.</li>
+            <li><span style="color:var(--accent-ember);font-weight:600;">Session persistence</span> — One counterpart session spans from plan review through all code review cycles, preserving full context across the pipeline.</li>
           </ul>
         </div>
         <div class="screenshot-image">
@@ -182,23 +156,31 @@
 
   <hr class="divider">
 
-  <!-- ── Projects Section ──────────────────────────────────────────────────── -->
-  <section id="projects" class="section">
+  <!-- ── Specialist Roles ──────────────────────────────────────────────────── -->
+  <section id="roles" class="section">
     <div class="container">
-      <div class="screenshot-section">
-        <div class="screenshot-text">
-          <span class="badge badge-blue" style="margin-bottom:16px;display:inline-flex;">Multi-Project</span>
-          <h2 class="section-title">Manage all your projects in one place</h2>
-          <p class="section-subtitle">Angy supports multiple repositories and projects simultaneously. Switch between codebases, assign epics per project, and monitor agent activity across your entire portfolio.</p>
-          <ul style="color:var(--text-secondary);font-size:0.9375rem;line-height:2;padding-left:0;list-style:none;">
-            <li>✦ &nbsp;Per-project epic queues and history</li>
-            <li>✦ &nbsp;Independent git branches per epic</li>
-            <li>✦ &nbsp;Unified dashboard across all repositories</li>
-            <li>✦ &nbsp;Project-level scheduler configuration</li>
-          </ul>
+      <h2 class="section-title">Specialist roles in the pipeline</h2>
+      <p class="section-subtitle">Each agent is a Claude subprocess with a defined role, scoped tool access, and clear deliverables. They collaborate on a shared epic branch without stepping on each other.</p>
+      <div class="features-grid">
+        <div class="feature-card card-lift">
+          <span class="feature-icon" aria-hidden="true">📐</span>
+          <h3 class="feature-title">Architect</h3>
+          <p class="feature-desc">Read-only analysis. Designs the solution, decomposes it into increments, and defines file ownership. Has access to Read, Glob, and Grep.</p>
         </div>
-        <div class="screenshot-image">
-          <img src="img/projects.png" alt="Projects view screenshot">
+        <div class="feature-card card-lift">
+          <span class="feature-icon" aria-hidden="true">🔨</span>
+          <h3 class="feature-title">Builder</h3>
+          <p class="feature-desc">Implements code per the plan. Fresh builder per increment — scoped context, no drift. Has Bash, Read, Edit, Write, Glob, Grep.</p>
+        </div>
+        <div class="feature-card card-lift">
+          <span class="feature-icon" aria-hidden="true">⚔️</span>
+          <h3 class="feature-title">Counterpart</h3>
+          <p class="feature-desc">Adversarial reviewer with full tool access. Independently verifies claims, finds flaws, and can fix bugs directly. Persistent across the pipeline.</p>
+        </div>
+        <div class="feature-card card-lift">
+          <span class="feature-icon" aria-hidden="true">🧪</span>
+          <h3 class="feature-title">Tester</h3>
+          <p class="feature-desc">Builds the project, runs tests, performs smoke tests and e2e verification. Validates each increment and runs final integration tests.</p>
         </div>
       </div>
     </div>
@@ -206,23 +188,159 @@
 
   <hr class="divider">
 
-  <!-- ── Code View Section ─────────────────────────────────────────────────── -->
-  <section id="code" class="section">
+  <!-- ── Epic Dependencies ──────────────────────────────────────────────────── -->
+  <section id="dependencies" class="section">
     <div class="container">
       <div class="screenshot-section reverse">
         <div class="screenshot-text">
-          <span class="badge badge-teal" style="margin-bottom:16px;display:inline-flex;">Live Output</span>
-          <h2 class="section-title">Watch agents write code in real time</h2>
-          <p class="section-subtitle">The Code View streams agent output as it happens — file edits, diffs, shell commands, and test results. Full syntax highlighting powered by JetBrains Mono.</p>
+          <span class="badge badge-blue" style="margin-bottom:16px;display:inline-flex;">Dependency Graph</span>
+          <h2 class="section-title">Chain epics into dependency graphs</h2>
+          <p class="section-subtitle">Epics aren't isolated units — they form directed graphs of prerequisites and sequential continuations. The scheduler traverses the full dependency tree before dispatching any epic.</p>
           <ul style="color:var(--text-secondary);font-size:0.9375rem;line-height:2;padding-left:0;list-style:none;">
-            <li>✦ &nbsp;Real-time streaming of agent tool calls</li>
-            <li>✦ &nbsp;Diff view for every file modified</li>
-            <li>✦ &nbsp;Shell command output and exit codes</li>
-            <li>✦ &nbsp;Full session replay per epic</li>
+            <li><span style="color:var(--accent-blue);font-weight:600;">dependsOn</span> — Multiple prerequisite epic IDs. The epic is blocked until every dependency reaches <code>Done</code>. DFS traversal detects and prevents circular dependencies.</li>
+            <li><span style="color:var(--accent-teal);font-weight:600;">runAfter</span> — Single predecessor for sequential chaining. Unblocks when predecessor reaches <code>Review</code> or <code>Done</code>. The successor inherits the predecessor's branch and worktree.</li>
+            <li><span style="color:var(--accent-ember);font-weight:600;">Branch inheritance</span> — With <code>runAfter</code>, the successor reuses the same epic branch and worktree directory, building directly on top of the predecessor's code.</li>
+            <li><span style="color:var(--accent-mauve);font-weight:600;">Cleanup deferral</span> — Worktrees are kept alive when a <code>runAfter</code> successor exists. Cleanup only happens when the last epic in the chain completes.</li>
           </ul>
         </div>
         <div class="screenshot-image">
-          <img src="img/code.png" alt="Code view screenshot">
+          <img src="img/kanban.png" alt="Kanban board with epic dependencies">
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="divider">
+
+  <!-- ── Git Worktrees ──────────────────────────────────────────────────────── -->
+  <section id="worktrees" class="section">
+    <div class="container">
+      <div class="screenshot-section">
+        <div class="screenshot-text">
+          <span class="badge badge-teal" style="margin-bottom:16px;display:inline-flex;">Parallel Isolation</span>
+          <h2 class="section-title">Git worktrees for true parallel execution</h2>
+          <p class="section-subtitle">Instead of checking out branches in the main repository (which locks it for one epic at a time), worktree mode creates isolated working directories so multiple epics can build on the same repo simultaneously.</p>
+          <ul style="color:var(--text-secondary);font-size:0.9375rem;line-height:2;padding-left:0;list-style:none;">
+            <li>✦ &nbsp;Each epic gets a dedicated directory at <code>.angy-worktrees/&lt;epic-slug&gt;</code></li>
+            <li>✦ &nbsp;Worktree epics bypass repo locks — no contention between parallel pipelines</li>
+            <li>✦ &nbsp;Checkout-mode epics lock the repo; only one can run per repository at a time</li>
+            <li>✦ &nbsp;Orphan worktrees are automatically cleaned up on startup via <code>reconcileWorktrees()</code></li>
+            <li>✦ &nbsp;Worktree paths are excluded from <code>.git/info/exclude</code> to keep the repo clean</li>
+            <li>✦ &nbsp;<code>runAfter</code> successors inherit the worktree path, continuing in the same directory</li>
+          </ul>
+        </div>
+        <div class="screenshot-image">
+          <img src="img/code.png" alt="Code view with worktree isolation">
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="divider">
+
+  <!-- ── Scheduler ──────────────────────────────────────────────────────────── -->
+  <section id="scheduler" class="section">
+    <div class="container">
+      <div class="screenshot-section reverse">
+        <div class="screenshot-text">
+          <span class="badge badge-ember" style="margin-bottom:16px;display:inline-flex;">Autonomous Engine</span>
+          <h2 class="section-title">Autonomous Scheduler</h2>
+          <p class="section-subtitle">A background engine that continuously scores, prioritizes, and dispatches epics across projects — ticking every 30 seconds. It enforces concurrency limits, respects dependency graphs, manages repo locks, and tracks API cost budgets.</p>
+          <ul style="color:var(--text-secondary);font-size:0.9375rem;line-height:2;padding-left:0;list-style:none;">
+            <li><span style="color:var(--accent-ember);font-weight:600;">Priority scoring</span> — Configurable weights: priority hint (40%), dependency depth (20%), age (15%), complexity (15%), rejection penalty (10%)</li>
+            <li><span style="color:var(--accent-blue);font-weight:600;">Concurrency</span> — Global limit (default 3 parallel epics) plus per-project limits. Worktree epics bypass repo locks</li>
+            <li><span style="color:var(--accent-teal);font-weight:600;">Dependencies</span> — DFS traversal of <code>dependsOn</code> graphs and <code>runAfter</code> chains. Circular deps detected and blocked</li>
+            <li><span style="color:var(--accent-mauve);font-weight:600;">Cost budgets</span> — Daily API cost limits enforced per tick from the <code>cost_log</code> table. Scheduling pauses when exceeded</li>
+            <li>✦ &nbsp;Crash recovery — resumes from last pipeline checkpoint via <code>PipelineStateStore</code></li>
+            <li>✦ &nbsp;Human review gate — approve to squash-merge, or reject with feedback to trigger the Fix pipeline</li>
+          </ul>
+        </div>
+        <div class="screenshot-image">
+          <img src="img/analytics.png" alt="Scheduler analytics and cost tracking">
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="divider">
+
+  <!-- ── Pipeline Types ─────────────────────────────────────────────────────── -->
+  <section id="pipeline-types" class="section">
+    <div class="container">
+      <h2 class="section-title">Four pipeline types</h2>
+      <p class="section-subtitle">Not every epic needs a full build. Angy routes each epic through the right pipeline based on its type and history.</p>
+
+      <div class="pipeline">
+        <div class="pipeline-step">
+          <div class="pipeline-step-num" style="font-size:1.25rem;">⚙️</div>
+          <div class="pipeline-step-title">Create</div>
+          <div class="pipeline-step-desc">Full pipeline — architect → incremental build → counterpart review → final test. For new features and greenfield work.</div>
+        </div>
+        <div class="pipeline-step">
+          <div class="pipeline-step-num" style="font-size:1.25rem;">🔧</div>
+          <div class="pipeline-step-title">Fix</div>
+          <div class="pipeline-step-desc">Targeted bug fixing with rejection context. Diagnose → builder fix → tester verify → counterpart review. Triggered automatically on rejected epics.</div>
+        </div>
+        <div class="pipeline-step">
+          <div class="pipeline-step-num" style="font-size:1.25rem;">🔍</div>
+          <div class="pipeline-step-title">Investigate</div>
+          <div class="pipeline-step-desc">Read-only codebase analysis. A single architect call that produces findings, evidence, conclusions, and open questions. No code changes.</div>
+        </div>
+        <div class="pipeline-step">
+          <div class="pipeline-step-num" style="font-size:1.25rem;">📋</div>
+          <div class="pipeline-step-title">Plan</div>
+          <div class="pipeline-step-desc">Read-only architectural planning. Produces analysis, files to modify/create, and implementation steps. No code changes — just a structured plan.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="divider">
+
+  <!-- ── Kanban + Projects ──────────────────────────────────────────────────── -->
+  <section id="kanban" class="section">
+    <div class="container">
+      <div class="screenshot-section reverse">
+        <div class="screenshot-text">
+          <span class="badge badge-ember" style="margin-bottom:16px;display:inline-flex;">Multi-Project</span>
+          <h2 class="section-title">Kanban board across all your projects</h2>
+          <p class="section-subtitle">Track every epic as it flows through the pipeline — Idea, Todo, In Progress, Review, Done. Multiple repositories, independent branches, unified dashboard.</p>
+          <ul style="color:var(--text-secondary);font-size:0.9375rem;line-height:2;padding-left:0;list-style:none;">
+            <li>✦ &nbsp;Drag epics between stages or let the scheduler drive them</li>
+            <li>✦ &nbsp;Per-project epic queues and scheduler configuration</li>
+            <li>✦ &nbsp;Color-coded agent status and live pipeline phase indicators</li>
+            <li>✦ &nbsp;Filter by project, agent type, priority, or dependency status</li>
+            <li>✦ &nbsp;Reject with feedback to send epics back through the Fix pipeline</li>
+          </ul>
+        </div>
+        <div class="screenshot-image">
+          <img src="img/kanban.png" alt="Kanban board screenshot">
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="divider">
+
+  <!-- ── Live Observability ─────────────────────────────────────────────────── -->
+  <section id="observability" class="section">
+    <div class="container">
+      <div class="screenshot-section">
+        <div class="screenshot-text">
+          <span class="badge badge-teal" style="margin-bottom:16px;display:inline-flex;">Live Output</span>
+          <h2 class="section-title">Watch the fleet work in real time</h2>
+          <p class="section-subtitle">Every agent session has its own chat panel, Monaco code editor, and Xterm.js terminal. Stream agent output as it happens or come back when the Review column fills up.</p>
+          <ul style="color:var(--text-secondary);font-size:0.9375rem;line-height:2;padding-left:0;list-style:none;">
+            <li>✦ &nbsp;Real-time token streaming with thinking blocks and tool call visualization</li>
+            <li>✦ &nbsp;Diff view for every file modified by every agent</li>
+            <li>✦ &nbsp;Pipeline agents grouped in the sidebar with phase badges</li>
+            <li>✦ &nbsp;Tool and file graph — visualize which tools and files each agent touched</li>
+            <li>✦ &nbsp;Full session replay per epic — see every agent decision</li>
+            <li>✦ &nbsp;File checkpointing — rewind changes to any prior checkpoint</li>
+          </ul>
+        </div>
+        <div class="screenshot-image">
+          <img src="img/graph.png" alt="Agent tool and file graph visualization">
         </div>
       </div>
     </div>
@@ -235,7 +353,7 @@
     <div class="container">
       <div class="cta-box">
         <h2 class="cta-title">Start orchestrating today</h2>
-        <p class="cta-subtitle">Angy is open source and free to self-host. Clone the repo, configure your Claude API key, and run your first epic in minutes.</p>
+        <p class="cta-subtitle">Angy is open source and free to self-host. Clone the repo, configure your Claude Code CLI key, and run your first epic in minutes.</p>
         <a href="https://github.com/alice-viola/angy" target="_blank" rel="noopener noreferrer" class="btn-primary">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
@@ -249,8 +367,8 @@
   <!-- ── Footer ────────────────────────────────────────────────────────────── -->
   <footer class="footer">
     <div class="footer-inner">
-      <span>© 2025 Angy — v0.1.0</span>
-      <span>Released under the <a href="https://github.com/alice-viola/angy/blob/master/LICENSE" target="_blank" rel="noopener noreferrer">MIT License</a></span>
+      <span>&copy; 2026 Angy &mdash; v0.2.0</span>
+      <span>Released under the <a href="https://github.com/alice-viola/angy/blob/master/LICENSE.md" target="_blank" rel="noopener noreferrer">Apache License 2.0</a></span>
       <a href="https://github.com/alice-viola/angy" target="_blank" rel="noopener noreferrer">github.com/alice-viola/angy</a>
     </div>
   </footer>

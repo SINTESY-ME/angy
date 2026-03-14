@@ -5,7 +5,9 @@
 <h1 align="center">Angy</h1>
 
 <p align="center">A fleet manager for Claude agents. Goals in, working code out.</p>
-
+<p align="center">
+  <a href="https://alice-viola.github.io/angy/">View the website</a>
+</p>
 <p align="center">
   <img src="https://img.shields.io/badge/version-v0.2.0-blue" alt="Version" />
   <img src="https://img.shields.io/badge/platform-macOS-lightgrey" alt="Platform" />
@@ -224,7 +226,7 @@ The pipeline's key innovation is **incremental building with verification gates*
 
 ## Status
 
-**v0.2.0** — active development. macOS-only for now. Expect breaking changes.
+**v0.2.0** — active development. macOS and Linux for now. Expect breaking changes.
 
 ---
 
