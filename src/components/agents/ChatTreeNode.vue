@@ -37,9 +37,7 @@
         v-if="isStreaming"
         class="bg-teal/5 border border-teal/10 px-2.5 py-1.5 rounded-md flex items-center gap-2 mt-1"
       >
-        <div class="flex items-center gap-0.5">
-          <span v-for="n in 5" :key="n" class="wave-bar" :style="{ animationDelay: `${(n - 1) * 0.15}s` }" />
-        </div>
+        <WaveBar />
         <span class="text-[11px] text-teal">Generating...</span>
       </div>
     </template>
@@ -56,6 +54,7 @@ import { computed } from 'vue';
 import type { MessageRecord } from '../../engine/types';
 import ThinkingBlock from '../chat/ThinkingBlock.vue';
 import ToolCallGroup from '../chat/ToolCallGroup.vue';
+import WaveBar from '@/components/common/WaveBar.vue';
 import type { ToolCallInfo } from '../chat/ToolCallGroup.vue';
 
 const props = defineProps<{

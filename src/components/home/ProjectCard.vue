@@ -4,6 +4,7 @@ import type { Project } from '@/engine/KosTypes';
 import type { AgentSummary } from '@/engine/types';
 import { useUiStore } from '@/stores/ui';
 import { useEpicStore } from '@/stores/epics';
+import WaveBar from '@/components/common/WaveBar.vue';
 
 const props = defineProps<{
   project: Project;
@@ -142,11 +143,7 @@ function handleRun() {
               {{ agent.title?.charAt(0).toUpperCase() ?? '?' }}
             </div>
           </div>
-          <div class="flex items-end gap-0.5 h-4">
-            <div class="wave-bar" />
-            <div class="wave-bar" />
-            <div class="wave-bar" />
-          </div>
+          <WaveBar :count="3" />
           <span class="text-[10px] text-txt-muted truncate">
             {{ activeAgents.length }} agent{{ activeAgents.length > 1 ? 's' : '' }} working
           </span>

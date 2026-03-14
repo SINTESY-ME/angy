@@ -165,6 +165,9 @@ button:focus-visible {
 }
 
 /* Card effects */
+.card-lift {
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
 .card-lift:hover {
   box-shadow: 0 8px 24px rgba(0,0,0,0.3);
 }
@@ -236,3 +239,64 @@ button:focus-visible {
   width: 3px;
   border-radius: 0 2px 2px 0;
 }
+
+/* — Missing keyframes — */
+@keyframes pulse-ring {
+  0%   { transform: scale(0.95); opacity: 0.7; }
+  50%  { transform: scale(1.05); opacity: 1; }
+  100% { transform: scale(0.95); opacity: 0.7; }
+}
+@keyframes slide-in {
+  from { transform: translateX(-8px); opacity: 0; }
+  to   { transform: none; opacity: 1; }
+}
+
+/* — Missing utility classes — */
+.anim-pulse-ring { animation: pulse-ring 2s ease-in-out infinite; }
+.anim-slide-in   { animation: slide-in 0.3s ease-out; }
+.wave-bar-teal   { background: #10b981; }
+
+/* — Static transition classes — */
+.agent-row { transition: all 0.12s ease; }
+.agent-row:hover { background: rgba(255, 255, 255, 0.03); }
+.agent-row.selected { background: rgba(245, 158, 11, 0.06); border-left: 2px solid #f59e0b; }
+
+.tab-btn {
+  transition: color 0.12s, border-color 0.12s;
+  border-bottom: 2px solid transparent;
+}
+.tab-btn.active { color: #f59e0b; border-bottom-color: #f59e0b; }
+.tab-btn:hover:not(.active) { color: #e2e8f0; }
+
+.effect-file { transition: background 0.1s; }
+.effect-file:hover { background: rgba(255, 255, 255, 0.03); }
+
+.proj-chip { cursor: pointer; user-select: none; transition: all 0.15s ease; }
+.proj-chip:hover { filter: brightness(1.15); }
+
+.tree-branch > .tree-summary { list-style: none; }
+.tree-branch > .tree-summary::-webkit-details-marker { display: none; }
+.tree-branch[open] > .tree-summary .tree-chevron { transform: rotate(90deg); }
+.tree-children { transition: opacity 0.15s ease; }
+.tree-branch:not([open]) .tree-children { display: none; }
+.tree-node { position: relative; }
+
+.progress-ring { transform: rotate(-90deg); }
+
+/* — Vue transition: fade — */
+.fade-enter-active,
+.fade-leave-active { transition: opacity 0.15s ease; }
+.fade-enter-from,
+.fade-leave-to { opacity: 0; }
+
+/* — Vue transition: slide-fade — */
+.slide-fade-enter-active { transition: all 0.2s ease-out; }
+.slide-fade-leave-active { transition: all 0.15s ease-in; }
+.slide-fade-enter-from { opacity: 0; transform: translateY(6px); }
+.slide-fade-leave-to { opacity: 0; transform: translateY(-4px); }
+
+/* — Vue transition: list (staggered) — */
+.list-enter-active { transition: all 0.3s ease-out; }
+.list-leave-active { transition: all 0.2s ease-in; }
+.list-enter-from { opacity: 0; transform: translateX(-8px); }
+.list-leave-to { opacity: 0; transform: translateX(8px); }

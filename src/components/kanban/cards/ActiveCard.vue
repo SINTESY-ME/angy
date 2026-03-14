@@ -67,9 +67,7 @@
         {{ actions.agentCount.value }}
       </span>
       <!-- Wave bars -->
-      <span class="flex items-end gap-px h-3.5">
-        <span v-for="i in 5" :key="i" class="wave-bar" :style="{ animationDelay: `${(i - 1) * 150}ms` }" />
-      </span>
+      <WaveBar />
       <!-- Cost -->
       <span class="text-[10px] text-txt-faint ml-auto">${{ epic.costTotal?.toFixed(2) ?? '0.00' }}</span>
     </div>
@@ -138,6 +136,7 @@ import { useProjectsStore } from '@/stores/projects';
 import { useEpicCardActions } from '@/composables/useEpicCardActions';
 import PriorityBadge from './PriorityBadge.vue';
 import ProgressRing from './ProgressRing.vue';
+import WaveBar from '@/components/common/WaveBar.vue';
 
 const props = withDefaults(defineProps<{
   epic: Epic;
