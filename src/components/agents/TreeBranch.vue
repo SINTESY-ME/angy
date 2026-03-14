@@ -94,34 +94,13 @@
           </div>
         </div>
 
-        <!-- ── Tool call group (collapsed summary) ── -->
-        <details v-else-if="block.type === 'tool-group'" class="group">
-          <summary class="flex items-center gap-2 cursor-pointer">
-            <div class="flex items-center gap-1.5 px-2 py-1 rounded-md bg-white/[0.03] border border-white/[0.04] group-hover:border-white/[0.08] transition-colors">
-              <svg class="w-2.5 h-2.5 text-txt-faint transition-transform group-open:rotate-90" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
-              <span class="text-[10px] text-txt-secondary">{{ block.toolCount }} tool call{{ block.toolCount !== 1 ? 's' : '' }}</span>
-              <span v-if="block.toolSummary" class="text-[9px] text-txt-faint">· {{ block.toolSummary }}</span>
-            </div>
-          </summary>
-          <div class="mt-1.5 ml-1 space-y-1">
-            <div
-              v-for="(call, ci) in block.toolCalls"
-              :key="ci"
-              class="flex items-center gap-2 px-2 py-1 rounded-md bg-white/[0.02]"
-            >
-              <span class="text-[9px] font-mono text-ember-400">{{ call.toolName }}</span>
-              <span
-                v-if="call.filePath"
-                class="text-[9px] text-txt-secondary font-mono truncate cursor-pointer hover:text-cyan-400 transition-colors"
-                @click="$emit('file-clicked', call.filePath!)"
-              >{{ call.filePath }}</span>
-              <span
-                v-else-if="call.summary"
-                class="text-[9px] text-txt-faint font-mono truncate"
-              >{{ call.summary }}</span>
-            </div>
-          </div>
-        </details>
+        <!-- ── Tool call group (with diffs for edits) ── -->
+        <ToolCallGroup
+          v-else-if="block.type === 'tool-group'"
+          :calls="block.toolCalls ?? []"
+          :expanded-by-default="block.hasEdits"
+          @file-clicked="(path: string) => $emit('file-clicked', path)"
+        />
 
         <!-- ── User message / task prompt (collapsed by default, markdown rendered) ── -->
         <details v-else-if="block.type === 'user'" class="group">
@@ -162,14 +141,11 @@ import type { HierarchicalAgent } from '../../stores/fleet';
 import type { MessageRecord } from '../../engine/types';
 import { renderMarkdown } from '../../utils/renderMarkdown';
 import WaveBar from '@/components/common/WaveBar.vue';
+import ToolCallGroup from '@/components/chat/ToolCallGroup.vue';
+import type { ToolCallInfo } from '@/components/chat/ToolCallGroup.vue';
 
 const LINE_LIMIT = 50;
-
-interface ToolCallEntry {
-  toolName: string;
-  filePath?: string;
-  summary?: string;
-}
+const EDIT_TOOLS = new Set(['Edit', 'Write', 'StrReplace', 'MultiEdit', 'NotebookEdit']);
 
 interface MessageBlock {
   type: 'user' | 'text' | 'thinking' | 'tool-group' | 'streaming';
@@ -178,9 +154,10 @@ interface MessageBlock {
   lineCount?: number;
   isLong?: boolean;
   thinkingElapsedMs?: number;
-  toolCalls?: ToolCallEntry[];
+  toolCalls?: ToolCallInfo[];
   toolCount?: number;
   toolSummary?: string;
+  hasEdits?: boolean;
 }
 
 const props = defineProps<{
@@ -253,7 +230,7 @@ function countLines(text: string): number {
 
 const messageBlocks = computed((): MessageBlock[] => {
   const blocks: MessageBlock[] = [];
-  let pendingTools: ToolCallEntry[] = [];
+  let pendingTools: ToolCallInfo[] = [];
 
   function flushToolGroup() {
     if (pendingTools.length === 0) return;
@@ -267,6 +244,7 @@ const messageBlocks = computed((): MessageBlock[] => {
       toolCalls: [...pendingTools],
       toolCount: pendingTools.length,
       toolSummary: summaryParts.join(', '),
+      hasEdits: pendingTools.some(t => t.isEdit),
     });
     pendingTools = [];
   }
@@ -294,7 +272,8 @@ const messageBlocks = computed((): MessageBlock[] => {
   }
 
   for (const msg of props.messages) {
-    if (msg.role === 'tool') continue;
+    // Tool call messages: role='assistant'+toolName (interactive) OR role='tool'+toolName (headless)
+    const isToolCall = !!msg.toolName && (msg.role === 'assistant' || msg.role === 'tool');
 
     if (msg.role === 'user') {
       flushToolGroup();
@@ -309,29 +288,43 @@ const messageBlocks = computed((): MessageBlock[] => {
       continue;
     }
 
-    if (msg.role === 'assistant') {
+    if (isToolCall) {
       const rawContent = msg.content || '';
-
-      if (msg.toolName) {
+      if (msg.role === 'assistant') {
         const textOnly = rawContent.replace(/<thinking>[\s\S]*?<\/thinking>/g, '').trim();
         if (textOnly.length > 10) {
           flushToolGroup();
           emitContentBlocks(rawContent);
         }
-
-        let filePath: string | undefined;
-        let summary: string | undefined;
-        try {
-          const input = msg.toolInput ? JSON.parse(msg.toolInput) : {};
-          filePath = input.file_path || input.filePath || input.path;
-          summary = input.command || input.query || input.pattern;
-          if (!summary && !filePath && input.content) {
-            summary = String(input.content).slice(0, 80);
-          }
-        } catch { /* ignore parse errors */ }
-        pendingTools.push({ toolName: msg.toolName, filePath, summary });
-        continue;
       }
+
+      let filePath: string | undefined;
+      let summary: string | undefined;
+      let isEdit = false;
+      let oldString: string | undefined;
+      let newString: string | undefined;
+      try {
+        const input = msg.toolInput ? JSON.parse(msg.toolInput) : {};
+        filePath = input.file_path || input.filePath || input.path;
+        summary = input.command || input.query || input.pattern;
+        if (!summary && !filePath && input.content) {
+          summary = String(input.content).slice(0, 80);
+        }
+        if (msg.toolName && EDIT_TOOLS.has(msg.toolName)) {
+          isEdit = true;
+          oldString = input.old_string;
+          newString = input.new_string ?? input.content ?? input.contents;
+        }
+      } catch { /* ignore parse errors */ }
+      pendingTools.push({ toolName: msg.toolName!, filePath, summary, isEdit, oldString, newString });
+      continue;
+    }
+
+    // Skip bare tool-result messages without toolName
+    if (msg.role === 'tool') continue;
+
+    if (msg.role === 'assistant') {
+      const rawContent = msg.content || '';
 
       flushToolGroup();
 

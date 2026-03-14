@@ -153,6 +153,10 @@ async function toggleProjectPicker() {
 function onProjectSelect(id: string) {
   ui.activeProjectId = id;
   projectPickerOpen.value = false;
+  const projectRepos = projectsStore.reposByProjectId(id);
+  if (projectRepos.length > 0) {
+    codeStore.selectRepo(projectRepos[0].id);
+  }
 }
 
 // ── Repo picker ────────────────────────────────────────────────────────

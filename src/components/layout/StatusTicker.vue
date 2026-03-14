@@ -3,23 +3,40 @@ import { computed } from 'vue';
 import { useFleetStore, PROJECT_COLORS } from '@/stores/fleet';
 import { useEpicStore } from '@/stores/epics';
 import { useProjectsStore } from '@/stores/projects';
+import { useUiStore } from '@/stores/ui';
 
 const fleetStore = useFleetStore();
 const epicStore = useEpicStore();
 const projectsStore = useProjectsStore();
+const ui = useUiStore();
 
 const projectProgress = computed(() => {
   return projectsStore.projects
     .map((project, idx) => {
       const epics = epicStore.epicsByProject(project.id);
+      const inProgress = epics.filter(e => e.column === 'in-progress');
       const total = epics.filter(e => ['in-progress', 'review', 'done'].includes(e.column)).length;
       const done = epics.filter(e => e.column === 'done').length;
+
+      let phaseLabel: string | null = null;
+      let phaseProgress: { current: number; total: number } | undefined;
+      for (const epic of inProgress) {
+        const activity = ui.epicActivities.get(epic.id);
+        if (activity) {
+          phaseLabel = activity.label;
+          phaseProgress = activity.progress;
+          break;
+        }
+      }
+
       return {
         projectId: project.id,
         name: project.name,
         color: PROJECT_COLORS[idx % PROJECT_COLORS.length],
         done,
         total,
+        phaseLabel,
+        phaseProgress,
       };
     })
     .filter(p => p.total > 0);
@@ -36,7 +53,12 @@ const activeCount = computed(() => fleetStore.activeCount);
       <template v-for="proj in projectProgress" :key="proj.projectId">
         <div class="flex items-center gap-1.5">
           <span class="w-1.5 h-1.5 rounded-full flex-shrink-0 anim-breathe" :style="{ backgroundColor: proj.color }"></span>
-          <span class="text-[10px] text-txt-muted font-mono leading-none">{{ proj.name }} building {{ proj.done }}/{{ proj.total }}</span>
+          <span v-if="proj.phaseLabel" class="text-[10px] text-txt-muted font-mono leading-none">
+            {{ proj.name }}
+            <span class="text-teal">{{ proj.phaseLabel }}</span>
+            <template v-if="proj.phaseProgress"> {{ proj.phaseProgress.current }}/{{ proj.phaseProgress.total }}</template>
+          </span>
+          <span v-else class="text-[10px] text-txt-muted font-mono leading-none">{{ proj.name }} {{ proj.done }}/{{ proj.total }} done</span>
         </div>
       </template>
     </div>

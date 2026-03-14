@@ -28,6 +28,16 @@
         <span v-if="i > 0" class="text-txt-faint">&rsaquo;</span>
         <span :class="i === pathSegments.length - 1 ? 'text-txt-muted' : 'text-txt-faint'">{{ segment }}</span>
       </template>
+      <span class="flex-1" />
+      <button
+        v-if="isMarkdownFile"
+        @click="toggleMarkdownPreview"
+        class="px-2 py-0.5 text-[10px] rounded transition-colors flex-shrink-0"
+        :class="markdownPreview
+          ? 'bg-[var(--accent-mauve)] text-[var(--bg-base)]'
+          : 'text-txt-muted hover:text-txt-primary hover:bg-[var(--bg-raised)]'"
+        :title="markdownPreview ? 'Show code' : 'Preview markdown'"
+      >{{ markdownPreview ? 'Code' : 'Preview' }}</button>
     </div>
 
     <!-- Editor -->
@@ -50,6 +60,15 @@ const pathSegments = computed(() => {
   if (!activeFile.value) return [];
   return activeFile.value.split('/').filter(Boolean);
 });
+
+const isMarkdownFile = computed(() => codeViewerRef.value?.isMarkdownFile ?? false);
+const markdownPreview = computed(() => codeViewerRef.value?.markdownPreview ?? false);
+
+function toggleMarkdownPreview() {
+  if (codeViewerRef.value) {
+    codeViewerRef.value.markdownPreview = !codeViewerRef.value.markdownPreview;
+  }
+}
 
 function fileName(filePath: string): string {
   return filePath.split('/').pop() ?? filePath;

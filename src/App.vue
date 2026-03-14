@@ -314,16 +314,14 @@ function onKeepToday() {
 }
 
 async function onFileClicked(filePath: string) {
-  // In manager mode, show inline preview instead of switching to editor
+  // AgentsView handles file clicks internally with its own CodeViewer;
+  // this handler is only reached from MainSplitter (mission-control).
+  ui.currentFile = filePath;
   if (ui.viewMode === 'agents') {
     ui.inlinePreviewFile = filePath;
-    ui.currentFile = filePath;
-    await nextTick();
-    codeViewerRef.value?.loadFile(filePath);
-  } else {
-    ui.currentFile = filePath;
-    codeViewerRef.value?.loadFile(filePath);
   }
+  await nextTick();
+  codeViewerRef.value?.loadFile(filePath);
 }
 
 function onFileDeleted(filePath: string) {

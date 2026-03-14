@@ -556,6 +556,8 @@ defineExpose({
   setRootPath,
   tabs,        // reactive ref<EditorTab[]> — lets CodeEditorPane render its own tab bar
   activeFile,  // reactive ref<string> — lets CodeEditorPane watch active file
+  markdownPreview,
+  isMarkdownFile,
 });
 </script>
 

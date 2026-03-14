@@ -113,27 +113,14 @@
             <span v-if="item.message!.timestamp" class="text-[9px] text-txt-faint ml-auto flex-shrink-0">{{ relativeTime(item.message!.timestamp) }}</span>
           </div>
 
-          <!-- ── Orchestrator tool calls (grouped summary) ── -->
-          <details v-else-if="item.type === 'orchestrator-tools'" class="tree-node group anim-fade-in">
-            <summary class="flex items-center gap-2 cursor-pointer">
-              <div class="flex items-center gap-1.5 px-2 py-1 rounded-md bg-white/[0.03] border border-white/[0.04] group-hover:border-white/[0.08] transition-colors">
-                <svg class="w-2.5 h-2.5 text-txt-faint transition-transform group-open:rotate-90" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
-                <span class="text-[10px] text-txt-secondary">{{ item.toolCount }} tool call{{ item.toolCount !== 1 ? 's' : '' }}</span>
-                <span v-if="item.toolSummary" class="text-[9px] text-txt-faint">· {{ item.toolSummary }}</span>
-              </div>
-            </summary>
-            <div class="mt-1.5 ml-1 space-y-1">
-              <div
-                v-for="(call, ci) in item.toolCalls"
-                :key="ci"
-                class="flex items-center gap-2 px-2 py-1 rounded-md bg-white/[0.02]"
-              >
-                <span class="text-[9px] font-mono text-ember-400">{{ call.toolName }}</span>
-                <span v-if="call.filePath" class="text-[9px] text-txt-secondary font-mono truncate">{{ call.filePath }}</span>
-                <span v-else-if="call.summary" class="text-[9px] text-txt-faint font-mono truncate">{{ call.summary }}</span>
-              </div>
-            </div>
-          </details>
+          <!-- ── Orchestrator tool calls (grouped summary with diffs) ── -->
+          <ToolCallGroup
+            v-else-if="item.type === 'orchestrator-tools'"
+            class="tree-node anim-fade-in"
+            :calls="item.toolCalls ?? []"
+            :expanded-by-default="item.hasEdits"
+            @file-clicked="(path: string) => $emit('file-clicked', path)"
+          />
 
           <!-- ── Sub-agent branch ── -->
           <TreeBranch
@@ -175,21 +162,20 @@ import type { MessageRecord } from '../../engine/types';
 import { renderMarkdown, renderInline } from '../../utils/renderMarkdown';
 import TreeBranch from './TreeBranch.vue';
 import ChatInputBar from './ChatInputBar.vue';
+import ToolCallGroup from '../chat/ToolCallGroup.vue';
+import type { ToolCallInfo } from '../chat/ToolCallGroup.vue';
 
-interface ToolCallEntry {
-  toolName: string;
-  filePath?: string;
-  summary?: string;
-}
+const EDIT_TOOLS = new Set(['Edit', 'Write', 'StrReplace', 'MultiEdit', 'NotebookEdit']);
 
 interface TimelineItem {
   type: 'orchestrator-message' | 'orchestrator-decision' | 'orchestrator-tools' | 'sub-agent';
   message?: MessageRecord;
   agent?: HierarchicalAgent;
   timestamp: number;
-  toolCalls?: ToolCallEntry[];
+  toolCalls?: ToolCallInfo[];
   toolCount?: number;
   toolSummary?: string;
+  hasEdits?: boolean;
 }
 
 const props = defineProps<{
@@ -330,20 +316,28 @@ function relativeTime(ts: number): string {
 // ── Timeline: groups messages into orchestrator text, decisions, tool
 //    summaries, and sub-agent branches, sorted chronologically ─────────────
 
-function parseToolEntry(msg: MessageRecord): ToolCallEntry {
+function parseToolEntry(msg: MessageRecord): ToolCallInfo {
   let filePath: string | undefined;
   let summary: string | undefined;
+  let isEdit = false;
+  let oldString: string | undefined;
+  let newString: string | undefined;
   try {
     const input = msg.toolInput ? JSON.parse(msg.toolInput) : {};
     filePath = input.file_path || input.filePath || input.path;
     summary = input.command || input.query || input.task;
+    if (msg.toolName && EDIT_TOOLS.has(msg.toolName)) {
+      isEdit = true;
+      oldString = input.old_string;
+      newString = input.new_string ?? input.content ?? input.contents;
+    }
   } catch { /* ignore */ }
-  return { toolName: msg.toolName!, filePath, summary };
+  return { toolName: msg.toolName!, filePath, summary, isEdit, oldString, newString };
 }
 
 const timeline = computed((): TimelineItem[] => {
   const items: TimelineItem[] = [];
-  let pendingTools: { msg: MessageRecord; entry: ToolCallEntry }[] = [];
+  let pendingTools: { msg: MessageRecord; entry: ToolCallInfo }[] = [];
 
   function flushTools() {
     if (pendingTools.length === 0) return;
@@ -353,8 +347,9 @@ const timeline = computed((): TimelineItem[] => {
     const summaryParts = Object.entries(counts).map(([name, n]) =>
       n > 1 ? `${name} ×${n}` : name,
     );
+    const hasEdits = entries.some(e => e.isEdit);
 
-    if (pendingTools.length === 1 && pendingTools[0].msg.content?.trim()) {
+    if (pendingTools.length === 1 && pendingTools[0].msg.role === 'assistant' && pendingTools[0].msg.content?.trim()) {
       items.push({
         type: 'orchestrator-decision',
         message: pendingTools[0].msg,
@@ -367,19 +362,21 @@ const timeline = computed((): TimelineItem[] => {
         toolCalls: entries,
         toolCount: entries.length,
         toolSummary: summaryParts.join(', '),
+        hasEdits,
       });
     }
     pendingTools = [];
   }
 
   for (const msg of messages.value) {
-    if (msg.role === 'tool') continue;
+    // Tool call messages: role='assistant'+toolName (interactive) OR role='tool'+toolName (headless)
+    const isToolCall = !!msg.toolName && (msg.role === 'assistant' || msg.role === 'tool');
 
-    if (msg.role === 'assistant' && msg.toolName) {
+    if (isToolCall) {
       // If this tool-call message also has substantial text content,
       // emit the text first as a regular message before grouping the tool call.
       const textContent = getTextContent(msg.content);
-      if (textContent.length > 10) {
+      if (textContent.length > 10 && msg.role === 'assistant') {
         flushTools();
         items.push({
           type: 'orchestrator-message',
@@ -391,6 +388,9 @@ const timeline = computed((): TimelineItem[] => {
       pendingTools.push({ msg, entry: parseToolEntry(msg) });
       continue;
     }
+
+    // Skip bare tool-result messages (role='tool' without toolName)
+    if (msg.role === 'tool') continue;
 
     flushTools();
 

@@ -6,10 +6,24 @@
     />
     <div class="flex flex-1 min-h-0">
       <FleetSidebar @agent-selected="onAgentSelected" />
+
+      <!-- Center: inline file preview OR chat -->
+      <div v-if="ui.inlinePreviewFile" class="flex flex-col flex-1 min-w-0">
+        <div
+          class="flex items-center h-8 px-3 border-b border-border-subtle bg-window cursor-pointer"
+          @click="dismissPreview"
+        >
+          <span class="text-[11px] text-teal">← Back to Chat</span>
+          <span class="text-[11px] text-txt-faint mx-2">·</span>
+          <span class="text-[11px] text-txt-primary font-medium">{{ previewFileName }}</span>
+        </div>
+        <CodeViewer ref="inlineViewerRef" class="flex-1 min-h-0" />
+      </div>
+
       <OrchestratorChat
-        v-if="selectedAgentId"
+        v-else-if="selectedAgentId"
         :sessionId="selectedAgentId"
-        @file-clicked="(path: string) => emit('file-clicked', path)"
+        @file-clicked="onLocalFileClicked"
         @send="onSend"
         @stop="onStop"
       />
@@ -27,7 +41,7 @@
       <AgentsEffectsPanel
         v-if="selectedAgentId"
         :sessionId="selectedAgentId"
-        @file-clicked="(path: string) => emit('file-clicked', path)"
+        @file-clicked="onLocalFileClicked"
         @approve="onApprove"
         @reject="onReject"
       />
@@ -36,7 +50,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { ref, computed, nextTick } from 'vue';
 import { useFleetStore } from '../../stores/fleet';
 import { useSessionsStore, getDatabase, getSessionManager } from '../../stores/sessions';
 import { useUiStore } from '../../stores/ui';
@@ -47,6 +61,7 @@ import AgentsHeader from './AgentsHeader.vue';
 import FleetSidebar from './FleetSidebar.vue';
 import OrchestratorChat from './OrchestratorChat.vue';
 import AgentsEffectsPanel from './AgentsEffectsPanel.vue';
+import CodeViewer from '../editor/CodeViewer.vue';
 
 const fleetStore = useFleetStore();
 const sessionsStore = useSessionsStore();
@@ -59,7 +74,27 @@ const emit = defineEmits<{
 
 const selectedAgentId = computed(() => fleetStore.selectedAgentId);
 
+const inlineViewerRef = ref<InstanceType<typeof CodeViewer> | null>(null);
+
+const previewFileName = computed(() => {
+  const full = ui.inlinePreviewFile;
+  if (!full) return '';
+  return full.split('/').pop() ?? full;
+});
+
+async function onLocalFileClicked(filePath: string) {
+  ui.inlinePreviewFile = filePath;
+  ui.currentFile = filePath;
+  await nextTick();
+  inlineViewerRef.value?.loadFile(filePath);
+}
+
+function dismissPreview() {
+  ui.dismissInlinePreview();
+}
+
 function onAgentSelected(sessionId: string) {
+  ui.dismissInlinePreview();
   fleetStore.selectAgent(sessionId);
 }
 
