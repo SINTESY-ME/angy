@@ -596,14 +596,18 @@ export class AngyEngine {
 
     for (const branch of branches) {
       if (branch.status !== 'active') continue;
-      // Worktree branches don't affect main repo HEAD — skip restore
-      if (branch.worktreePath) continue;
 
       const repo = await this.db.loadProjectRepo(branch.repoId);
       if (!repo) continue;
 
-      await this.branchManager.commitEpicWork(repo.path, epic?.title ?? epicId);
-      await this.branchManager.restoreBranch(repo.path, branch.baseBranch);
+      if (branch.worktreePath) {
+        // Worktree: commit work inside the worktree directory, don't touch main repo
+        await this.branchManager.commitEpicWork(branch.worktreePath, epic?.title ?? epicId);
+      } else {
+        // Checkout-based: commit and restore base branch in main repo
+        await this.branchManager.commitEpicWork(repo.path, epic?.title ?? epicId);
+        await this.branchManager.restoreBranch(repo.path, branch.baseBranch);
+      }
     }
   }
 
@@ -660,11 +664,11 @@ export class AngyEngine {
   }
 
   private wireEpicLifecycleEvents(): void {
-    // When an epic completes, restore repos then move to review
+    // When an epic completes, commit work in the worktree/branch then move to review.
+    // Worktrees are kept alive so the user can test during review.
     engineBus.on('epic:completed', async ({ epicId }) => {
       try {
         await this.restoreReposForEpic(epicId);
-        await this.cleanupWorktreesForEpic(epicId);
         await this.scheduler.moveToReview(epicId);
       } catch (err) {
         console.error(`[AngyEngine] Failed to move epic ${epicId} to review:`, err);
@@ -672,16 +676,27 @@ export class AngyEngine {
       engineBus.emit('epic:storeSyncNeeded');
     });
 
-    // When an epic fails, restore repos then move back to todo
+    // When an epic fails, commit work then move back to todo.
+    // Keep worktrees alive so the next attempt can reuse them.
     engineBus.on('epic:failed', async ({ epicId, reason }) => {
       try {
         await this.restoreReposForEpic(epicId);
-        await this.cleanupWorktreesForEpic(epicId);
         await this.scheduler.rejectEpic(epicId, `Agent failed: ${reason}`);
       } catch (err) {
         console.error(`[AngyEngine] Failed to reject epic ${epicId}:`, err);
       }
       engineBus.emit('epic:storeSyncNeeded');
+    });
+
+    // Clean up worktrees only when an epic reaches a terminal state (done/discarded)
+    engineBus.on('epic:updated', async ({ epicId, epic }) => {
+      if (epic.column === 'done' || epic.column === 'discarded') {
+        try {
+          await this.cleanupWorktreesForEpic(epicId);
+        } catch (err) {
+          console.error(`[AngyEngine] Failed to cleanup worktrees for epic ${epicId}:`, err);
+        }
+      }
     });
 
     // Persist cost entries and accumulate epic cost totals

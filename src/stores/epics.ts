@@ -201,6 +201,10 @@ export const useEpicStore = defineStore('epics', () => {
     epics.value[idx] = { ...epic, ...patch };
     const db = getDatabase();
     await db.saveEpic(epics.value[idx]);
+
+    if (column === 'done' || column === 'discarded') {
+      engineBus.emit('epic:updated', { epicId: id, epic: structuredClone(epics.value[idx]) });
+    }
   }
 
   async function deleteEpic(id: string): Promise<void> {
