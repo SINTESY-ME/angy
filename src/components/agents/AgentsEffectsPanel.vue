@@ -3,15 +3,15 @@
     <!-- Header -->
     <div class="px-3 py-2.5 border-b border-border-subtle flex items-center justify-between">
       <span class="text-[11px] font-semibold uppercase tracking-wider text-txt-muted">Effects</span>
-      <div class="flex gap-1">
-        <button
-          v-for="s in (['session', 'all'] as const)"
-          :key="s"
-          class="text-[10px] px-2 py-0.5 rounded transition-colors"
-          :class="scope === s ? 'text-txt-primary bg-raised' : 'text-txt-muted hover:text-txt-secondary'"
-          @click="scope = s"
-        >{{ s === 'session' ? 'Session' : 'All' }}</button>
-      </div>
+      <button
+        @click="fleetStore.effectsExpanded = false"
+        class="text-txt-faint hover:text-txt-primary transition-colors p-0.5"
+        title="Hide Effects"
+      >
+        <svg class="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M6 4l4 4-4 4" />
+        </svg>
+      </button>
     </div>
 
     <!-- Tabs -->
@@ -203,7 +203,6 @@ const childSessionIds = computed(() => {
   return ids;
 });
 
-const scope = ref<'session' | 'all'>('session');
 const activeTab = ref<'effects' | 'graph'>('effects');
 const fileChanges = ref<TaggedFileChange[]>([]);
 const hasPendingApproval = ref(false);
@@ -295,7 +294,7 @@ function resolveAgentTitle(sessionId: string): string {
 }
 
 function onFileEdited(evt: { sessionId: string; filePath: string; toolName: string; toolInput?: Record<string, any> }) {
-  if (scope.value === 'session' && evt.sessionId !== props.sessionId && !childSessionIds.value.has(evt.sessionId)) return;
+  if (evt.sessionId !== props.sessionId && !childSessionIds.value.has(evt.sessionId)) return;
 
   let changeType: FileChange['changeType'];
   if (evt.toolName === 'Delete') {

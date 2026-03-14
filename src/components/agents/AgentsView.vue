@@ -39,12 +39,13 @@
         <span class="text-[10px] text-txt-faint mt-1">Or press +New Agent to get started</span>
       </div>
       <AgentsEffectsPanel
-        v-if="selectedAgentId"
+        v-if="selectedAgentId && fleetStore.effectsExpanded"
         :sessionId="selectedAgentId"
         @file-clicked="onLocalFileClicked"
         @approve="onApprove"
         @reject="onReject"
       />
+      <AgentsEffectsCollapsed v-else-if="selectedAgentId" />
     </div>
   </div>
 </template>
@@ -61,6 +62,7 @@ import AgentsHeader from './AgentsHeader.vue';
 import FleetSidebar from './FleetSidebar.vue';
 import OrchestratorChat from './OrchestratorChat.vue';
 import AgentsEffectsPanel from './AgentsEffectsPanel.vue';
+import AgentsEffectsCollapsed from './AgentsEffectsCollapsed.vue';
 import CodeViewer from '../editor/CodeViewer.vue';
 
 const fleetStore = useFleetStore();

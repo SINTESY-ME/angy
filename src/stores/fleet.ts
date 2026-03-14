@@ -18,6 +18,7 @@ export const useFleetStore = defineStore('fleet', () => {
   const collapsedRoots = ref<Set<string>>(new Set());
   const manuallyExpandedRoots = ref<Set<string>>(new Set());
   const unviewedSessions = ref<Set<string>>(new Set());
+  const effectsExpanded = ref(true);
 
   // ── Getters ────────────────────────────────────────────────────────
 
@@ -286,6 +287,7 @@ export const useFleetStore = defineStore('fleet', () => {
     selectedAgentId,
     collapsedRoots,
     unviewedSessions,
+    effectsExpanded,
     // Getters
     hierarchicalAgents,
     rootAgents,

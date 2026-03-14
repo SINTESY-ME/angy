@@ -46,6 +46,19 @@
           Schedule Now
         </button>
 
+        <!-- Scheduler toggle -->
+        <button
+          class="relative w-9 h-5 rounded-full transition-colors"
+          :class="schedulerEnabled ? 'bg-[var(--accent-green)]' : 'bg-[var(--bg-raised)]'"
+          title="Enable/disable auto-scheduler"
+          @click="toggleSchedulerEnabled"
+        >
+          <span
+            class="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform"
+            :class="schedulerEnabled ? 'left-[18px]' : 'left-0.5'"
+          />
+        </button>
+
         <!-- Separator -->
         <div class="w-px h-4 bg-border-subtle" />
 
@@ -208,10 +221,14 @@ const epicStore = useEpicStore();
 const projectsStore = useProjectsStore();
 const filterStore = useFilterStore();
 
-onMounted(() => {
+onMounted(async () => {
   if (filterStore.selectedProjectIds.length === 0) {
     filterStore.applyPreset('active');
   }
+  try {
+    const config = await Scheduler.getInstance().loadConfig();
+    schedulerEnabled.value = config.enabled;
+  } catch {}
 });
 
 const gitOpsPanelRef = ref<InstanceType<typeof GitOpsPanel> | null>(null);
@@ -224,6 +241,7 @@ const mergeMode = ref(false);
 const selectedEpicIds = ref<string[]>([]);
 const showMergeDialog = ref(false);
 const filterQuery = ref('');
+const schedulerEnabled = ref(false);
 
 const projectId = computed(() => ui.activeProjectId ?? '');
 
@@ -331,6 +349,18 @@ async function addEpic() {
 
 function onScheduleNow() {
   Scheduler.getInstance().tick();
+}
+
+async function toggleSchedulerEnabled() {
+  const scheduler = Scheduler.getInstance();
+  try {
+    const config = await scheduler.loadConfig();
+    config.enabled = !config.enabled;
+    await scheduler.saveConfig(config);
+    schedulerEnabled.value = config.enabled;
+  } catch (e) {
+    console.error('Failed to toggle scheduler:', e);
+  }
 }
 
 async function onSchedulerConfigSaved(config: SchedulerConfig) {
