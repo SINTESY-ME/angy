@@ -688,7 +688,7 @@ export class AngyEngine {
       engineBus.emit('epic:storeSyncNeeded');
     });
 
-    // Clean up worktrees only when an epic reaches a terminal state (done/discarded)
+    // Clean up worktrees when epic is approved via scheduler
     engineBus.on('epic:updated', async ({ epicId, epic }) => {
       if (epic.column === 'done' || epic.column === 'discarded') {
         try {
@@ -696,6 +696,16 @@ export class AngyEngine {
         } catch (err) {
           console.error(`[AngyEngine] Failed to cleanup worktrees for epic ${epicId}:`, err);
         }
+      }
+    });
+
+    // Clean up worktrees when epic is moved to done/discarded via UI (drag-and-drop)
+    engineBus.on('epic:requestWorktreeCleanup', async ({ epicId }) => {
+      try {
+        console.log(`[AngyEngine] Worktree cleanup requested for epic ${epicId}`);
+        await this.cleanupWorktreesForEpic(epicId);
+      } catch (err) {
+        console.error(`[AngyEngine] Failed to cleanup worktrees for epic ${epicId}:`, err);
       }
     });
 

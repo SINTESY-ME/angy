@@ -203,7 +203,7 @@ export const useEpicStore = defineStore('epics', () => {
     await db.saveEpic(epics.value[idx]);
 
     if (column === 'done' || column === 'discarded') {
-      engineBus.emit('epic:updated', { epicId: id, epic: structuredClone(epics.value[idx]) });
+      engineBus.emit('epic:requestWorktreeCleanup', { epicId: id });
     }
   }
 

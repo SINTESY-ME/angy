@@ -167,6 +167,7 @@ export type EngineEvents = {
   'epic:requestStop': { epicId: string; targetColumn?: EpicColumn };
   'epic:requestSuspend': { epicId: string };
   'epic:updated': { epicId: string; epic: Epic };
+  'epic:requestWorktreeCleanup': { epicId: string };
   'orchestrator:autoProfilesDetected': { orchestratorId: string; profileIds: string[]; profileNames: string[]; profileIcons: string[] };
   'epic:storeSyncNeeded': void;
   'pipeline:internalCall': {
