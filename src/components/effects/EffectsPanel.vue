@@ -1,24 +1,14 @@
 <template>
-  <div class="flex flex-col h-full bg-[var(--bg-surface)]">
+  <div class="flex flex-col h-full bg-[var(--bg-base)]">
     <!-- Header -->
-    <div class="flex items-center justify-between px-3 h-10 bg-[var(--bg-surface)]">
-      <span class="text-[var(--text-xs)] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Effects</span>
-      <div class="flex border rounded border-[var(--border-subtle)] overflow-hidden">
-        <button
-          @click="scope = 'Session'"
-          class="text-[var(--text-xs)] px-2 py-0.5 transition-colors"
-          :class="scope === 'Session' ? 'text-[var(--text-primary)] bg-[var(--bg-raised)]' : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'"
-        >
-          Session
-        </button>
-        <button
-          @click="scope = 'All'"
-          class="text-[var(--text-xs)] px-2 py-0.5 transition-colors"
-          :class="scope === 'All' ? 'text-[var(--text-primary)] bg-[var(--bg-raised)]' : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'"
-        >
-          All
-        </button>
-      </div>
+    <div class="flex items-center justify-between px-3 h-11 bg-[var(--bg-base)]">
+      <span class="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Effects</span>
+      <button
+        @click="toggleScope"
+        class="text-[10px] px-2 py-0.5 rounded bg-[var(--bg-raised)] text-[var(--text-muted)] hover:text-[var(--text-secondary)] border border-[var(--border-subtle)] transition-colors"
+      >
+        {{ scope }}
+      </button>
     </div>
 
     <!-- Stats bar -->
@@ -34,14 +24,17 @@
         v-if="groupedChanges.length === 0"
         class="flex flex-col items-center justify-center h-full text-center px-6"
       >
-        <div class="w-10 h-10 mb-2 opacity-30 mx-auto">
+        <div class="w-6 h-6 mb-2 opacity-30 mx-auto">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="text-[var(--text-muted)]">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z" />
             <path d="M14 2v6h6" />
           </svg>
         </div>
-        <div class="text-[var(--text-sm)] text-[var(--text-muted)]">No changes yet</div>
-        <div class="text-[var(--text-xs)] text-[var(--text-faint)] mt-1">File edits will appear as your agent works</div>
+        <div class="text-[11px] text-[var(--text-muted)]">No changes yet</div>
+        <div class="text-[10px] text-[var(--text-faint)] mt-1">File edits will appear as your agent works</div>
+        <SectionTip tipId="effects-intro" title="Effects" icon="📝" class="mt-3 w-full">
+          This panel tracks every file your agents create or modify. Use the toggle to see changes from one agent or all agents. Click a file to open it in the editor.
+        </SectionTip>
       </div>
       <template v-else>
         <template v-for="group in groupedChanges" :key="group.turnId">
@@ -70,7 +63,7 @@ import type { FileChange } from '../../engine/types';
 import { useSessionsStore } from '../../stores/sessions';
 import FileChangeItem from './FileChangeItem.vue';
 import TurnDivider from './TurnDivider.vue';
-
+import SectionTip from '../common/SectionTip.vue';
 
 // ── Props & Emits ────────────────────────────────────────────────────────
 
@@ -172,6 +165,10 @@ function clear() {
   sessionChanges.value = new Map();
   turnTimestamps.value = new Map();
   highlightedTurn.value = -1;
+}
+
+function toggleScope() {
+  scope.value = scope.value === 'Session' ? 'All' : 'Session';
 }
 
 // ── Computed ─────────────────────────────────────────────────────────────

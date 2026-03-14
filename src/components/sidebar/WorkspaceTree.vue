@@ -1,5 +1,5 @@
 <template>
-  <div class="flex flex-col h-full bg-[var(--bg-surface)]">
+  <div class="flex flex-col h-full bg-[var(--bg-base)]">
     <!-- Header -->
     <div class="px-3 py-2 border-b border-[var(--border-subtle)]">
       <!-- Multi-repo selector (when epic has multiple repos) -->

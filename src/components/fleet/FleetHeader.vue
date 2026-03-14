@@ -1,19 +1,12 @@
 <template>
-  <div class="relative flex flex-col bg-[var(--bg-surface)]">
-    <div class="flex items-center justify-between px-4 h-10 border-b border-[var(--border-subtle)]">
+  <div class="relative flex flex-col bg-[var(--bg-base)]">
+    <div class="flex items-center justify-between px-3 h-8">
       <!-- Left side: title -->
       <div class="flex items-center gap-1.5">
-        <span class="text-[var(--text-xs)] font-semibold tracking-wider text-[var(--text-muted)] uppercase">Agents</span>
+        <span class="text-[10px] font-semibold tracking-widest text-[var(--text-muted)] uppercase">Agents</span>
       </div>
 
     <div class="flex gap-0.5">
-      <button
-        @click="$emit('new-agent')"
-        class="w-7 h-7 flex items-center justify-center rounded-md bg-[var(--accent-mauve)] text-white hover:brightness-110 transition-all"
-        title="New agent"
-      >
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2v8M2 6h8"/></svg>
-      </button>
       <button
         ref="menuBtnRef"
         @click.stop="toggleMenu"
@@ -33,7 +26,7 @@
     <Teleport to="body">
       <div
         v-if="menuOpen"
-        class="fixed z-50 bg-[var(--bg-raised)] border border-[var(--border-standard)] rounded-[var(--radius-md)] py-1 shadow-[var(--shadow-md)] min-w-[180px]"
+        class="fixed z-50 bg-[var(--bg-raised)] border border-[var(--border-standard)] rounded-md py-1 shadow-lg min-w-[180px]"
         :style="dropdownStyle"
       >
         <button
@@ -64,7 +57,6 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 
 const emit = defineEmits<{
-  'new-agent': [];
   'delete-all': [];
   'delete-older': [];
   'keep-today': [];

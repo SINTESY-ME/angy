@@ -85,7 +85,7 @@
 import { watch, computed, toRef, ref, onMounted, onUnmounted } from 'vue';
 import { useGitStore } from '@/stores/git';
 import { useProjectsStore } from '@/stores/projects';
-import { useUiStore } from '@/stores/ui';
+import { useFilterStore } from '@/stores/filter';
 import { useGitGraph, ROW_HEIGHT } from '@/composables/useGitGraph';
 import GitGraphRail from './GitGraphRail.vue';
 
@@ -94,7 +94,7 @@ const emit = defineEmits<{ close: [] }>();
 
 const gitStore = useGitStore();
 const projectsStore = useProjectsStore();
-const ui = useUiStore();
+const filterStore = useFilterStore();
 
 const loading = ref(false);
 const selectedRepoIdx = ref(0);
@@ -102,7 +102,7 @@ const commits = toRef(gitStore, 'commits');
 const { nodes, edges, width: graphWidth, height: graphHeight } = useGitGraph(commits);
 
 const allRepos = computed(() => {
-  const projectId = ui.kanbanProjectIds[0];
+  const projectId = filterStore.selectedProjectIds[0];
   if (!projectId) return [];
   return projectsStore.reposByProjectId(projectId);
 });

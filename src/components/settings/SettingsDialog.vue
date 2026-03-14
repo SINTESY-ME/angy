@@ -136,27 +136,6 @@
             </div>
           </template>
 
-          <!-- Theme tab -->
-          <template v-if="activeTab === 'Theme'">
-            <div class="space-y-3">
-              <label class="text-xs text-[var(--text-secondary)] mb-1 block">Color Theme</label>
-              <div class="grid grid-cols-2 gap-2">
-                <button
-                  v-for="variant in themeVariants"
-                  :key="variant"
-                  @click="themeStore.setTheme(variant)"
-                  class="flex items-center gap-2 px-3 py-2.5 rounded border transition-colors"
-                  :class="themeStore.currentTheme === variant
-                    ? 'border-[var(--accent-mauve)] bg-[color-mix(in_srgb,var(--accent-mauve)_10%,transparent)]'
-                    : 'border-[var(--border-standard)] hover:border-[var(--border-standard)]'"
-                >
-                  <div class="w-4 h-4 rounded-full" :style="{ backgroundColor: themePreview(variant) }"></div>
-                  <span class="text-xs text-[var(--text-primary)] capitalize">{{ variant }}</span>
-                </button>
-              </div>
-            </div>
-          </template>
-
           <!-- Keyboard tab -->
           <template v-if="activeTab === 'Keyboard'">
             <div class="space-y-2">
@@ -266,8 +245,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, watch, onMounted } from 'vue';
-import { useThemeStore } from '../../stores/theme';
-import type { ThemeVariant } from '../../themes/catppuccin';
+
 import { ProfileManager, type PersonalityProfile } from '../../engine/ProfileManager';
 import { Scheduler } from '../../engine/Scheduler';
 import InfoTip from '@/components/common/InfoTip.vue';
@@ -276,9 +254,8 @@ import InfoTip from '@/components/common/InfoTip.vue';
 const props = defineProps<{ visible: boolean }>();
 const emit = defineEmits<{ close: []; saved: [settings: Record<string, string>] }>();
 
-const themeStore = useThemeStore();
 const activeTab = ref('General');
-const tabs = ['General', 'Theme', 'Keyboard', 'Orchestration', 'Profiles'];
+const tabs = ['General', 'Keyboard', 'Orchestration', 'Profiles'];
 
 const profileManager = new ProfileManager();
 const profiles = ref<PersonalityProfile[]>([]);
@@ -306,20 +283,6 @@ const tickIntervalOptions = [
   { label: '60 seconds', value: 60000 },
   { label: '120 seconds', value: 120000 },
 ];
-
-const themeVariants: ThemeVariant[] = ['mocha', 'mocha-classic', 'macchiato', 'frappe', 'latte', 'cursor'];
-
-function themePreview(variant: string) {
-  const previews: Record<string, string> = {
-    mocha: '#cba6f7',
-    'mocha-classic': '#cba6f7',
-    macchiato: '#c6a0f6',
-    frappe: '#ca9ee6',
-    latte: '#8839ef',
-    cursor: '#a78bfa',
-  };
-  return previews[variant] || '#cba6f7';
-}
 
 const shortcuts = [
   { key: '⌘E', label: 'Toggle Editor/Manager view' },

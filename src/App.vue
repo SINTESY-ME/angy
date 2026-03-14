@@ -1,24 +1,20 @@
 <template>
   <AppShell>
-    <template #actions>
-      <HomeActions v-if="ui.viewMode === 'home'" />
-      <KanbanActions v-else-if="ui.viewMode === 'kanban'"
-        @add-epic="kanbanViewRef?.addEpic()"
-        @schedule-now="kanbanViewRef?.scheduleNow()"
-        @open-git-tree="kanbanViewRef?.openGitTree()"
-        @open-scheduler-config="kanbanViewRef?.openSchedulerConfig()"
-        @toggle-git-ops="kanbanViewRef?.toggleGitOps()"
-        @toggle-merge-mode="kanbanViewRef?.toggleMergeMode()" />
-      <ManagerActions v-else-if="ui.viewMode === 'manager'"
-        @new-agent="onNewChat()"
-        @enter-mission-control="onEnterMissionControl()" />
-      <MissionControlActions v-else-if="ui.viewMode === 'mission-control'"
-        @exit-mission-control="onExitMissionControl()" />
-    </template>
-
     <!-- Top-level view routing based on viewMode -->
     <HomeView v-if="ui.viewMode === 'home'" />
     <KanbanView v-else-if="ui.viewMode === 'kanban'" ref="kanbanViewRef" />
+
+    <!-- Agents view: new 3-panel layout -->
+    <AgentsView
+      v-else-if="ui.viewMode === 'agents' && ui.workspacePath"
+      @file-clicked="onFileClicked"
+      @enter-mission-control="onEnterMissionControl"
+    />
+
+    <!-- Code view: standalone 3-panel layout -->
+    <CodeView
+      v-else-if="ui.viewMode === 'code' && ui.workspacePath"
+    />
 
     <!-- Workspace-dependent views: show selector until a workspace is chosen -->
     <WorkspaceSelector v-else-if="!ui.workspacePath" />
@@ -80,10 +76,6 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import AppShell from './components/layout/AppShell.vue';
-import HomeActions from './components/layout/actions/HomeActions.vue';
-import KanbanActions from './components/layout/actions/KanbanActions.vue';
-import ManagerActions from './components/layout/actions/ManagerActions.vue';
-import MissionControlActions from './components/layout/actions/MissionControlActions.vue';
 import WorkspaceSelector from './components/WorkspaceSelector.vue';
 import HomeView from './components/home/HomeView.vue';
 import KanbanView from './components/kanban/KanbanView.vue';
@@ -95,6 +87,8 @@ import type { GitUnifiedDiff } from './engine/GitManager';
 import TerminalPanel from './components/terminal/TerminalPanel.vue';
 import SettingsDialog from './components/settings/SettingsDialog.vue';
 import NotificationToast from './components/home/NotificationToast.vue';
+import AgentsView from './components/agents/AgentsView.vue';
+import CodeView from './components/code/CodeView.vue';
 import { useUiStore } from './stores/ui';
 import { useThemeStore } from './stores/theme';
 import { useSessionsStore, getDatabase, initSessionEngines } from './stores/sessions';
@@ -321,7 +315,7 @@ function onKeepToday() {
 
 async function onFileClicked(filePath: string) {
   // In manager mode, show inline preview instead of switching to editor
-  if (ui.viewMode === 'manager') {
+  if (ui.viewMode === 'agents') {
     ui.inlinePreviewFile = filePath;
     ui.currentFile = filePath;
     await nextTick();
@@ -577,10 +571,10 @@ function onGitFileDiffReady({ filePath, staged, diff }: { filePath: string; stag
   const rightLabel = staged ? 'Staged' : 'Working Tree';
   ui.showDiffView(filePath, diff.oldContent, diff.newContent, 'HEAD', rightLabel);
   // Ensure code pane is visible in editor mode
-  if (ui.viewMode === 'editor') {
-    // diff will show in Panel 2 via MainSplitter
+  if (ui.viewMode === 'code') {
+    // TODO: handle diff view in CodeView — currently a no-op for code mode
   } else {
-    // In manager mode, show as inline preview
+    // In agents mode, show as inline preview
     ui.inlinePreviewFile = filePath;
   }
 }

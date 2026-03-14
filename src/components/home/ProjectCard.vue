@@ -1,107 +1,17 @@
-<template>
-  <div
-    class="project-card group relative bg-[var(--bg-surface)] border rounded-[var(--radius-md)] overflow-hidden"
-    :style="isAssigned ? { boxShadow: '0 0 0 1px var(--accent-mauve)' } : { boxShadow: 'var(--shadow-sm)' }"
-    :class="isAssigned
-      ? 'border-[var(--accent-mauve)]'
-      : 'border-[var(--border-subtle)] hover:border-[var(--border-standard)]'"
-  >
-    <!-- Main card body -->
-    <div class="relative p-4 cursor-pointer active:scale-[0.98]" @click="ui.navigateToKanban(project.id)">
-      <!-- Header -->
-      <div class="flex items-start justify-between gap-2">
-        <div class="flex items-center gap-2 min-w-0">
-          <!-- Active instance indicator -->
-          <div
-            v-if="isAssigned"
-            class="flex-shrink-0 w-1.5 h-1.5 rounded-full bg-[var(--accent-mauve)]"
-          />
-          <h3 class="text-sm font-semibold text-[var(--text-primary)] truncate leading-tight">{{ project.name }}</h3>
-        </div>
-        <!-- Settings (three-dot menu) -->
-        <button
-          class="flex-shrink-0 p-1 -mr-1 -mt-1 text-[var(--text-faint)] hover:text-[var(--text-secondary)] rounded hover:bg-[var(--bg-hover)] opacity-0 group-hover:opacity-100 transition-all"
-          title="Project settings"
-          @click.stop="$emit('open-settings')"
-        >
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
-            <circle cx="7" cy="3" r="1.2"/>
-            <circle cx="7" cy="7" r="1.2"/>
-            <circle cx="7" cy="11" r="1.2"/>
-          </svg>
-        </button>
-      </div>
-
-      <!-- Description -->
-      <p v-if="project.description" class="text-[var(--text-xs)] text-[var(--text-muted)] mt-2 line-clamp-2 leading-relaxed">
-        {{ project.description }}
-      </p>
-
-      <!-- Stats -->
-      <div class="flex items-center gap-3 mt-3 text-[var(--text-xs)] text-[var(--text-faint)]">
-        <span class="flex items-center gap-1">
-          <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-          </svg>
-          {{ repoCount }} {{ repoCount === 1 ? 'repo' : 'repos' }}
-        </span>
-        <span v-if="epicTotal > 0" class="flex items-center gap-1">
-          <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-          </svg>
-          <span v-if="epicActive > 0" class="text-[var(--accent-mauve)]">{{ epicActive }} active</span>
-          <span v-if="epicActive > 0"> / </span>
-          {{ epicTotal }} epics
-        </span>
-      </div>
-
-      <!-- Hover overlay: quick action buttons -->
-      <div class="absolute bottom-3 right-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-        <button
-          class="w-7 h-7 flex items-center justify-center rounded-md text-[var(--text-faint)] hover:text-[var(--accent-mauve)] hover:bg-[color-mix(in_srgb,var(--accent-mauve)_8%,transparent)] transition-colors"
-          title="Go to Kanban"
-          @click.stop="ui.navigateToKanban(project.id)"
-        >
-          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
-          </svg>
-        </button>
-        <button
-          class="w-7 h-7 flex items-center justify-center rounded-md text-[var(--text-faint)] hover:text-[var(--accent-blue)] hover:bg-[color-mix(in_srgb,var(--accent-blue)_8%,transparent)] transition-colors"
-          title="Go to Code"
-          @click.stop="goToCode()"
-        >
-          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-          </svg>
-        </button>
-        <button
-          class="w-7 h-7 flex items-center justify-center rounded-md text-[var(--text-faint)] hover:text-[var(--accent-peach)] hover:bg-[color-mix(in_srgb,var(--accent-peach)_8%,transparent)] transition-colors"
-          title="Go to Agent Fleet"
-          @click.stop="goToFleet()"
-        >
-          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <rect x="3" y="11" width="18" height="10" rx="2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 11V8a3 3 0 016 0v3"/>
-            <circle cx="9" cy="16" r="1" fill="currentColor"/>
-            <circle cx="15" cy="16" r="1" fill="currentColor"/>
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19h6"/>
-          </svg>
-        </button>
-      </div>
-    </div>
-  </div>
-</template>
-
 <script setup lang="ts">
 import { computed } from 'vue';
 import type { Project } from '@/engine/KosTypes';
+import type { AgentSummary } from '@/engine/types';
 import { useUiStore } from '@/stores/ui';
-import { useProjectsStore } from '@/stores/projects';
 import { useEpicStore } from '@/stores/epics';
+import WaveBar from '@/components/common/WaveBar.vue';
 
 const props = defineProps<{
   project: Project;
+  agents: AgentSummary[];
+  activeEpicCount: number;
+  repoCount: number;
+  index: number;
 }>();
 
 defineEmits<{
@@ -109,41 +19,150 @@ defineEmits<{
 }>();
 
 const ui = useUiStore();
-const projectsStore = useProjectsStore();
 const epicStore = useEpicStore();
 
-const repoCount = computed(() => projectsStore.reposByProjectId(props.project.id).length);
-const isAssigned = computed(() => ui.activeProjectId === props.project.id);
+const ACCENT_COLORS = ['ember', 'cyan', 'teal', 'rose', 'mauve', 'blue'] as const;
+const accent = computed(() => ACCENT_COLORS[props.index % ACCENT_COLORS.length]);
 
-const projectEpics = computed(() => epicStore.epicsByProject(props.project.id));
-const epicTotal = computed(() => projectEpics.value.length);
-const epicActive = computed(() => projectEpics.value.filter(e => e.column === 'in-progress').length);
+const accentColorVar = computed(() => `var(--accent-${accent.value})`);
+const accentHoverClass = computed(() => {
+  const map: Record<string, string> = {
+    ember: 'group-hover:text-ember-400',
+    cyan: 'group-hover:text-cyan-400',
+    teal: 'group-hover:text-teal-400',
+    rose: 'group-hover:text-rose-400',
+    mauve: 'group-hover:text-[var(--accent-mauve)]',
+    blue: 'group-hover:text-[var(--accent-blue)]',
+  };
+  return map[accent.value] ?? 'group-hover:text-ember-400';
+});
 
-function goToCode() {
-  ui.activeProjectId = props.project.id;
-  const repos = projectsStore.reposByProjectId(props.project.id);
-  if (repos.length > 0) {
-    ui.workspacePath = repos[0].path;
+const isActive = computed(() => props.activeEpicCount > 0 || props.agents.some(a => a.status !== 'idle'));
+const activeAgents = computed(() => props.agents.filter(a => a.status !== 'idle'));
+const epicCount = computed(() => epicStore.epicsByProject(props.project.id).length);
+const nextTodoEpic = computed(() =>
+  epicStore.epicsByProject(props.project.id).find(e => e.column === 'todo')
+);
+
+const AVATAR_GRADIENTS = [
+  'linear-gradient(135deg, #f59e0b, #ea580c)',
+  'linear-gradient(135deg, #10b981, #059669)',
+  'linear-gradient(135deg, #22d3ee, #0891b2)',
+  'linear-gradient(135deg, #cba6f7, #a855f7)',
+];
+
+function goToBoard() { ui.navigateToKanban(props.project.id); }
+function goToAgents() { ui.activeProjectId = props.project.id; ui.switchToMode('agents'); }
+function goToCode() { ui.activeProjectId = props.project.id; ui.switchToMode('code'); }
+function handleRun() {
+  if (nextTodoEpic.value) {
+    epicStore.moveEpic(nextTodoEpic.value.id, 'in-progress');
   }
-  ui.switchToMode('editor');
-}
-
-function goToFleet() {
-  ui.activeProjectId = props.project.id;
-  const repos = projectsStore.reposByProjectId(props.project.id);
-  if (repos.length > 0) {
-    ui.workspacePath = repos[0].path;
-  }
-  ui.switchToMode('manager');
 }
 </script>
 
-<style scoped>
-.project-card {
-  transition: all var(--transition-fast);
-}
-.project-card:hover {
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-md);
-}
-</style>
+<template>
+  <div
+    class="bg-surface rounded-2xl p-5 overflow-hidden relative cursor-pointer group card-lift anim-fade-in"
+    :class="isActive
+      ? 'border border-teal/20 anim-shimmer'
+      : 'border border-border-subtle hover:border-ember/20'"
+    :style="{ animationDelay: props.index * 50 + 'ms' }"
+    @click="ui.navigateToProject(props.project.id)"
+  >
+    <!-- Accent stripe -->
+    <div
+      class="accent-stripe"
+      :style="isActive ? { backgroundColor: accentColorVar } : { backgroundColor: 'var(--text-faint)' }"
+    />
+
+    <div class="pl-3">
+      <!-- Row 1: Icon + Status -->
+      <div class="flex items-center justify-between mb-3">
+        <div
+          class="w-10 h-10 rounded-xl flex items-center justify-center"
+          :style="{ backgroundColor: `color-mix(in srgb, ${accentColorVar} 10%, transparent)` }"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" :stroke="accentColorVar" stroke-width="2">
+            <rect x="3" y="3" width="18" height="18" rx="3" /><path d="M9 3v18M3 9h18" />
+          </svg>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <template v-if="isActive">
+            <span class="w-2 h-2 rounded-full bg-teal anim-breathe" />
+            <span class="text-[10px] text-teal font-medium uppercase tracking-wider">active</span>
+          </template>
+          <template v-else>
+            <span class="text-[10px] text-txt-faint font-medium uppercase tracking-wider">idle</span>
+          </template>
+        </div>
+      </div>
+
+      <!-- Row 2: Title -->
+      <h3
+        class="text-base font-semibold text-txt-primary mb-1 transition-colors"
+        :class="accentHoverClass"
+      >{{ project.name }}</h3>
+
+      <!-- Row 3: Description -->
+      <p v-if="project.description" class="text-xs text-txt-muted mb-4 line-clamp-2">
+        {{ project.description }}
+      </p>
+
+      <!-- Row 4: Stats -->
+      <div class="flex items-center gap-4 text-xs text-txt-muted">
+        <span class="flex items-center gap-1.5">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2L2 7l10 5 10-5-10-5z" /><path d="M2 17l10 5 10-5" />
+          </svg>
+          {{ repoCount }} repo{{ repoCount !== 1 ? 's' : '' }}
+        </span>
+        <span class="flex items-center gap-1.5">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" />
+          </svg>
+          {{ epicCount }} epic{{ epicCount !== 1 ? 's' : '' }}
+        </span>
+        <span v-if="activeEpicCount > 0" class="flex items-center gap-1.5 text-teal">
+          <span class="w-1.5 h-1.5 rounded-full bg-teal" />
+          {{ activeEpicCount }} active
+        </span>
+      </div>
+
+      <!-- Row 5: Agent activity strip -->
+      <div class="mt-4 pt-3 border-t border-white/[0.04] flex items-center gap-2">
+        <template v-if="activeAgents.length > 0">
+          <div class="flex -space-x-1.5">
+            <div
+              v-for="(agent, i) in activeAgents.slice(0, 3)"
+              :key="agent.sessionId"
+              class="w-5 h-5 rounded-md border border-base text-[8px] font-bold text-white flex items-center justify-center"
+              :style="{ background: AVATAR_GRADIENTS[i % AVATAR_GRADIENTS.length] }"
+            >
+              {{ agent.title?.charAt(0).toUpperCase() ?? '?' }}
+            </div>
+          </div>
+          <WaveBar :count="3" />
+          <span class="text-[10px] text-txt-muted truncate">
+            {{ activeAgents[0]?.title ?? 'Agent' }} working…
+          </span>
+        </template>
+        <template v-else>
+          <span class="text-[10px] text-txt-faint">No active agents</span>
+        </template>
+      </div>
+
+      <!-- Row 6: Quick actions (hover) -->
+      <div class="mt-3 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity" @click.stop>
+        <button class="text-[10px] px-2.5 py-1 rounded-md bg-raised hover:bg-raised-hover text-txt-secondary transition-colors" @click="goToBoard">Board</button>
+        <button class="text-[10px] px-2.5 py-1 rounded-md bg-raised hover:bg-raised-hover text-txt-secondary transition-colors" @click="goToAgents">Agents</button>
+        <button class="text-[10px] px-2.5 py-1 rounded-md bg-raised hover:bg-raised-hover text-txt-secondary transition-colors" @click="goToCode">Code</button>
+        <button
+          v-if="nextTodoEpic"
+          class="text-[10px] px-2.5 py-1 rounded-md bg-ember/10 hover:bg-ember/20 text-ember transition-colors ml-auto"
+          @click="handleRun"
+        >Run</button>
+      </div>
+    </div>
+  </div>
+</template>

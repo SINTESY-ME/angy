@@ -1,7 +1,8 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
+import { useFilterStore } from '@/stores/filter';
 
-export type ViewMode = 'home' | 'kanban' | 'manager' | 'editor' | 'mission-control';
+export type ViewMode = 'home' | 'kanban' | 'agents' | 'code' | 'mission-control';
 
 export interface AppNotification {
   id: string
@@ -30,17 +31,15 @@ export const useUiStore = defineStore('ui', () => {
   const rightPanelMode = ref<'effects' | 'graph'>('effects');
   const missionControlFilter = ref<string | null>(null);
   const autoCommitEnabled = ref(false);
-  const kanbanProjectIds = ref<string[]>([]);
-  const fleetProjectIds = ref<string[]>([]); // empty = show all
+
+  const fleetProjectIds = ref<string[]>([]);
   const notifications = ref<AppNotification[]>([]);
   const repoSwitchOnly = ref(false);
+  const epicActivities = ref<Map<string, { label: string; progress?: { current: number; total: number } }>>(new Map());
+  const activityLogVisible = ref(false);
   const kanbanFilterText = ref('');
   const pipelineActivity = ref<string | null>(null);
   const pipelineTodoProgress = ref<{ current: number; total: number } | null>(null);
-
-  // Multi-epic activity tracking: epicId -> { label, progress }
-  const epicActivities = ref<Map<string, { label: string; progress?: { current: number; total: number } }>>(new Map());
-  const activityLogVisible = ref(false);
 
   // Diff view state (git diff shown in Monaco DiffSplitView)
   const diffView = ref<{
@@ -56,11 +55,12 @@ export const useUiStore = defineStore('ui', () => {
   const editorSizes = ref([40, 210, -1, 320, 0]);
 
   function switchToMode(mode: ViewMode) {
+    window.dispatchEvent(new CustomEvent('angy:close-popovers'));
     viewMode.value = mode;
   }
 
   function toggleViewMode() {
-    switchToMode(viewMode.value === 'manager' ? 'editor' : 'manager');
+    switchToMode(viewMode.value === 'agents' ? 'code' : 'agents');
   }
 
   function toggleTerminal() {
@@ -92,7 +92,7 @@ export const useUiStore = defineStore('ui', () => {
   }
 
   function exitMissionControl() {
-    viewMode.value = 'manager';
+    viewMode.value = 'agents';
     missionControlFilter.value = null;
   }
 
@@ -139,58 +139,29 @@ export const useUiStore = defineStore('ui', () => {
     notifications.value = []
   }
 
+  function openCommandPalette() {
+    window.dispatchEvent(new CustomEvent('angy:command-palette'));
+  }
+
   function navigateHome() {
+    window.dispatchEvent(new CustomEvent('angy:close-popovers'));
     viewMode.value = 'home';
     activeProjectId.value = null;
     activeEpicId.value = null;
   }
 
   function navigateToProject(projectId: string) {
+    window.dispatchEvent(new CustomEvent('angy:close-popovers'));
     activeProjectId.value = projectId;
-    if (!kanbanProjectIds.value.includes(projectId)) {
-      kanbanProjectIds.value = [...kanbanProjectIds.value, projectId];
-    }
+    useFilterStore().applySelection([projectId]);
     viewMode.value = 'kanban';
   }
 
   function navigateToEpic(epicId: string, projectId: string) {
+    window.dispatchEvent(new CustomEvent('angy:close-popovers'));
     activeProjectId.value = projectId;
     activeEpicId.value = epicId;
-    viewMode.value = 'manager';
-  }
-
-  function navigateToKanban(projectId?: string) {
-    if (projectId) {
-      activeProjectId.value = projectId;
-      if (!kanbanProjectIds.value.includes(projectId)) {
-        kanbanProjectIds.value = [...kanbanProjectIds.value, projectId];
-      }
-    }
-    activeEpicId.value = null;
-    viewMode.value = 'kanban';
-  }
-
-  /** Show all projects on the kanban board */
-  function showAllProjectsOnKanban(allProjectIds: string[]) {
-    kanbanProjectIds.value = [...allProjectIds];
-    activeProjectId.value = allProjectIds[0] ?? null;
-    viewMode.value = 'kanban';
-  }
-
-  function toggleKanbanProject(projectId: string) {
-    const idx = kanbanProjectIds.value.indexOf(projectId);
-    if (idx >= 0) {
-      // Don't allow removing the last project
-      if (kanbanProjectIds.value.length > 1) {
-        kanbanProjectIds.value = kanbanProjectIds.value.filter(id => id !== projectId);
-        // If we removed the active project, switch to another
-        if (activeProjectId.value === projectId) {
-          activeProjectId.value = kanbanProjectIds.value[0] ?? null;
-        }
-      }
-    } else {
-      kanbanProjectIds.value = [...kanbanProjectIds.value, projectId];
-    }
+    viewMode.value = 'agents';
   }
 
   function toggleFleetProject(projectId: string) {
@@ -217,11 +188,22 @@ export const useUiStore = defineStore('ui', () => {
     }
   }
 
+  function navigateToKanban(projectId: string) {
+    window.dispatchEvent(new CustomEvent('angy:close-popovers'));
+    activeProjectId.value = projectId;
+    const filterStore = useFilterStore();
+    if (!filterStore.selectedProjectIds.includes(projectId)) {
+      filterStore.applySelection([projectId]);
+    }
+    activeEpicId.value = null;
+    viewMode.value = 'kanban';
+  }
+
   return {
     viewMode, activeProjectId, activeEpicId, terminalVisible, activeLeftTab,
     workspacePath, currentFile, currentBranch, currentModel, isProcessing,
     inlinePreviewFile, effectsPanelVisible, editorChatVisible, rightPanelMode, diffView,
-    missionControlFilter, autoCommitEnabled, kanbanProjectIds, fleetProjectIds, notifications, repoSwitchOnly,
+    missionControlFilter, autoCommitEnabled, fleetProjectIds, notifications, repoSwitchOnly,
     managerSizes, editorSizes, kanbanFilterText, pipelineActivity, pipelineTodoProgress,
     epicActivities, activityLogVisible,
     switchToMode, toggleViewMode, toggleTerminal, dismissInlinePreview,
@@ -230,6 +212,6 @@ export const useUiStore = defineStore('ui', () => {
     enterMissionControl, exitMissionControl, setMissionControlFilter, toggleAutoCommit,
     addNotification, dismissNotification, clearNotifications,
     navigateHome, navigateToProject, navigateToEpic, navigateToKanban,
-    showAllProjectsOnKanban, toggleKanbanProject, toggleFleetProject, toggleActivityLog, setEpicActivity,
+    openCommandPalette, toggleFleetProject, toggleActivityLog, setEpicActivity,
   };
 });

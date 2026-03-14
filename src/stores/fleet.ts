@@ -2,6 +2,12 @@ import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import type { AgentSummary } from '../engine/types';
 import { useSessionsStore } from './sessions';
+import { useEpicStore } from './epics';
+import { useProjectsStore } from './projects';
+
+// ── Constants ───────────────────────────────────────────────────────────
+
+export const PROJECT_COLORS = ['#f59e0b', '#10b981', '#22d3ee', '#cba6f7', '#f38ba8', '#a6e3a1', '#f9e2af', '#FF6B8A'];
 
 // ── Fleet Store ─────────────────────────────────────────────────────────
 
@@ -29,6 +35,30 @@ export const useFleetStore = defineStore('fleet', () => {
   function childrenOf(parentId: string): AgentSummary[] {
     return agents.value.filter((a) => a.parentSessionId === parentId);
   }
+
+  /** Agents belonging to a specific project (resolved via epicId → Epic.projectId) */
+  const agentsByProject = computed(() => {
+    return (projectId: string): AgentSummary[] => {
+      const epicStore = useEpicStore();
+      return agents.value.filter((a) => {
+        if (!a.epicId) return false;
+        const epic = epicStore.epicById(a.epicId);
+        return epic?.projectId === projectId;
+      });
+    };
+  });
+
+  /** Active (non-idle) agents belonging to a specific project */
+  const activeAgentsByProject = computed(() => {
+    return (projectId: string): AgentSummary[] => {
+      const epicStore = useEpicStore();
+      return agents.value.filter((a) => {
+        if (!a.epicId) return false;
+        const epic = epicStore.epicById(a.epicId);
+        return epic?.projectId === projectId && a.status !== 'idle';
+      });
+    };
+  });
 
   // ── Actions ────────────────────────────────────────────────────────
 
@@ -131,6 +161,75 @@ export const useFleetStore = defineStore('fleet', () => {
     }
   }
 
+  // ── Ticker getters ───────────────────────────────────────────────
+
+  const recentActivities = computed(() =>
+    agents.value
+      .filter(a => a.activity !== '')
+      .map(a => ({ name: a.title, status: a.status, activity: a.activity }))
+  );
+
+  const activeCount = computed(() =>
+    agents.value.filter(a => a.status === 'working').length
+  );
+
+  // ── Project-grouped agents ────────────────────────────────────────
+
+  /** Agents grouped by project, with '__orchestrators__' for unattached orchestrators */
+  const agentsGroupedByProject = computed(() => {
+    const epicStore = useEpicStore();
+    const projectsStore = useProjectsStore();
+
+    const groupMap = new Map<string, {
+      projectId: string;
+      projectName: string;
+      projectColor: string;
+      agents: HierarchicalAgent[];
+    }>();
+
+    for (const agent of hierarchicalAgents.value) {
+      let projectId = '__orchestrators__';
+      let projectName = 'Orchestrators';
+      let projectColor = '#64748b';
+
+      if (agent.epicId) {
+        const epic = epicStore.epicById(agent.epicId);
+        if (epic?.projectId) {
+          const project = projectsStore.projectById(epic.projectId);
+          if (project) {
+            projectId = project.id;
+            projectName = project.name;
+            // Deterministic color from project index
+            const idx = projectsStore.projects.findIndex((p) => p.id === project.id);
+            projectColor = PROJECT_COLORS[idx % PROJECT_COLORS.length];
+          }
+        }
+      }
+
+      let group = groupMap.get(projectId);
+      if (!group) {
+        group = { projectId, projectName, projectColor, agents: [] };
+        groupMap.set(projectId, group);
+      }
+      group.agents.push(agent);
+    }
+
+    const groups = [...groupMap.values()].map((g) => ({
+      ...g,
+      runningCount: g.agents.filter((a) => a.status === 'working').length,
+      totalCost: g.agents.reduce((sum, a) => sum + (a.costUsd ?? 0), 0),
+    }));
+
+    // Sort: project groups alphabetically first, __orchestrators__ last
+    groups.sort((a, b) => {
+      if (a.projectId === '__orchestrators__') return 1;
+      if (b.projectId === '__orchestrators__') return -1;
+      return a.projectName.localeCompare(b.projectName);
+    });
+
+    return groups;
+  });
+
   return {
     // State
     agents,
@@ -140,6 +239,11 @@ export const useFleetStore = defineStore('fleet', () => {
     // Getters
     hierarchicalAgents,
     rootAgents,
+    agentsByProject,
+    activeAgentsByProject,
+    agentsGroupedByProject,
+    recentActivities,
+    activeCount,
     // Actions
     childrenOf,
     rebuildFromSessions,
@@ -156,7 +260,7 @@ export const useFleetStore = defineStore('fleet', () => {
 
 // ── Build hierarchical ordering ─────────────────────────────────────────
 
-interface HierarchicalAgent extends AgentSummary {
+export interface HierarchicalAgent extends AgentSummary {
   depth: number;
   isOrchestratorRoot: boolean;
   childCount: number;

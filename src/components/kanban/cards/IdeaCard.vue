@@ -1,0 +1,81 @@
+<template>
+  <div
+    :draggable="actions.cardDraggable.value"
+    class="group relative rounded-xl border p-3 transition-colors"
+    :class="cardClasses"
+    @click="actions.onSingleClick"
+    @dblclick="actions.onDoubleClick"
+    @dragstart="actions.onDragStart"
+    @dragend="actions.onDragEnd"
+  >
+    <div class="absolute left-0 top-2 bottom-2 w-[3px] rounded-r bg-purple-400/50" />
+
+    <div class="pl-2.5">
+      <!-- Top row: Epic ID + project dot + project name + priority -->
+      <div class="flex items-center gap-2 mb-1.5">
+        <span class="text-[10px] text-txt-faint font-mono">{{ epicShortId }}</span>
+        <span class="w-1.5 h-1.5 rounded-full" :style="{ backgroundColor: projectColor }" />
+        <span class="text-[10px] text-txt-faint">{{ projectName }}</span>
+        <PriorityBadge :priority="epic.priorityHint" class="ml-auto" />
+      </div>
+
+      <!-- Title -->
+      <p class="text-xs text-txt-primary font-medium leading-snug">{{ epic.title }}</p>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { computed, toRef } from 'vue';
+import type { Epic } from '@/engine/KosTypes';
+import { useProjectsStore } from '@/stores/projects';
+import { useEpicCardActions } from '@/composables/useEpicCardActions';
+import PriorityBadge from './PriorityBadge.vue';
+
+const ACCENT_COLORS = ['#f59e0b', '#22d3ee', '#10b981', '#FF6B8A', '#cba6f7', '#89b4fa'];
+
+const props = withDefaults(defineProps<{
+  epic: Epic;
+  selectable?: boolean;
+  selected?: boolean;
+}>(), {
+  selectable: false,
+  selected: false,
+});
+
+const emit = defineEmits<{
+  select: [id: string];
+  'toggle-select': [id: string];
+}>();
+
+const projectsStore = useProjectsStore();
+
+const actions = useEpicCardActions({
+  epic: toRef(props, 'epic'),
+  selectable: toRef(props, 'selectable'),
+  selected: toRef(props, 'selected'),
+  emit,
+});
+
+const epicShortId = computed(() => {
+  const id = props.epic.id;
+  return 'E-' + id.slice(0, 2).toUpperCase();
+});
+
+const projectName = computed(() => {
+  const p = projectsStore.projects.find(p => p.id === props.epic.projectId);
+  return p?.name ?? props.epic.projectId.slice(0, 8);
+});
+
+const projectColor = computed(() => {
+  const idx = projectsStore.projects.findIndex(p => p.id === props.epic.projectId);
+  return ACCENT_COLORS[Math.max(0, idx) % ACCENT_COLORS.length];
+});
+
+const cardClasses = computed(() => {
+  if (props.selectable && props.selected) {
+    return 'border-[var(--accent-teal)] bg-[var(--accent-teal)]/5 cursor-pointer';
+  }
+  return 'border-border-subtle bg-surface cursor-grab active:cursor-grabbing hover:border-purple-500/20';
+});
+</script>
