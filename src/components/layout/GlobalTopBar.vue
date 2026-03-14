@@ -49,12 +49,16 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { getModKey } from '@/engine/platform';
 import { useUiStore } from '../../stores/ui';
 import { useProjectsStore } from '../../stores/projects';
 import { useEpicStore } from '../../stores/epics';
 import { Scheduler } from '../../engine/Scheduler';
 
 const ui = useUiStore();
+
+const modKey = ref('⌘');
+getModKey().then(k => { modKey.value = k; });
 const projectsStore = useProjectsStore();
 const epicStore = useEpicStore();
 

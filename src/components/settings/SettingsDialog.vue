@@ -244,8 +244,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, watch, onMounted } from 'vue';
-
+import { ref, reactive, computed, watch, onMounted } from 'vue';
+import { getModKey } from '@/engine/platform';
 import { ProfileManager, type PersonalityProfile } from '../../engine/ProfileManager';
 import { Scheduler } from '../../engine/Scheduler';
 import InfoTip from '@/components/common/InfoTip.vue';
@@ -284,23 +284,26 @@ const tickIntervalOptions = [
   { label: '120 seconds', value: 120000 },
 ];
 
-const shortcuts = [
-  { key: '⌘E', label: 'Toggle Editor/Manager view' },
+const modKey = ref('⌘');
+getModKey().then(k => { modKey.value = k; });
+
+const shortcuts = computed(() => [
+  { key: `${modKey.value}E`, label: 'Toggle Editor/Manager view' },
   { key: 'Escape', label: 'Return to Manager view' },
-  { key: '⌘/', label: 'Toggle terminal' },
-  { key: '⌘K', label: 'Inline edit (in editor)' },
-  { key: '⌘S', label: 'Save file' },
-  { key: '⌘F', label: 'Find in file' },
-  { key: '⌘N', label: 'New chat' },
-  { key: '⌘,', label: 'Open settings' },
-];
+  { key: `${modKey.value}/`, label: 'Toggle terminal' },
+  { key: `${modKey.value}K`, label: 'Inline edit (in editor)' },
+  { key: `${modKey.value}S`, label: 'Save file' },
+  { key: `${modKey.value}F`, label: 'Find in file' },
+  { key: `${modKey.value}N`, label: 'New chat' },
+  { key: `${modKey.value},`, label: 'Open settings' },
+]);
 
 async function save() {
   try {
     const { writeTextFile } = await import('@tauri-apps/plugin-fs');
-    const { homeDir, join } = await import('@tauri-apps/api/path');
-    const home = await homeDir();
-    await writeTextFile(await join(home, '.angy', 'settings.json'), JSON.stringify(settings, null, 2));
+    const { join } = await import('@tauri-apps/api/path');
+    const { getAngyConfigDir } = await import('@/engine/platform');
+    await writeTextFile(await join(await getAngyConfigDir(), 'settings.json'), JSON.stringify(settings, null, 2));
   } catch {}
 
   // Save orchestration settings via Scheduler
@@ -367,9 +370,9 @@ async function deleteProfileEntry() {
 onMounted(async () => {
   try {
     const { readTextFile } = await import('@tauri-apps/plugin-fs');
-    const { homeDir, join } = await import('@tauri-apps/api/path');
-    const home = await homeDir();
-    const content = await readTextFile(await join(home, '.angy', 'settings.json'));
+    const { join } = await import('@tauri-apps/api/path');
+    const { getAngyConfigDir } = await import('@/engine/platform');
+    const content = await readTextFile(await join(await getAngyConfigDir(), 'settings.json'));
     Object.assign(settings, JSON.parse(content));
   } catch {}
 
