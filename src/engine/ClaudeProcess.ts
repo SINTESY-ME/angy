@@ -5,7 +5,7 @@ import { exists, writeTextFile, mkdir } from '@tauri-apps/plugin-fs';
 import { join, appDataDir } from '@tauri-apps/api/path';
 import mitt from 'mitt';
 import { StreamParser } from './StreamParser';
-import { SPECIALIST_TOOLS } from './Orchestrator';
+import { SPECIALIST_TOOLS } from './SpecialistConstants';
 
 // ── File-based diagnostic logging ────────────────────────────────────────
 
@@ -73,10 +73,7 @@ export class ClaudeProcess {
   private model = '';
   private systemPrompt = '';
   private agentName = '';
-  private teamId = '';
   private _completedNormally = false;
-  private autoCommit = false;
-  private epicEnabled = false;
   private _specialistRole = '';
   private readonly _instanceId = ++ClaudeProcess.instanceCounter;
 
@@ -88,9 +85,6 @@ export class ClaudeProcess {
   setModel(m: string): void { this.model = m; }
   setSystemPrompt(prompt: string): void { this.systemPrompt = prompt; }
   setAgentName(name: string): void { this.agentName = name; }
-  setTeamId(id: string): void { this.teamId = id; }
-  setAutoCommit(enabled: boolean): void { this.autoCommit = enabled; }
-  setEpicEnabled(enabled: boolean): void { this.epicEnabled = enabled; }
   setSpecialistRole(role: string): void { this._specialistRole = role; }
 
   isRunning(): boolean { return this.child !== null; }
@@ -125,24 +119,7 @@ export class ClaudeProcess {
       args.push('--add-dir', this.workingDir);
     }
 
-    if (this.mode === 'orchestrator') {
-      let orchestratorTools =
-        'mcp__c3p2-orchestrator__delegate,' +
-        'mcp__c3p2-orchestrator__diagnose,' +
-        'mcp__c3p2-orchestrator__done,' +
-        'mcp__c3p2-orchestrator__fail';
-      if (this.autoCommit) {
-        orchestratorTools += ',mcp__c3p2-orchestrator__checkpoint';
-      }
-      if (this.epicEnabled) {
-        orchestratorTools += ',mcp__c3p2-orchestrator__spawn_orchestrator';
-      }
-      args.push(
-        '--permission-mode', 'bypassPermissions',
-        '--tools', orchestratorTools,
-        '--max-turns', '1',
-      );
-    } else if (this.mode === 'ask') {
+    if (this.mode === 'ask') {
       args.push(
         '--permission-mode', 'bypassPermissions',
         '--tools', 'Read,Glob,Grep',
@@ -155,10 +132,6 @@ export class ClaudeProcess {
         allowedTools = SPECIALIST_TOOLS[this._specialistRole];
       } else {
         allowedTools = 'Bash,Read,Edit,Write,Glob,Grep,Task,AskUserQuestion';
-      }
-      if (this.teamId) {
-        allowedTools += ',mcp__c3p2-orchestrator__send_message' +
-                        ',mcp__c3p2-orchestrator__check_inbox';
       }
       args.push(
         '--permission-mode', 'bypassPermissions',
@@ -236,7 +209,6 @@ export class ClaudeProcess {
     };
 
     if (this.agentName) env.ANGY_AGENT_NAME = this.agentName;
-    if (this.teamId) env.ANGY_TEAM_ID = this.teamId;
     if (this.workingDir) env.ANGY_WORKSPACE = this.workingDir;
 
     return env;

@@ -103,7 +103,7 @@ import { useKeyboard } from './composables/useKeyboard';
 import { useOrchestrator } from './composables/useOrchestrator';
 import { useGraphBuilder } from './composables/useGraphBuilder';
 import { useMissionControl } from './composables/useMissionControl';
-import { setOrchestratorLookup, setProcessManager } from './composables/useEngine';
+import { setProcessManager } from './composables/useEngine';
 import { DelegationStatus } from './engine/types';
 import type { EpicColumn } from './engine/KosTypes';
 import { useActivityLogStore } from './stores/activityLog';
@@ -156,7 +156,7 @@ async function showGraphForSession(sessionId: string) {
 // ── Dialog visibility ──────────────────────────────────────────────────
 const showSettings = ref(false);
 // ── Orchestrator (used by epic pipelines) ────────────────────────────
-const { orchestrator, getOrchestratorForSession, initPool, setEngine } = useOrchestrator();
+const { initPool, setEngine } = useOrchestrator();
 
 // ── Keyboard shortcuts ──────────────────────────────────────────────────
 
@@ -521,22 +521,6 @@ watch(() => ui.workspacePath, async (newPath, oldPath) => {
   }
 }, { immediate: true });
 
-// ── Orchestrator ─────────────────────────────────────────────────────────
-
-// Clean up graph subscriptions when orchestration ends
-orchestrator.on('completed', () => {
-  if (graphCleanup) {
-    graphCleanup();
-    graphCleanup = null;
-  }
-});
-orchestrator.on('failed', () => {
-  if (graphCleanup) {
-    graphCleanup();
-    graphCleanup = null;
-  }
-});
-
 // ── engineBus listener references (hoisted for cleanup in onUnmounted) ──
 
 let onSchedulerError: (e: { epicId?: string; title: string; message: string }) => void;
@@ -634,11 +618,7 @@ onMounted(async () => {
   // Wire engine into the useOrchestrator composable for session → orchestrator routing
   setEngine(engine);
 
-  // Pool-aware MCP routing: standalone orchestrator + engine epic orchestrators
-  setOrchestratorLookup((sessionId: string) => {
-    return getOrchestratorForSession(sessionId);
-  });
-  console.log('[App] Engine initialized, orchestrator lookup registered');
+  console.log('[App] Engine initialized');
 
   // Handle manual epic start requests (from EpicCard/EpicDetailPanel arrow buttons)
   onEpicRequestStart = async ({ epicId }) => {

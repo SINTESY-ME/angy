@@ -1,23 +1,15 @@
 /**
  * ProcessManager — owns ClaudeProcess lifecycle, fully UI-independent.
  *
- * Extracted from composables/useEngine.ts. Creates ClaudeProcess instances,
- * wires StreamParser events to an AgentHandle, and routes MCP orchestrator
- * tool calls to the correct Orchestrator instance.
- *
- * Can be used headlessly (with HeadlessHandle) or with a Vue component
- * (ChatPanel implementing AgentHandle).
+ * Creates ClaudeProcess instances and wires StreamParser events to an
+ * AgentHandle. Can be used headlessly (with HeadlessHandle) or with a
+ * Vue component (ChatPanel implementing AgentHandle).
  */
 
 import { Command } from '@tauri-apps/plugin-shell';
 import { ClaudeProcess } from './ClaudeProcess';
 import type { AgentHandle, ProcessOptions } from './types';
-import type { Orchestrator } from './Orchestrator';
 import { engineBus } from './EventBus';
-
-// ── MCP Prefix ───────────────────────────────────────────────────────────
-
-const MCP_ORCHESTRATOR_PREFIX = 'mcp__c3p2-orchestrator__';
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -81,19 +73,6 @@ async function runAutoCommit(workingDir: string): Promise<void> {
 
 export class ProcessManager {
   private processes = new Map<string, ClaudeProcess>();
-  private orchestratorLookup: ((sessionId: string) => Orchestrator | null) | null = null;
-
-  /**
-   * Register a function that maps sessionId → Orchestrator instance.
-   * Used for pool-aware MCP tool routing: when a tool call like
-   * `mcp__c3p2-orchestrator__delegate` is detected, the ProcessManager
-   * looks up the correct Orchestrator and forwards the call.
-   */
-  setOrchestratorLookup(
-    lookup: ((sessionId: string) => Orchestrator | null) | null,
-  ): void {
-    this.orchestratorLookup = lookup;
-  }
 
   /**
    * Send a message to Claude for a given session.
@@ -119,9 +98,6 @@ export class ProcessManager {
     if (options.systemPrompt) proc.setSystemPrompt(options.systemPrompt);
     if (options.resumeSessionId) proc.setSessionId(options.resumeSessionId);
     if (options.agentName) proc.setAgentName(options.agentName);
-    if (options.teamId) proc.setTeamId(options.teamId);
-    if (options.autoCommit) proc.setAutoCommit(options.autoCommit);
-    if (options.epicEnabled) proc.setEpicEnabled(options.epicEnabled);
     if (options.specialistRole) proc.setSpecialistRole(options.specialistRole);
 
     this.processes.set(sessionId, proc);
@@ -228,15 +204,6 @@ export class ProcessManager {
         }
       }
 
-      // MCP orchestrator tool interception
-      if (options.mode === 'orchestrator' && payload.toolName.startsWith(MCP_ORCHESTRATOR_PREFIX)) {
-        if (this.orchestratorLookup) {
-          const orch = this.orchestratorLookup(sessionId);
-          if (orch) {
-            orch.onMcpToolCalled(sessionId, payload.toolName, payload.input);
-          }
-        }
-      }
     });
 
     proc.streamParser.events.on('costReported', (data) => {
@@ -278,16 +245,8 @@ export class ProcessManager {
       });
       engineBus.emit('session:finished', { sessionId, exitCode });
 
-      // Notify orchestrator of session turn completion
-      if (options.mode === 'orchestrator' && this.orchestratorLookup) {
-        const orch = this.orchestratorLookup(sessionId);
-        if (orch) {
-          orch.onSessionFinishedProcessing(sessionId);
-        }
-      }
-
-      // Auto-commit for simple agent modes (orchestrator handles its own commits)
-      if (options.autoCommit && options.mode !== 'orchestrator') {
+      // Auto-commit after agent completes
+      if (options.autoCommit) {
         runAutoCommit(options.workingDir);
       }
     });

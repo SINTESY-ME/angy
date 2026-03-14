@@ -47,7 +47,7 @@ export interface SessionInfo {
   sessionId: string;
   title: string;
   workspace: string;
-  mode: string; // 'agent' | 'ask' | 'plan' | 'orchestrator'
+  mode: string; // 'agent' | 'ask' | 'plan'
   createdAt: number;
   updatedAt: number;
   favorite: boolean;
@@ -210,9 +210,7 @@ export interface ProcessOptions {
   resumeSessionId?: string;
   images?: Array<{ data: string; mediaType: string }>;
   agentName?: string;
-  teamId?: string;
   autoCommit?: boolean;
-  epicEnabled?: boolean;
   specialistRole?: string;
 }
 

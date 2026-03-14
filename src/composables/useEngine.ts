@@ -9,7 +9,6 @@
 import { ProcessManager } from '../engine/ProcessManager';
 import { ClaudeProcess } from '../engine/ClaudeProcess';
 import type { AgentHandle, ProcessOptions } from '../engine/types';
-import type { Orchestrator } from '../engine/Orchestrator';
 
 // ── Re-export for backward compatibility ─────────────────────────────────
 
@@ -35,33 +34,6 @@ function getProcessManager(): ProcessManager {
 /** Inject the ProcessManager instance (called by AngyEngine or App.vue). */
 export function setProcessManager(pm: ProcessManager): void {
   _pm = pm;
-}
-
-// ── Legacy interceptor API (delegates to ProcessManager) ─────────────────
-
-/** @deprecated Use engine.processes.setOrchestratorLookup() instead */
-export function setMcpToolInterceptor(
-  _callback: ((sessionId: string, toolName: string, args: Record<string, any>) => void) | null,
-): void {
-  // No longer used — orchestrator routing goes through ProcessManager.setOrchestratorLookup()
-  console.warn('[useEngine] setMcpToolInterceptor is deprecated — use setOrchestratorLookup instead');
-}
-
-/** @deprecated Use engine.processes.setOrchestratorLookup() instead */
-export function setSessionFinishedInterceptor(
-  _callback: ((sessionId: string) => void) | null,
-): void {
-  console.warn('[useEngine] setSessionFinishedInterceptor is deprecated — use setOrchestratorLookup instead');
-}
-
-/**
- * Register a function that maps sessionId → Orchestrator instance.
- * Delegates to ProcessManager.
- */
-export function setOrchestratorLookup(
-  lookup: ((sessionId: string) => Orchestrator | null) | null,
-): void {
-  getProcessManager().setOrchestratorLookup(lookup);
 }
 
 // ── Public API (delegates to ProcessManager) ─────────────────────────────

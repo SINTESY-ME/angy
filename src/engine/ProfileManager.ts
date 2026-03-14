@@ -2,7 +2,7 @@ import { readTextFile, writeTextFile, readDir, mkdir, remove } from '@tauri-apps
 import { join } from '@tauri-apps/api/path';
 import { getAngyConfigDir } from '@/engine/platform';
 import mitt from 'mitt';
-import { SPECIALIST_PROMPTS } from './Orchestrator';
+import { SPECIALIST_PROMPTS } from './SpecialistConstants';
 import { detectTechnologies, type TechProfile } from './TechDetector';
 
 export interface PersonalityProfile {

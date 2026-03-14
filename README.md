@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="public/angy-new-logo.png" width="96" alt="Angy logo" />
+  <img src="public/angy-new-logo.png" width="64" alt="Angy logo" />
 </p>
 
 <h1 align="center">Angy</h1>
@@ -16,26 +16,26 @@
 
 Most AI coding tools give you one agent and one conversation. Angy gives you a **command center**.
 
+The scope of Angy is be able to build entire products from scratch, or to improve existing codebases. Angy is able to run for days continuously.
+
 You define high-level goals called **Epics**. An autonomous scheduler picks them up, spawns a pipeline per epic, and that pipeline breaks the work into specialist agents — architects, builders, testers, counterparts — each running inside a dedicated git branch. When they're done, you approve. Work merges. The scheduler picks the next thing.
 
 No micromanaging. No copy-pasting context. Just goals in, working code out.
 
 <p align="center">
-  <img src="public/angy3.png" alt="Angy kanban" width="700">
-</p>
-
-<p align="center">
-  <img src="public/angy.png" alt="Angy building itself" width="700">
+  <img src="public/overview.png" alt="Angy kanban" width="700">
 </p>
 
 ## Features
 
 ### Kanban Board
+
 Epics flow through a visual pipeline:
 
-```
-Idea → Backlog → Todo → In Progress → Review → Done
-```
+<p align="center">
+  <img src="public/kanban.png" alt="Angy pipeline" width="700">
+</p>
+
 
 Each Epic carries a full spec: title, description, acceptance criteria, priority (critical → low), complexity (trivial → epic), target repositories, and dependencies on other epics. You steer the roadmap; Angy executes it.
 
@@ -54,6 +54,10 @@ Set it and forget it. Or tune the weights and let it reflect your team's priorit
 ### Incremental Build Pipeline
 
 The core of Angy is the **HybridPipelineRunner** — a TypeScript state machine that drives multi-agent builds the way a human developer would: incrementally, with verification at every step.
+
+<p align="center">
+  <img src="public/agents.png" alt="Angy agents" width="700">
+</p>
 
 Instead of trying to build an entire application in one shot (the approach every other AI coding tool takes), Angy splits the work into sequential increments — scaffold, data layer, API, frontend shell, features — and verifies each one compiles and works before starting the next.
 

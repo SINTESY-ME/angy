@@ -16,12 +16,12 @@ import mitt from 'mitt';
 import { Command } from '@tauri-apps/plugin-shell';
 import { homeDir } from '@tauri-apps/api/path';
 import { exists } from '@tauri-apps/plugin-fs';
-import { SPECIALIST_PROMPTS, SPECIALIST_TOOLS } from './Orchestrator';
-import type { OrchestratorEvents } from './Orchestrator';
+import { SPECIALIST_PROMPTS, SPECIALIST_TOOLS } from './SpecialistConstants';
+import type { OrchestratorEvents } from './SpecialistConstants';
 import type { HeadlessHandle } from './HeadlessHandle';
 import type { ProcessManager } from './ProcessManager';
 import type { SessionService } from './SessionService';
-import type { ComplexityEstimate } from './KosTypes';
+import type { ComplexityEstimate, EpicPipelineType } from './KosTypes';
 import type { TechProfile } from './TechDetector';
 import type { PipelineSnapshot, PipelinePhase } from './types';
 import type { PipelineStateStore } from './PipelineStateStore';
@@ -131,6 +131,13 @@ interface TestResult {
   failures?: string[];
 }
 
+export interface RejectionContext {
+  feedback: string;
+  lastAttemptFiles?: string[];
+  lastValidationResults?: Array<{ command: string; passed: boolean; output: string }>;
+  lastArchitectPlan?: string;
+}
+
 export interface HybridPipelineOptions {
   handle: HeadlessHandle;
   processes: ProcessManager;
@@ -142,6 +149,8 @@ export interface HybridPipelineOptions {
   complexity: ComplexityEstimate;
   stateStore?: PipelineStateStore;
   healthMonitor?: ClaudeHealthMonitor;
+  pipelineType?: EpicPipelineType;
+  rejectionContext?: RejectionContext;
 }
 
 // ── Runner ───────────────────────────────────────────────────────────────
@@ -161,6 +170,8 @@ export class HybridPipelineRunner {
   private complexity: ComplexityEstimate;
   private stateStore: PipelineStateStore | null;
   private healthMonitor: ClaudeHealthMonitor | null;
+  private pipelineType: EpicPipelineType;
+  private rejectionContext: RejectionContext | null;
 
   private _running = false;
   private _cancelled = false;
@@ -196,6 +207,8 @@ export class HybridPipelineRunner {
     this.complexity = opts.complexity;
     this.stateStore = opts.stateStore ?? null;
     this.healthMonitor = opts.healthMonitor ?? null;
+    this.pipelineType = opts.pipelineType ?? 'hybrid';
+    this.rejectionContext = opts.rejectionContext ?? null;
 
     this.handle.onDelegateFinished = (childSid, result) => {
       this.sessions.persistSession(childSid);
@@ -246,7 +259,25 @@ export class HybridPipelineRunner {
     this.finalizeCycle = 0;
     this.replansRemaining = 3;
 
+    // Route to fix mode if rejectionContext is provided (even for hybrid type)
+    const effectiveType = this.rejectionContext ? 'fix' : this.pipelineType;
+
     try {
+      switch (effectiveType) {
+        case 'investigate':
+          await this.executeInvestigateMode(goal);
+          return;
+        case 'plan':
+          await this.executePlanMode(goal, acceptanceCriteria);
+          return;
+        case 'fix':
+          await this.executeFixMode(goal, acceptanceCriteria);
+          return;
+        default:
+          // hybrid — fall through to existing logic
+          break;
+      }
+
       await this.checkpointState('planning');
 
       const features = this.getPipelineFeatures();
@@ -550,6 +581,179 @@ export class HybridPipelineRunner {
 
     this.events.emit('completed', { summary });
     this.log(summary);
+  }
+
+  // ── Read-only modes: investigate & plan ─────────────────────────────
+
+  /**
+   * Investigate mode: single architect call (read-only), emit findings.
+   * No implementation, no Phase 2/3.
+   */
+  private async executeInvestigateMode(goal: string): Promise<void> {
+    this.log('Investigate mode: read-only architect analysis');
+    this.setPhase('investigating');
+
+    try {
+      const findings = await this.healthCheckedDelegate('architect',
+        `Investigate the following questions in the codebase. This is a READ-ONLY investigation — do NOT modify any code.\n\n` +
+        `# Goal\n${goal}\n\n` +
+        `# Required Output\n` +
+        `## FINDINGS\nKey discoveries and answers to the investigation questions.\n\n` +
+        `## EVIDENCE\nSpecific file paths, code snippets, and data points that support the findings.\n\n` +
+        `## CONCLUSIONS\nSynthesized conclusions and actionable recommendations.\n\n` +
+        `## OPEN QUESTIONS\nAnything that could not be determined and would need further investigation.\n\n` +
+        `Be thorough — read actual code, don't speculate.`,
+      );
+      if (this._cancelled) return;
+
+      this._running = false;
+      this.setPhase('completed');
+      await this.onPipelineComplete();
+      this.events.emit('artifactsCollected', { childOutputs: this.childOutputs });
+      this.events.emit('completed', { summary: findings });
+      this.log('Investigate mode completed');
+    } catch (err) {
+      if (this._cancelled) return;
+      this._running = false;
+      this.setPhase('failed');
+      const reason = err instanceof Error ? err.message : String(err);
+      this.events.emit('failed', { reason });
+      console.error('[HybridPipeline] Investigate mode error:', reason);
+    }
+  }
+
+  /**
+   * Plan mode: single architect call (read-only), emit architectural plan.
+   * No implementation, no Phase 2/3.
+   */
+  private async executePlanMode(goal: string, acceptanceCriteria: string): Promise<void> {
+    this.log('Plan mode: read-only architect planning');
+    this.setPhase('planning');
+
+    try {
+      const plan = await this.healthCheckedDelegate('architect',
+        `Analyze the codebase and produce a detailed architectural plan for the following. This is a READ-ONLY planning session — do NOT modify any code.\n\n` +
+        `# Goal\n${goal}\n\n` +
+        `# Acceptance Criteria\n${acceptanceCriteria}\n\n` +
+        `# Required Output\n` +
+        `## ANALYSIS\nSummary of the current codebase state relevant to the planned changes.\n\n` +
+        `## FILES TO MODIFY\nList each file path with a description of what changes are needed.\n\n` +
+        `## FILES TO CREATE\nAny new files needed, with their purpose and contents outline.\n\n` +
+        `## IMPLEMENTATION STEPS\nOrdered, specific steps to implement the plan. Group parallelizable steps. Note dependencies between steps.\n\n` +
+        `## KEY DECISIONS\nArchitectural choices made and their rationale.\n\n` +
+        `## RISKS\nPotential issues, edge cases, and migration concerns.\n\n` +
+        `## ESTIMATED COMPLEXITY\nOverall assessment of the effort required.\n\n` +
+        `Ground the plan in actual code — read files before recommending changes. Be specific enough that an implementer could follow the plan directly.`,
+      );
+      if (this._cancelled) return;
+
+      this._running = false;
+      this.setPhase('completed');
+      await this.onPipelineComplete();
+      this.events.emit('artifactsCollected', { childOutputs: this.childOutputs });
+      this.events.emit('completed', { summary: plan });
+      this.log('Plan mode completed');
+    } catch (err) {
+      if (this._cancelled) return;
+      this._running = false;
+      this.setPhase('failed');
+      const reason = err instanceof Error ? err.message : String(err);
+      this.events.emit('failed', { reason });
+      console.error('[HybridPipeline] Plan mode error:', reason);
+    }
+  }
+
+  // ── Fix mode ──────────────────────────────────────────────────────
+
+  /**
+   * Fix mode: skip planning, inject rejection context, run builder → tester loop.
+   * Used when a hybrid epic has rejectionCount > 0 or pipelineType === 'fix'.
+   */
+  private async executeFixMode(goal: string, acceptanceCriteria: string): Promise<void> {
+    this.log('Fix mode: skipping Phase 1 planning, running builder → tester loop');
+
+    try {
+      await this.checkpointState('implementing');
+
+      // Build the fix task with rejection context
+      const rc = this.rejectionContext;
+      let fixPrompt = `Fix the following issues in the codebase.\n\n# Goal\n${goal}\n\n`;
+
+      if (rc) {
+        fixPrompt += `# Rejection Feedback\n${rc.feedback}\n\n`;
+        if (rc.lastArchitectPlan) {
+          fixPrompt += `# Previous Architect Plan (for context)\n${rc.lastArchitectPlan}\n\n`;
+          this.architectContext = rc.lastArchitectPlan;
+        }
+        if (rc.lastAttemptFiles && rc.lastAttemptFiles.length > 0) {
+          fixPrompt += `# Files from Last Attempt\n${rc.lastAttemptFiles.join('\n')}\n\n`;
+        }
+        if (rc.lastValidationResults && rc.lastValidationResults.length > 0) {
+          fixPrompt += `# Validation Results from Last Attempt\n`;
+          for (const v of rc.lastValidationResults) {
+            fixPrompt += `- \`${v.command}\`: ${v.passed ? 'PASSED' : 'FAILED'}\n`;
+            if (v.output) fixPrompt += `  Output: ${v.output.substring(0, 500)}\n`;
+          }
+          fixPrompt += '\n';
+        }
+      }
+
+      if (acceptanceCriteria) {
+        fixPrompt += `# Acceptance Criteria\n${acceptanceCriteria}\n\n`;
+      }
+
+      fixPrompt += `Read the codebase, diagnose the issue, and apply the fix. Verify your fix compiles cleanly.`;
+
+      // Phase 2: Builder fixes the issues
+      this.setPhase('fixing');
+      await this.healthCheckedDelegate('builder', fixPrompt);
+      if (this._cancelled) return;
+
+      // Phase 3: Test the fix
+      this.setPhase('testing');
+      const testerOutput = await this.healthCheckedDelegate('tester', this.testTask());
+      if (this._cancelled) return;
+      const testResult = await this.extractTestResult(testerOutput);
+
+      // One retry cycle if tests fail
+      if (!testResult.buildPassed || !testResult.testsPassed) {
+        const failureText = (testResult.failures || []).join('\n');
+        this.setPhase('fixing (retry)');
+        await this.healthCheckedDelegate('builder', this.fixTask(
+          `Test failures after fix attempt:\n${failureText}\n\nFull tester output:\n${testerOutput}`,
+        ));
+        if (this._cancelled) return;
+
+        this.setPhase('testing (retry)');
+        const retryOutput = await this.healthCheckedDelegate('tester', this.testTask());
+        if (this._cancelled) return;
+        const retryResult = await this.extractTestResult(retryOutput);
+
+        if (!retryResult.buildPassed || !retryResult.testsPassed) {
+          this._running = false;
+          this.setPhase('failed');
+          await this.checkpointState('failed');
+          const failures = (retryResult.failures || []).join('; ');
+          this.events.emit('failed', { reason: `Fix mode: tests still failing after retry. Failures: ${failures}` });
+          return;
+        }
+      }
+
+      this._running = false;
+      this.setPhase('completed');
+      await this.onPipelineComplete();
+      this.events.emit('artifactsCollected', { childOutputs: this.childOutputs });
+      this.events.emit('completed', { summary: `Fix pipeline completed for epic ${this.epicId}. Tests passing.` });
+      this.log('Fix mode completed');
+    } catch (err) {
+      if (this._cancelled) return;
+      this._running = false;
+      this.setPhase('failed');
+      await this.checkpointState('failed');
+      const reason = err instanceof Error ? err.message : String(err);
+      this.events.emit('failed', { reason });
+      console.error('[HybridPipeline] Fix mode error:', reason);
+    }
   }
 
   // ── Todo execution loop ─────────────────────────────────────────────

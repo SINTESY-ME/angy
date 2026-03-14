@@ -15,7 +15,7 @@
 import { ProcessManager } from './ProcessManager';
 import { HeadlessHandle } from './HeadlessHandle';
 import { SessionManager } from './SessionManager';
-import { SPECIALIST_PROMPTS, SPECIALIST_TOOLS } from './Orchestrator';
+import { SPECIALIST_PROMPTS, SPECIALIST_TOOLS } from './SpecialistConstants';
 import { engineBus } from './EventBus';
 import type { Database } from './Database';
 
