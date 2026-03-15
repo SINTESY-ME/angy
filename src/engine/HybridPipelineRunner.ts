@@ -1397,7 +1397,30 @@ ${approvedPlan}`,
     this.emitInternalCall('extractTestResult', 'started');
     const result = await this.structuredCall<TestResult>(
       TEST_RESULT_SCHEMA,
-      `Extract the test results from this tester output:\n\n${testerOutput}`,
+      `You are extracting a strict test verdict from a tester agent's output.
+
+## Rules — READ CAREFULLY
+
+\`testsPassed\` must be TRUE only if ALL of the following hold:
+1. The project built without errors
+2. All automated/unit tests passed
+3. All integration and smoke tests passed — meaning the actual application or CLI was launched and its behaviour verified
+4. No runtime crashes, unhandled exceptions, or broken commands were observed
+5. Every acceptance criterion in the spec was verified end-to-end
+
+\`testsPassed\` must be FALSE if ANY of the following occurred:
+- Any command, endpoint, or feature crashed or threw a runtime error
+- Integration or smoke tests were skipped, not run, or failed
+- The tester reports uncertainty or partial success
+- The application could not be started or exercised as a real user would
+
+IMPORTANT: A high automated-test pass rate does NOT override integration failures. Unit tests and runtime/integration tests are independent gates — both must pass for \`testsPassed\` to be true.
+
+List every failure, crash, unhandled error, and unverified requirement in \`failures\`, even if automated tests passed.
+
+## Tester output
+
+${testerOutput}`,
     );
     this.emitInternalCall('extractTestResult', 'completed');
     return result;

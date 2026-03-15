@@ -99,17 +99,6 @@
     <!-- Spacer -->
     <div class="flex-1"></div>
 
-    <!-- Search -->
-    <button
-      class="w-10 h-10 rounded-lg flex items-center justify-center text-txt-muted hover:text-txt-secondary transition-all duration-150 ease-in-out"
-      title="Command Palette (⌘K)"
-      @click="openCommandPalette"
-    >
-      <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
-      </svg>
-    </button>
-
     <!-- Settings -->
     <button
       class="w-10 h-10 rounded-lg flex items-center justify-center text-txt-muted hover:text-txt-secondary transition-all duration-150 ease-in-out"
@@ -129,9 +118,6 @@ import { useUiStore } from '../../stores/ui';
 
 const ui = useUiStore();
 
-function openCommandPalette() {
-  window.dispatchEvent(new CustomEvent('angy:command-palette'));
-}
 
 function openSettings() {
   window.dispatchEvent(new CustomEvent('angy:open-settings'));
