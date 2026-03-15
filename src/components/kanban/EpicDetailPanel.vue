@@ -1,12 +1,22 @@
 <template>
-  <div class="h-full w-[440px] flex flex-col border-l border-border-subtle bg-window" style="box-shadow: -12px 0 40px -8px rgba(0,0,0,0.5)">
-    <!-- Header -->
-    <div class="flex items-center gap-2.5 px-5 h-11 border-b border-border-subtle shrink-0">
-      <div class="w-1.5 h-1.5 rounded-full bg-mauve"></div>
+  <div class="flex flex-col h-full w-[480px] bg-surface border-l border-border-standard">
+    <!-- Header (48px) -->
+    <div class="flex items-center justify-between px-5 h-12 flex-shrink-0 border-b border-border-subtle">
+      <!-- Column badge pill -->
+      <div
+        v-if="epic"
+        class="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium uppercase tracking-wider"
+        :style="columnBadgeStyle"
+      >
+        <span class="w-1.5 h-1.5 rounded-full flex-shrink-0" :style="{ background: columnBadge.color }"></span>
+        {{ columnBadge.label }}
+      </div>
+      <div v-else></div>
+      <!-- Panel title -->
       <span class="text-[11px] font-semibold text-mauve uppercase tracking-widest">
         {{ isNew ? 'New Epic' : 'Epic Details' }}
       </span>
-      <span class="flex-1"></span>
+      <!-- Close button -->
       <button
         class="w-6 h-6 flex items-center justify-center rounded-md text-txt-faint hover:text-txt-primary hover:bg-raised transition-colors"
         @click="$emit('close')"
@@ -17,12 +27,13 @@
       </button>
     </div>
 
-    <div v-if="epic" class="flex-1 overflow-y-auto scroll-area">
+    <!-- Body (scrollable) -->
+    <div v-if="epic" class="flex-1 overflow-y-auto px-5 pt-5 pb-2 space-y-5 scroll-area">
 
       <!-- Blocking reasons -->
       <div
         v-if="(epic.column === 'todo' || epic.column === 'backlog') && epicStore.getBlockingReasons(epic.id).length > 0"
-        class="px-5 pt-4 pb-2 flex flex-wrap gap-1.5"
+        class="flex flex-wrap gap-1.5 -mt-1"
       >
         <span
           v-for="reason in epicStore.getBlockingReasons(epic.id)"
@@ -31,210 +42,196 @@
         >{{ reason.label }}</span>
       </div>
 
-      <!-- Definition -->
-      <div class="px-5 pt-5 pb-5 space-y-5">
+      <!-- GROUP 1 — Title -->
+      <input
+        ref="titleInput"
+        v-model="draft.title"
+        type="text"
+        class="title-input w-full"
+        placeholder="Epic title..."
+      />
 
-        <!-- Title (inline editing, no box) -->
-        <input
-          ref="titleInput"
-          v-model="draft.title"
-          type="text"
-          class="w-full text-[16px] font-semibold text-txt-primary bg-transparent outline-none border-b-2 border-transparent
-                 hover:border-border-standard focus:border-mauve pb-1.5 transition-colors placeholder:text-txt-faint placeholder:font-normal"
-          placeholder="Epic title..."
-        />
+      <!-- GROUP 2 — HOW IT RUNS -->
+      <div class="bg-raised rounded-xl p-4 space-y-3">
+        <div class="text-[11px] font-semibold text-txt-muted uppercase tracking-wider">How It Runs</div>
 
-        <!-- Pipeline -->
-        <div class="space-y-2">
-          <span class="field-label">Pipeline</span>
-          <div class="flex gap-1.5">
+        <!-- Complexity DotPicker -->
+        <div>
+          <div class="text-[11px] text-txt-muted mb-1.5">Complexity</div>
+          <DotPicker
+            :modelValue="complexityValues.indexOf(draft.complexity)"
+            :labels="complexityLabels"
+            :disabled="draft.pipelineType !== 'hybrid'"
+            @update:modelValue="draft.complexity = complexityValues[$event]"
+          />
+        </div>
+
+        <p v-if="draft.pipelineType === 'hybrid'" class="text-[11px] text-txt-faint leading-relaxed">
+          {{ complexityDescriptions[draft.complexity] }}
+        </p>
+
+        <!-- Pipeline pill tabs -->
+        <div>
+          <div class="text-[11px] text-txt-muted mb-1.5">Pipeline</div>
+          <div class="flex gap-1.5" :class="{ 'pipeline-pulse': pipelinePulse }">
             <button
               v-for="pt in pipelineTypes"
               :key="pt.value"
               class="pipe-btn"
-              :class="draft.pipelineType === pt.value ? `active-${pt.value === 'hybrid' ? 'create' : pt.value}` : ''"
+              :class="[
+                draft.pipelineType === pt.value ? `active-${pt.value === 'hybrid' ? 'create' : pt.value}` : '',
+                { 'suggested-ring': suggestedPipeline === (pt.value === 'hybrid' ? 'hybrid' : pt.value) && draft.pipelineType !== pt.value }
+              ]"
               @click="draft.pipelineType = pt.value"
             >
               {{ pt.label }}
             </button>
           </div>
-          <p class="text-[11px] text-txt-faint leading-relaxed">
+          <p class="text-[11px] text-txt-faint leading-relaxed mt-1.5">
             {{ pipelineDescriptions[draft.pipelineType] }}
           </p>
         </div>
 
-        <!-- Complexity + Priority side-by-side -->
-        <div class="grid grid-cols-2 gap-3">
-          <div class="space-y-1.5">
-            <span class="field-label">Complexity</span>
-            <select
-              v-model="draft.complexity"
-              :disabled="draft.pipelineType !== 'hybrid'"
-              class="field-input"
-            >
-              <option value="trivial">Trivial</option>
-              <option value="small">Small</option>
-              <option value="medium">Medium</option>
-              <option value="large">Large</option>
-              <option value="epic">Epic</option>
-            </select>
-          </div>
-          <div class="space-y-1.5">
-            <span class="field-label">Priority</span>
-            <select v-model="draft.priorityHint" class="field-input">
-              <option value="critical">Critical</option>
-              <option value="high">High</option>
-              <option value="medium">Medium</option>
-              <option value="low">Low</option>
-              <option value="none">None</option>
-            </select>
-          </div>
-        </div>
-
-        <p v-if="draft.pipelineType === 'hybrid'" class="text-[11px] text-txt-faint leading-relaxed -mt-2">
-          {{ complexityDescriptions[draft.complexity] }}
-        </p>
-
-        <!-- Description -->
-        <div class="space-y-1.5">
-          <span class="field-label">Description</span>
-          <textarea
-            v-model="draft.description"
-            rows="4"
-            class="field-input"
-            placeholder="What should be built and why..."
-          />
-        </div>
-
-        <!-- Acceptance Criteria -->
-        <div class="space-y-1.5">
-          <span class="field-label">Acceptance criteria</span>
-          <textarea
-            v-model="draft.acceptanceCriteria"
-            rows="3"
-            class="field-input"
-            placeholder="What defines done..."
-          />
+        <!-- Model dropdown -->
+        <div>
+          <div class="text-[11px] text-txt-muted mb-1.5">Model</div>
+          <select v-model="draft.model" class="field-input w-full">
+            <option value="">Default (CLI default)</option>
+            <option value="claude-sonnet-4-6">Sonnet 4.6</option>
+            <option value="claude-opus-4-6">Opus 4.6</option>
+            <option value="claude-haiku-4-5-20251001">Haiku 4.5</option>
+          </select>
         </div>
       </div>
 
-      <!-- Configuration (collapsible, default expanded) -->
-      <section class="border-t border-border-subtle">
+      <!-- GROUP 3 — WHERE IT RUNS (collapsible) -->
+      <div class="bg-raised rounded-xl p-4">
         <button
-          class="w-full flex items-center gap-2 px-5 h-10 hover:bg-white/[0.015] transition-colors"
-          @click="configOpen = !configOpen"
+          @click="whereOpen = !whereOpen"
+          class="flex items-center justify-between w-full"
         >
+          <span class="text-[11px] font-semibold text-txt-muted uppercase tracking-wider">Where It Runs</span>
           <svg
-            class="w-3 h-3 transition-transform duration-150 text-txt-faint"
-            :class="configOpen ? 'rotate-90' : ''"
+            class="w-3 h-3 text-txt-faint transition-transform duration-150"
+            :class="{ 'rotate-90': whereOpen }"
             fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"
           >
             <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
           </svg>
-          <span class="text-[11px] font-semibold text-txt-muted uppercase tracking-wider">Configuration</span>
         </button>
-        <div v-show="configOpen" class="px-5 pb-5 pt-1 space-y-4">
-          <!-- Model -->
-          <div class="space-y-1.5">
-            <span class="field-label">Model</span>
-            <select v-model="draft.model" class="field-input">
-              <option value="">Default (CLI default)</option>
-              <option value="claude-sonnet-4-6">Sonnet 4.6</option>
-              <option value="claude-opus-4-6">Opus 4.6</option>
-              <option value="claude-haiku-4-5-20251001">Haiku 4.5</option>
-            </select>
-          </div>
 
-          <!-- Target Repos -->
-          <div class="space-y-2">
-            <span class="field-label">Target repos</span>
+        <div v-if="whereOpen" class="space-y-3 mt-3">
+          <!-- Repos -->
+          <div>
+            <div class="text-[11px] text-txt-muted mb-1.5">Target Repos</div>
             <RepoScopeSelector
               :projectId="epic.projectId"
               v-model="draft.targetRepoIds"
             />
           </div>
 
-          <!-- Git branch -->
-          <div class="space-y-2">
-            <div class="flex items-center justify-between">
-              <span class="field-label">Git branch</span>
-              <button
-                class="panel-toggle"
-                :class="draft.useGitBranch ? 'on' : 'off'"
-                @click="draft.useGitBranch = !draft.useGitBranch"
-              />
-            </div>
-            <p class="text-[11px] text-txt-faint leading-relaxed">
-              {{ draft.useGitBranch ? 'Creates a branch for this epic, restores default when done' : 'Agents work on the current branch' }}
-            </p>
-            <div v-if="branchName" class="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-base border border-border-subtle">
-              <svg class="w-3.5 h-3.5 text-teal flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/>
-              </svg>
-              <span class="text-[12px] font-mono text-teal truncate select-all" :title="branchName">
-                {{ branchName }}
-              </span>
-            </div>
-          </div>
-
-          <!-- Worktree mode -->
-          <div class="space-y-2">
-            <div class="flex items-center justify-between">
-              <span class="field-label">Worktree mode</span>
-              <button
-                class="panel-toggle"
-                :class="draft.useWorktree ? 'on' : 'off'"
-                @click="draft.parallelAgentCount && draft.parallelAgentCount > 1 ? null : (draft.useWorktree = !draft.useWorktree)"
-                :disabled="draft.parallelAgentCount !== undefined && draft.parallelAgentCount > 1"
-              />
-            </div>
-            <p class="text-[11px] text-txt-faint leading-relaxed">
-              {{ draft.useWorktree ? 'Uses a separate git worktree — no branch switching in the main repo' : 'Agents work in the main repo checkout' }}
-            </p>
-            <div v-if="draft.useWorktree" class="space-y-1.5">
-              <label class="field-label">Base branch</label>
-              <BranchPicker
-                v-model="draft.baseBranch"
-                :repoIds="epicRepoIds"
-                :projectId="epic!.projectId"
-                placeholder="Base branch..."
-                :disabled="!!draft.runAfter"
-              />
-              <p v-if="!!draft.runAfter" class="text-[11px] text-txt-faint">Inherited from predecessor</p>
+          <!-- Git radio group -->
+          <div>
+            <div class="text-[11px] text-txt-muted mb-1.5">Git Mode</div>
+            <div class="space-y-1">
+              <label
+                class="flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-colors"
+                :class="{ 'bg-[rgba(203,166,247,0.06)]': gitMode === 'none', 'opacity-40 cursor-not-allowed': draft.parallelAgentCount > 1 }"
+              >
+                <input type="radio" value="none" :checked="gitMode === 'none'"
+                       :disabled="draft.parallelAgentCount > 1"
+                       @change="setGitMode('none')" class="sr-only" />
+                <span class="git-radio-dot" :class="{ selected: gitMode === 'none' }"></span>
+                <span class="text-[12px]" :class="gitMode === 'none' ? 'text-txt-primary' : 'text-txt-secondary'">None</span>
+              </label>
+              <label
+                class="flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-colors"
+                :class="{ 'bg-[rgba(203,166,247,0.06)]': gitMode === 'branch', 'opacity-40 cursor-not-allowed': draft.parallelAgentCount > 1 }"
+              >
+                <input type="radio" value="branch" :checked="gitMode === 'branch'"
+                       :disabled="draft.parallelAgentCount > 1"
+                       @change="setGitMode('branch')" class="sr-only" />
+                <span class="git-radio-dot" :class="{ selected: gitMode === 'branch' }"></span>
+                <span class="text-[12px]" :class="gitMode === 'branch' ? 'text-txt-primary' : 'text-txt-secondary'">Git Branch</span>
+              </label>
+              <label
+                class="flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-colors"
+                :class="{ 'bg-[rgba(203,166,247,0.06)]': gitMode === 'worktree' }"
+              >
+                <input type="radio" value="worktree" :checked="gitMode === 'worktree'"
+                       @change="setGitMode('worktree')" class="sr-only" />
+                <span class="git-radio-dot" :class="{ selected: gitMode === 'worktree' }"></span>
+                <span class="text-[12px]" :class="gitMode === 'worktree' ? 'text-txt-primary' : 'text-txt-secondary'">Worktree</span>
+              </label>
             </div>
           </div>
 
-          <!-- Parallel agents -->
-          <div class="space-y-2">
-            <div class="flex items-center justify-between">
-              <span class="field-label">Parallel agents</span>
-              <div class="flex gap-1">
-                <button
-                  v-for="n in [1, 2, 3, 4]"
-                  :key="n"
-                  class="w-7 h-7 text-[12px] font-medium rounded-md border transition-colors"
-                  :class="draft.parallelAgentCount === n
-                    ? 'border-mauve text-mauve bg-[rgba(203,166,247,0.1)]'
-                    : 'border-border-subtle text-txt-faint hover:border-border-standard hover:text-txt-muted'"
-                  @click="setParallelCount(n)"
-                >
-                  {{ n }}
-                </button>
-              </div>
-            </div>
-            <p class="text-[11px] text-txt-faint leading-relaxed">
+          <!-- Branch name display -->
+          <div v-if="branchName && (gitMode === 'branch' || gitMode === 'worktree')" class="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-base border border-border-subtle">
+            <svg class="w-3.5 h-3.5 text-teal flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/>
+            </svg>
+            <span class="text-[12px] font-mono text-teal truncate select-all" :title="branchName">
+              {{ branchName }}
+            </span>
+          </div>
+
+          <!-- BranchPicker (only when worktree) -->
+          <div v-if="gitMode === 'worktree'" class="space-y-1.5">
+            <div class="text-[11px] text-txt-muted">Base Branch</div>
+            <BranchPicker
+              v-model="draft.baseBranch"
+              :repoIds="epicRepoIds"
+              :projectId="epic!.projectId"
+              placeholder="Base branch..."
+              :disabled="!!draft.runAfter"
+            />
+            <p v-if="!!draft.runAfter" class="text-[11px] text-txt-faint">Inherited from predecessor</p>
+          </div>
+
+          <!-- Agents DotPicker -->
+          <div>
+            <div class="text-[11px] text-txt-muted mb-1.5">Parallel Agents</div>
+            <DotPicker
+              :modelValue="draft.parallelAgentCount - 1"
+              :labels="agentLabels"
+              @update:modelValue="setParallelCount($event + 1)"
+            />
+            <p class="text-[11px] text-txt-faint leading-relaxed mt-1.5">
               {{ draft.parallelAgentCount > 1
                 ? `On start, creates ${draft.parallelAgentCount} independent copies (X1–X${draft.parallelAgentCount}), each in its own worktree. Pick the best result.`
                 : 'Runs a single agent for this epic.' }}
             </p>
           </div>
         </div>
-      </section>
+      </div>
 
-      <!-- Scheduling (collapsible, default collapsed) -->
-      <section class="border-t border-border-subtle">
+      <!-- GROUP 4 — Description & Acceptance Criteria -->
+      <div class="space-y-3">
+        <div>
+          <div class="text-[11px] text-txt-muted mb-1.5">Description</div>
+          <textarea
+            v-model="draft.description"
+            class="field-input w-full"
+            rows="3"
+            placeholder="Explain what to build and why it matters."
+          ></textarea>
+        </div>
+        <div>
+          <div class="text-[11px] text-txt-muted mb-1.5">Acceptance Criteria</div>
+          <textarea
+            v-model="draft.acceptanceCriteria"
+            class="field-input w-full"
+            rows="3"
+            placeholder="List what must be true for this to be considered done."
+          ></textarea>
+        </div>
+      </div>
+
+      <!-- GROUP 5 — SCHEDULING (collapsible) -->
+      <section class="border-t border-border-subtle pt-1">
         <button
-          class="w-full flex items-center gap-2 px-5 h-10 hover:bg-white/[0.015] transition-colors"
+          class="w-full flex items-center gap-2 py-2 hover:bg-white/[0.015] transition-colors"
           @click="schedOpen = !schedOpen"
         >
           <svg
@@ -246,10 +243,20 @@
           </svg>
           <span class="text-[11px] font-semibold text-txt-muted uppercase tracking-wider">Scheduling</span>
         </button>
-        <div v-show="schedOpen" class="px-5 pb-5 pt-1 space-y-4">
+        <div v-show="schedOpen" class="pb-3 pt-1 space-y-4">
+          <!-- Priority DotPicker -->
+          <div>
+            <div class="text-[11px] text-txt-muted mb-1.5">Priority</div>
+            <DotPicker
+              :modelValue="priorityValues.indexOf(draft.priorityHint)"
+              :labels="priorityLabels"
+              @update:modelValue="draft.priorityHint = priorityValues[$event]"
+            />
+          </div>
+
           <!-- Column -->
           <div class="space-y-1.5">
-            <span class="field-label">Column</span>
+            <div class="text-[11px] text-txt-muted">Column</div>
             <select v-model="draft.column" class="field-input">
               <option v-for="col in columns" :key="col" :value="col">
                 {{ col.replace(/-/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) }}
@@ -259,7 +266,7 @@
 
           <!-- Run after -->
           <div class="space-y-1.5">
-            <span class="field-label">Run after</span>
+            <div class="text-[11px] text-txt-muted">Run after</div>
             <div v-if="draft.runAfter" class="dep-row">
               <svg class="w-3.5 h-3.5 text-mauve flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M13 5l7 7-7 7M5 12h15" />
@@ -284,7 +291,7 @@
 
           <!-- Dependencies -->
           <div class="space-y-2">
-            <span class="field-label">Dependencies</span>
+            <div class="text-[11px] text-txt-muted">Dependencies</div>
             <div class="space-y-1.5">
               <div v-for="depId in draft.dependsOn" :key="depId" class="dep-row">
                 <span class="w-1.5 h-1.5 rounded-full bg-ember flex-shrink-0"></span>
@@ -308,102 +315,100 @@
         </div>
       </section>
 
-      <!-- Review actions (contextual) -->
-      <div v-if="epic.column === 'review'" class="border-t border-border-subtle px-5 py-4 space-y-3">
-        <div class="flex items-center gap-2.5">
-          <span class="text-[11px] font-semibold text-txt-muted uppercase tracking-wider">Review</span>
-          <span class="text-[10px] text-[var(--accent-peach)] bg-[rgba(250,179,135,0.08)] px-2 py-0.5 rounded-full font-medium border border-[rgba(250,179,135,0.12)]">needs review</span>
+      <!-- ACTION ZONE (contextual) -->
+      <!-- Review -->
+      <template v-if="epic.column === 'review'">
+        <div class="border-t border-border-standard my-1"></div>
+        <div class="space-y-3">
+          <div class="flex items-center gap-2.5">
+            <span class="text-[11px] font-semibold uppercase tracking-wider" style="color: var(--accent-peach)">Review Needed</span>
+            <span class="text-[10px] px-2 py-0.5 rounded-full font-medium border" style="color: var(--accent-peach); background: rgba(250,179,135,0.08); border-color: rgba(250,179,135,0.12)">needs review</span>
+          </div>
+          <textarea
+            v-model="rejectionFeedback"
+            rows="2"
+            class="field-input w-full"
+            placeholder="Feedback for rejection (optional)..."
+          ></textarea>
+          <div class="flex gap-2">
+            <button class="btn-primary flex-1" style="background: var(--accent-green)" @click="approve">Approve</button>
+            <button class="btn-primary flex-1" style="background: var(--accent-red)" @click="reject">Reject</button>
+          </div>
         </div>
-        <textarea
-          v-model="rejectionFeedback"
-          rows="2"
-          class="field-input"
-          placeholder="Rejection feedback (optional)..."
-        />
-        <div class="flex gap-2">
-          <button class="btn-primary flex-1" style="background: #10b981" @click="approve">
-            Approve
-          </button>
-          <button class="btn-primary flex-1" style="background: #f38ba8; color: white" @click="reject">
-            Reject
-          </button>
-        </div>
-      </div>
+      </template>
 
-      <!-- In-progress actions (contextual) -->
-      <div v-if="epic.column === 'in-progress'" class="border-t border-border-subtle px-5 py-4">
-        <div class="flex items-center gap-2">
-          <button
-            class="flex-1 py-2 text-[13px] font-medium rounded-lg border border-blue text-blue hover:bg-[rgba(137,180,250,0.08)] transition-colors"
-            @click="ui.navigateToEpic(epic.id, epic.projectId)"
-          >
-            Open Workspace
-          </button>
-          <button
-            class="py-2 px-4 text-[13px] font-medium rounded-lg border border-[rgba(249,115,22,0.3)] text-ember-400 hover:bg-[rgba(249,115,22,0.06)] transition-colors"
-            @click="suspendEpic"
-          >
-            Suspend
-          </button>
-          <button
-            class="py-2 px-4 text-[13px] font-medium rounded-lg border border-[rgba(243,139,168,0.3)] text-[var(--accent-red)] hover:bg-[rgba(243,139,168,0.06)] transition-colors"
-            @click="stopEpic"
-          >
-            Stop
-          </button>
+      <!-- In-progress -->
+      <template v-else-if="epic.column === 'in-progress'">
+        <div class="border-t border-border-standard my-1"></div>
+        <div class="space-y-2">
+          <div class="text-[11px] font-semibold uppercase tracking-wider" style="color: var(--accent-teal)">Running</div>
+          <div class="flex gap-2">
+            <button
+              class="flex-1 py-2 px-3 rounded-lg text-[13px] font-medium transition-colors"
+              style="border: 1px solid rgba(137,180,250,0.3); color: var(--accent-blue)"
+              @click="ui.navigateToEpic(epic.id, epic.projectId)"
+            >Open Workspace</button>
+            <button
+              class="flex-1 py-2 px-3 rounded-lg text-[13px] font-medium transition-colors"
+              style="border: 1px solid rgba(245,158,11,0.3); color: var(--accent-ember)"
+              @click="suspendEpic"
+            >Suspend</button>
+            <button
+              class="flex-1 py-2 px-3 rounded-lg text-[13px] font-medium transition-colors"
+              style="border: 1px solid rgba(243,139,168,0.3); color: var(--accent-red)"
+              @click="stopEpic"
+            >Stop</button>
+          </div>
         </div>
-      </div>
+      </template>
 
-      <!-- Suspended banner (contextual) -->
-      <div
-        v-if="epic.suspendedAt && (epic.column === 'todo' || epic.column === 'backlog')"
-        class="mx-5 my-4 flex items-center gap-2 px-3 py-2.5 rounded-lg bg-[rgba(249,115,22,0.06)] border border-[rgba(249,115,22,0.12)]"
-      >
-        <span class="text-[12px] text-ember-400 flex-1">This epic was suspended.</span>
-        <button
-          class="text-[12px] py-1 px-3 rounded-lg bg-[rgba(249,115,22,0.12)] text-ember-400 font-medium hover:bg-[rgba(249,115,22,0.18)] transition-colors"
-          @click="resumeEpic"
-        >
-          Resume
-        </button>
-      </div>
-
-      <!-- Done actions: Create PR (contextual) -->
-      <div v-if="epic.column === 'done' && branchName" class="border-t border-border-subtle px-5 py-4 space-y-3">
-        <div class="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-base border border-border-subtle">
-          <svg class="w-3.5 h-3.5 text-teal flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/>
-          </svg>
-          <span class="text-[12px] font-mono text-teal truncate" :title="branchName">
-            {{ branchName }}
-          </span>
+      <!-- Done with branch -->
+      <template v-else-if="epic.column === 'done' && branchName">
+        <div class="border-t border-border-standard my-1"></div>
+        <div class="space-y-2">
+          <div class="text-[11px] font-semibold uppercase tracking-wider" style="color: var(--accent-green)">Completed</div>
+          <div class="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-base border border-border-subtle">
+            <svg class="w-3.5 h-3.5 text-teal flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/>
+            </svg>
+            <span class="text-[12px] font-mono text-teal truncate" :title="branchName">
+              {{ branchName }}
+            </span>
+          </div>
+          <button
+            class="btn-primary w-full"
+            style="background: var(--accent-mauve)"
+            :disabled="prLoading"
+            @click="createPR(epic.id, epic.projectId)"
+          >
+            {{ prLoading ? 'Pushing & Opening PR...' : 'Create Pull Request' }}
+          </button>
+          <p v-if="prError" class="text-[11px]" style="color: var(--accent-red)">{{ prError }}</p>
         </div>
-        <button
-          class="btn-primary"
-          style="background: #10b981"
-          :disabled="prLoading"
-          @click="createPR(epic.id, epic.projectId)"
-        >
-          {{ prLoading ? 'Pushing & Opening PR...' : 'Create Pull Request' }}
-        </button>
-        <p v-if="prError" class="text-[11px] text-[var(--accent-red)]">{{ prError }}</p>
-      </div>
+      </template>
+
+      <!-- Suspended -->
+      <template v-else-if="epic.suspendedAt && (epic.column === 'todo' || epic.column === 'backlog')">
+        <div class="border-t border-border-standard my-1"></div>
+        <div class="space-y-2">
+          <div class="text-[11px] font-semibold uppercase tracking-wider" style="color: var(--accent-yellow)">Suspended</div>
+          <button
+            class="w-full py-2 px-4 rounded-lg text-[13px] font-medium transition-colors"
+            style="border: 1px solid rgba(245,158,11,0.3); color: var(--accent-ember)"
+            @click="resumeEpic"
+          >Resume</button>
+        </div>
+      </template>
 
       <div class="h-2"></div>
     </div>
 
-    <!-- Footer -->
-    <div v-if="epic" class="px-5 py-3 border-t border-border-subtle shrink-0 bg-window flex items-center gap-2">
-      <button class="btn-primary flex-1" style="background: #cba6f7" @click="save">
+    <!-- Footer (52px) -->
+    <div v-if="epic" class="flex items-center px-5 h-[52px] flex-shrink-0 border-t border-border-subtle bg-surface gap-3">
+      <button v-if="!isNew" @click="remove" class="delete-btn text-sm text-txt-muted">Delete</button>
+      <div class="flex-1"></div>
+      <button @click="save" class="btn-primary" style="background: var(--accent-mauve); min-width: 100px">
         {{ isNew ? 'Create' : 'Save' }}
-      </button>
-      <button
-        v-if="!isNew"
-        class="text-[13px] py-2.5 px-4 rounded-lg border border-[rgba(243,139,168,0.2)] text-[var(--accent-red)]
-               hover:bg-[rgba(243,139,168,0.06)] transition-colors font-medium"
-        @click="remove"
-      >
-        Delete
       </button>
     </div>
 
@@ -425,6 +430,7 @@ import { engineBus } from '@/engine/EventBus';
 import { useCreatePR } from '@/composables/useCreatePR';
 import RepoScopeSelector from './RepoScopeSelector.vue';
 import BranchPicker from './BranchPicker.vue';
+import DotPicker from './DotPicker.vue';
 import type { BlockingReason } from '@/engine/KosTypes';
 
 const props = defineProps<{ epicId: string; isNew?: boolean }>();
@@ -457,12 +463,51 @@ const complexityDescriptions: Record<ComplexityEstimate, string> = {
   epic: 'Full pipeline with verification protocol + integration testing. For new projects.',
 };
 
+const complexityLabels = ['Trivial', 'Small', 'Medium', 'Large', 'Epic']
+const complexityValues: ComplexityEstimate[] = ['trivial', 'small', 'medium', 'large', 'epic']
+const priorityLabels = ['None', 'Low', 'Medium', 'High', 'Critical']
+const priorityValues: PriorityHint[] = ['none', 'low', 'medium', 'high', 'critical']
+const agentLabels = ['1', '2', '3', '4']
+
 const epic = computed(() => epicStore.epicById(props.epicId));
 const branchName = computed(() => epicStore.epicBranchName(props.epicId));
 
-const configOpen = ref(true);
+const columnBadge = computed(() => {
+  const col = epic.value?.column
+  const map: Record<string, { label: string; color: string }> = {
+    idea:          { label: 'Idea',        color: 'var(--accent-mauve)' },
+    backlog:       { label: 'Backlog',     color: 'var(--text-muted)' },
+    todo:          { label: 'Todo',        color: 'var(--accent-blue)' },
+    'in-progress': { label: 'In Progress', color: 'var(--accent-teal)' },
+    review:        { label: 'Review',      color: 'var(--accent-peach)' },
+    done:          { label: 'Done',        color: 'var(--accent-green)' },
+    discarded:     { label: 'Discarded',   color: 'var(--text-faint)' },
+  }
+  return map[col ?? ''] ?? { label: col ?? '', color: 'var(--text-muted)' }
+})
+
+const columnBadgeStyle = computed(() => {
+  const accent = columnBadge.value.color
+  return {
+    background: `color-mix(in srgb, ${accent} 8%, transparent)`,
+    border: `1px solid color-mix(in srgb, ${accent} 12%, transparent)`,
+    color: accent
+  }
+})
+
+const suggestedPipeline = computed(() => {
+  const c = draft.value?.complexity
+  if (!c) return null
+  if (c === 'trivial' || c === 'small') return 'fix'
+  if (c === 'medium') return 'hybrid'
+  return 'hybrid'
+})
+
 const schedOpen = ref(false);
 const titleInput = ref<HTMLInputElement | null>(null);
+const gitMode = ref<'none' | 'branch' | 'worktree'>('none');
+const whereOpen = ref(!props.isNew);
+const pipelinePulse = ref(false);
 
 const draft = ref({
   title: '',
@@ -493,6 +538,11 @@ watch(() => props.isNew, (val) => {
   }
 }, { immediate: true });
 
+watch(() => draft.value?.complexity, () => {
+  pipelinePulse.value = true
+  setTimeout(() => { pipelinePulse.value = false }, 600)
+})
+
 function loadDraft() {
   const e = epicStore.epicById(props.epicId);
   if (!e) return;
@@ -513,6 +563,8 @@ function loadDraft() {
     runAfter: e.runAfter ?? null,
     parallelAgentCount: e.parallelAgentCount ?? 1,
   };
+  const d = draft.value
+  gitMode.value = d.useWorktree ? 'worktree' : d.useGitBranch ? 'branch' : 'none'
 }
 
 function depTitle(id: string) {
@@ -556,10 +608,20 @@ function clearRunAfter() {
   draft.value.runAfter = null;
 }
 
+function setGitMode(mode: 'none' | 'branch' | 'worktree') {
+  gitMode.value = mode
+  draft.value.useGitBranch = mode !== 'none'
+  draft.value.useWorktree = mode === 'worktree'
+  if (mode !== 'worktree' && draft.value.parallelAgentCount > 1) {
+    draft.value.parallelAgentCount = 1
+  }
+}
+
 function setParallelCount(n: number) {
   draft.value.parallelAgentCount = n;
   if (n > 1) {
     draft.value.useWorktree = true;
+    gitMode.value = 'worktree';
   }
 }
 
@@ -652,13 +714,20 @@ async function reject() {
 .scroll-area::-webkit-scrollbar-thumb { background: rgba(100,116,139,0.25); border-radius: 3px; }
 .scroll-area::-webkit-scrollbar-thumb:hover { background: rgba(100,116,139,0.4); }
 
-.field-label {
-  font-size: 11px;
-  color: var(--text-muted);
-  letter-spacing: 0.02em;
-  line-height: 1;
-  display: block;
+.title-input {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-primary);
+  font-size: 16px;
+  font-weight: 600;
+  padding-bottom: 6px;
+  outline: none;
+  transition: border-color 150ms;
 }
+.title-input::placeholder { color: var(--text-faint); font-weight: 400; }
+.title-input:hover { border-bottom-color: var(--border-standard); }
+.title-input:focus { border-bottom-color: var(--accent-mauve); }
 
 .field-input {
   width: 100%;
@@ -750,33 +819,22 @@ textarea.field-input {
   border-color: rgba(180,190,254,0.20);
   box-shadow: inset 0 0 20px -10px rgba(180,190,254,0.12);
 }
-
-.panel-toggle {
-  position: relative;
-  width: 34px;
-  height: 20px;
-  border-radius: 10px;
-  cursor: pointer;
-  transition: background 0.2s;
-  border: none;
-  outline: none;
-  flex-shrink: 0;
+.pipe-btn.suggested-ring {
+  box-shadow: 0 0 0 2px rgba(203, 166, 247, 0.25);
 }
-.panel-toggle::after {
-  content: '';
-  position: absolute;
-  top: 3px;
-  left: 3px;
+
+.git-radio-dot {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: var(--text-primary);
-  transition: transform 0.2s ease;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+  border: 2px solid var(--border-standard);
+  flex-shrink: 0;
+  transition: border-color 150ms, background 150ms;
 }
-.panel-toggle.on { background: var(--accent-teal); }
-.panel-toggle.on::after { transform: translateX(14px); }
-.panel-toggle.off { background: var(--text-faint); }
+.git-radio-dot.selected {
+  border-color: var(--accent-mauve);
+  background: var(--accent-mauve);
+}
 
 .dep-row {
   display: flex;
@@ -801,6 +859,14 @@ textarea.field-input {
 }
 .dep-remove:hover { color: var(--accent-red); }
 
+.delete-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: color 150ms;
+}
+.delete-btn:hover { color: var(--accent-red); }
+
 .btn-primary {
   width: 100%;
   padding: 10px;
@@ -816,4 +882,10 @@ textarea.field-input {
 .btn-primary:hover { filter: brightness(1.1); }
 .btn-primary:active { transform: scale(0.99); }
 .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; filter: none; }
+
+@keyframes pulse-hint {
+  0%   { opacity: 0.4; }
+  100% { opacity: 1; }
+}
+.pipeline-pulse { animation: pulse-hint 0.6s ease-in-out; }
 </style>
