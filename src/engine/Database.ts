@@ -68,6 +68,7 @@ export class Database {
         content TEXT,
         tool_name TEXT,
         tool_input TEXT,
+        tool_id TEXT,
         turn_id INTEGER,
         timestamp INTEGER
       )
@@ -111,6 +112,7 @@ export class Database {
       'ALTER TABLE sessions ADD COLUMN delegation_result TEXT DEFAULT \'\'',
       'ALTER TABLE sessions ADD COLUMN epic_id TEXT DEFAULT \'\'',
       'ALTER TABLE sessions ADD COLUMN claude_session_id TEXT DEFAULT \'\'',
+      'ALTER TABLE messages ADD COLUMN tool_id TEXT DEFAULT \'\'',
     ];
 
     for (const sql of migrations) {
@@ -400,14 +402,15 @@ export class Database {
     if (!this.db) return;
 
     await this.db.execute(
-      `INSERT INTO messages (session_id, role, content, tool_name, tool_input, turn_id, timestamp)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      `INSERT INTO messages (session_id, role, content, tool_name, tool_input, tool_id, turn_id, timestamp)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
       [
         msg.sessionId,
         msg.role,
         msg.content,
         msg.toolName ?? '',
         msg.toolInput ?? '',
+        msg.toolId ?? '',
         msg.turnId,
         msg.timestamp,
       ],
@@ -419,14 +422,15 @@ export class Database {
 
     if (msg.id == null) {
       const result = await this.db.execute(
-        `INSERT INTO messages (session_id, role, content, tool_name, tool_input, turn_id, timestamp)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        `INSERT INTO messages (session_id, role, content, tool_name, tool_input, tool_id, turn_id, timestamp)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
         [
           msg.sessionId,
           msg.role,
           msg.content,
           msg.toolName ?? '',
           msg.toolInput ?? '',
+          msg.toolId ?? '',
           msg.turnId,
           msg.timestamp,
         ],
@@ -445,7 +449,7 @@ export class Database {
     if (!this.db) return [];
 
     const rows = await this.db.select<any[]>(
-      `SELECT id, session_id, role, content, tool_name, tool_input, turn_id, timestamp
+      `SELECT id, session_id, role, content, tool_name, tool_input, tool_id, turn_id, timestamp
        FROM messages WHERE session_id = $1 ORDER BY id ASC`,
       [sessionId],
     );
@@ -457,6 +461,7 @@ export class Database {
       content: r.content,
       toolName: r.tool_name,
       toolInput: r.tool_input,
+      ...(r.tool_id ? { toolId: r.tool_id } : {}),
       turnId: r.turn_id,
       timestamp: r.timestamp,
     }));

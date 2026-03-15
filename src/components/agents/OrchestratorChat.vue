@@ -125,6 +125,17 @@
             @file-clicked="(path: string) => $emit('file-clicked', path)"
           />
 
+          <!-- ── Question widget ── -->
+          <QuestionWidget
+            v-else-if="item.type === 'question'"
+            class="tree-node anim-fade-in"
+            :question="parseQuestion(item.message!)"
+            :options="parseOptions(item.message!)"
+            :sessionId="sessionId"
+            :answered="isQuestionAnswered(item.message!)"
+            @answer="(ans: string) => onQuestionAnswer(item.message!, ans)"
+          />
+
           <!-- ── Sub-agent branch ── -->
           <TreeBranch
             v-else-if="item.type === 'sub-agent'"
@@ -178,11 +189,12 @@ import TreeBranch from './TreeBranch.vue';
 import ChatInputBar from './ChatInputBar.vue';
 import ToolCallGroup from '../chat/ToolCallGroup.vue';
 import type { ToolCallInfo } from '../chat/ToolCallGroup.vue';
+import QuestionWidget from '../chat/QuestionWidget.vue';
 
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'StrReplace', 'MultiEdit', 'NotebookEdit']);
 
 interface TimelineItem {
-  type: 'orchestrator-message' | 'orchestrator-tools' | 'sub-agent';
+  type: 'orchestrator-message' | 'orchestrator-tools' | 'sub-agent' | 'question';
   message?: MessageRecord;
   agent?: HierarchicalAgent;
   timestamp: number;
@@ -196,10 +208,11 @@ const props = defineProps<{
   sessionId: string;
 }>();
 
-defineEmits<{
+const emit = defineEmits<{
   'file-clicked': [filePath: string];
   send: [message: string, images: { data: string; format: string; displayName: string }[]];
   stop: [];
+  'question-answered': [toolUseId: string, answer: string];
 }>();
 
 const fleetStore = useFleetStore();
@@ -208,6 +221,41 @@ const projectsStore = useProjectsStore();
 const epicStore = useEpicStore();
 const scrollEl = ref<HTMLElement | null>(null);
 const loading = ref(false);
+
+// ── Question widget helpers ──────────────────────────────────────────────
+
+const answeredToolIds = ref(new Set<string>());
+
+function isQuestionAnswered(msg: MessageRecord): boolean {
+  if (msg.toolId && answeredToolIds.value.has(msg.toolId)) return true;
+  const msgs = messages.value;
+  const idx = msgs.indexOf(msg);
+  if (idx >= 0 && idx < msgs.length - 1) return true;
+  return false;
+}
+
+function parseQuestion(msg: MessageRecord): string {
+  try {
+    const parsed = JSON.parse(msg.toolInput || '{}');
+    return parsed.questions?.[0]?.question ?? 'Question';
+  } catch { return 'Question'; }
+}
+
+function parseOptions(msg: MessageRecord): string[] {
+  try {
+    const parsed = JSON.parse(msg.toolInput || '{}');
+    const opts = parsed.questions?.[0]?.options;
+    if (Array.isArray(opts)) return opts.map((o: any) => typeof o === 'string' ? o : o.label ?? String(o));
+    return [];
+  } catch { return []; }
+}
+
+function onQuestionAnswer(msg: MessageRecord, answer: string) {
+  if (msg.toolId) {
+    answeredToolIds.value.add(msg.toolId);
+  }
+  emit('question-answered', msg.toolId ?? '', answer);
+}
 
 // ── Per-child streaming state ────────────────────────────────────────────
 // Tracks in-progress text/thinking for each child session so we can
@@ -530,6 +578,16 @@ const timeline = computed((): TimelineItem[] => {
   const msgs = messages.value;
   for (let i = 0; i < msgs.length; i++) {
     const msg = msgs[i];
+    if (msg.toolName === 'AskUserQuestion') {
+      flushTools();
+      items.push({
+        type: 'question',
+        message: msg,
+        timestamp: msg.timestamp ?? Date.now(),
+      });
+      continue;
+    }
+
     const isToolCall = !!msg.toolName && (msg.role === 'assistant' || msg.role === 'tool');
 
     if (isToolCall) {
