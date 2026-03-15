@@ -88,6 +88,7 @@ export interface MessageRecord {
   content: string;
   toolName?: string;
   toolInput?: string;
+  toolId?: string;
   turnId: number;
   timestamp: number;
 }

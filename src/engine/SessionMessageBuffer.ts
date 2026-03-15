@@ -117,6 +117,7 @@ export class SessionMessageBuffer {
       toolName: string;
       summary: string;
       toolInput?: string;
+      toolId?: string;
       timestamp: number;
     },
   ): void {
@@ -189,7 +190,7 @@ export class SessionMessageBuffer {
   /** INSERT a tool message into the DB. */
   private _insertToolMessageDb(
     sessionId: string,
-    msg: { toolName: string; summary: string; toolInput?: string; timestamp: number },
+    msg: { toolName: string; summary: string; toolInput?: string; toolId?: string; timestamp: number },
     turnId: number,
   ): void {
     this.db
@@ -199,6 +200,7 @@ export class SessionMessageBuffer {
         content: msg.summary,
         toolName: msg.toolName,
         toolInput: msg.toolInput,
+        toolId: msg.toolId,
         turnId,
         timestamp: msg.timestamp,
       })

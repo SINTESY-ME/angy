@@ -26,6 +26,7 @@
         @file-clicked="onLocalFileClicked"
         @send="onSend"
         @stop="onStop"
+        @question-answered="onQuestionAnswered"
       />
       <div
         v-else
@@ -55,7 +56,7 @@ import { ref, computed, nextTick } from 'vue';
 import { useFleetStore } from '../../stores/fleet';
 import { useSessionsStore, getDatabase, getSessionManager } from '../../stores/sessions';
 import { useUiStore } from '../../stores/ui';
-import { sendMessageToEngine, cancelProcess } from '../../composables/useEngine';
+import { sendMessageToEngine, sendToolResultToEngine, cancelProcess } from '../../composables/useEngine';
 import { engineBus } from '../../engine/EventBus';
 import type { AgentHandle, MessageRecord, AttachedImage } from '../../engine/types';
 import AgentsHeader from './AgentsHeader.vue';
@@ -177,7 +178,7 @@ const storeHandle: AgentHandle = {
     }
   },
 
-  addToolUse(sessionId: string, toolName: string, summary: string, toolInput?: Record<string, any>) {
+  addToolUse(sessionId: string, toolName: string, summary: string, toolInput?: Record<string, any>, toolId?: string) {
     const state = getStreamState(sessionId);
     state.currentText = '';
     state.thinkingText = '';
@@ -188,6 +189,7 @@ const storeHandle: AgentHandle = {
       content: summary,
       toolName,
       toolInput: toolInput ? JSON.stringify(toolInput) : undefined,
+      toolId,
       turnId: state.turnCounter,
       timestamp: Math.floor(Date.now() / 1000),
     };
@@ -286,6 +288,27 @@ function onStop() {
     cancelProcess(sid);
     fleetStore.updateAgent({ sessionId: sid, status: 'idle', activity: '' });
   }
+}
+
+async function onQuestionAnswered(toolUseId: string, answer: string) {
+  const sid = selectedAgentId.value;
+  if (!sid) return;
+
+  const info = sessionsStore.sessions.get(sid);
+  const resumeSessionId = info?.claudeSessionId;
+  if (!resumeSessionId) {
+    console.warn('[AgentsView] Cannot answer question: no claudeSessionId for', sid);
+    return;
+  }
+
+  fleetStore.updateAgent({ sessionId: sid, status: 'working', activity: 'Answering question...' });
+
+  sendToolResultToEngine(sid, toolUseId, answer, storeHandle, {
+    workingDir: info?.workspace || ui.workspacePath || '.',
+    mode: info?.mode || 'agent',
+    model: ui.currentModel,
+    resumeSessionId,
+  });
 }
 
 function onApprove() {

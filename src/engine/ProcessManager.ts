@@ -206,6 +206,7 @@ export class ProcessManager {
         toolName: payload.toolName,
         summary,
         toolInput: payload.input ? JSON.stringify(payload.input) : undefined,
+        toolId: payload.toolId,
         timestamp: Math.floor(Date.now() / 1000),
       });
       handle.addToolUse(sessionId, payload.toolName, summary, payload.input, payload.toolId);
