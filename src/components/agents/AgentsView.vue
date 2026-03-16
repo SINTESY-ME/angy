@@ -22,6 +22,7 @@
 
       <OrchestratorChat
         v-else-if="selectedAgentId"
+        :key="selectedAgentId"
         :sessionId="selectedAgentId"
         @file-clicked="onLocalFileClicked"
         @send="onSend"
@@ -254,7 +255,7 @@ const storeHandle: AgentHandle = {
 
 // ── Send / Stop handlers ─────────────────────────────────────────────
 
-async function onSend(message: string, images: AttachedImage[] = []) {
+async function onSend(message: string, images: AttachedImage[] = [], model?: string) {
   const sid = selectedAgentId.value;
   if (!sid) return;
 
@@ -326,7 +327,7 @@ async function onSend(message: string, images: AttachedImage[] = []) {
   sendMessageToEngine(sid, effectiveMessage, storeHandle, {
     workingDir,
     mode: info?.mode || 'agent',
-    model: ui.currentModel,
+    model: model ?? ui.currentModel,
     resumeSessionId,
     images: engineImages,
   });

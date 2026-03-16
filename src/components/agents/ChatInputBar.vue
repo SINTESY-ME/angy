@@ -201,6 +201,11 @@
   </div>
 </template>
 
+<script lang="ts">
+// Module-level: shared across all instances, survives component re-creation from :key
+const draftsBySession = new Map<string, string>();
+</script>
+
 <script setup lang="ts">
 import { ref, computed, nextTick, watch, onMounted, onUnmounted } from 'vue';
 import { open } from '@tauri-apps/plugin-dialog';
@@ -209,18 +214,19 @@ import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { ProfileManager, type PersonalityProfile } from '../../engine/ProfileManager';
 import type { AttachedImage } from '../../engine/types';
 
-defineProps<{
+const props = defineProps<{
   processing: boolean;
+  sessionId?: string;
 }>();
 
 const emit = defineEmits<{
-  send: [message: string, images: AttachedImage[]];
+  send: [message: string, images: AttachedImage[], model: string];
   stop: [];
 }>();
 
 // ── State ─────────────────────────────────────────────────────────────
 
-const draft = ref('');
+const draft = ref(props.sessionId ? (draftsBySession.get(props.sessionId) ?? '') : '');
 const inputEl = ref<HTMLTextAreaElement | null>(null);
 const isDragging = ref(false);
 const images = ref<AttachedImage[]>([]);
@@ -235,8 +241,16 @@ const modes = [
   { id: 'ask', label: 'Ask', desc: 'Read-only questions' },
 ];
 
-// Model
-const selectedModel = ref('claude-sonnet-4-6');
+// Model — per-session, with global fallback for new chats
+const MODEL_DEFAULT_KEY = 'angy:selectedModel';
+function loadModel(sessionId?: string): string {
+  if (sessionId) {
+    const perChat = localStorage.getItem(`angy:model:${sessionId}`);
+    if (perChat) return perChat;
+  }
+  return localStorage.getItem(MODEL_DEFAULT_KEY) ?? 'claude-sonnet-4-6';
+}
+const selectedModel = ref(loadModel(props.sessionId));
 const modelOpen = ref(false);
 const modelRoot = ref<HTMLElement | null>(null);
 const models = [
@@ -274,15 +288,19 @@ function autoGrow() {
   el.style.overflowY = h >= MAX_HEIGHT ? 'auto' : 'hidden';
 }
 
-watch(draft, () => autoGrow());
+watch(draft, (val) => {
+  autoGrow();
+  if (props.sessionId) draftsBySession.set(props.sessionId, val);
+});
 
 // ── Send ──────────────────────────────────────────────────────────────
 
 function sendMessage() {
   const text = draft.value.trim();
   if (!text && images.value.length === 0) return;
-  emit('send', text, [...images.value]);
+  emit('send', text, [...images.value], selectedModel.value);
   draft.value = '';
+  if (props.sessionId) draftsBySession.delete(props.sessionId);
   images.value = [];
   nextTick(() => {
     const el = inputEl.value;
@@ -308,6 +326,8 @@ function selectMode(id: string) {
 
 function selectModel(id: string) {
   selectedModel.value = id;
+  if (props.sessionId) localStorage.setItem(`angy:model:${props.sessionId}`, id);
+  localStorage.setItem(MODEL_DEFAULT_KEY, id); // also update global default for new chats
   modelOpen.value = false;
 }
 

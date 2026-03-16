@@ -167,7 +167,8 @@
     <ChatInputBar
       v-if="!isAutoSpawned"
       :processing="isProcessing"
-      @send="(msg: string, imgs: any[]) => $emit('send', msg, imgs)"
+      :sessionId="sessionId"
+      @send="(msg: string, imgs: any[], model: string) => $emit('send', msg, imgs, model)"
       @stop="$emit('stop')"
     />
     <div v-else class="py-3 text-center text-[11px] text-txt-muted border-t border-border-subtle">
@@ -210,7 +211,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'file-clicked': [filePath: string];
-  send: [message: string, images: { data: string; format: string; displayName: string }[]];
+  send: [message: string, images: { data: string; format: string; displayName: string }[], model: string];
   stop: [];
   'question-answered': [toolUseId: string, answer: string];
 }>();

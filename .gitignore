@@ -24,3 +24,5 @@ src-tauri/target/
 # Logs
 *.log
 npm-debug.log*
+
+article/
