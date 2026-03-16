@@ -34,7 +34,7 @@
           <!-- Repositories -->
           <div>
             <div class="flex items-center justify-between mb-2">
-              <label class="text-xs text-[var(--text-secondary)] flex items-center">Repositories<InfoTip text="Add the git repositories this project's agents will work on. At least one repo is recommended." /></label>
+              <label class="text-xs text-[var(--text-secondary)] flex items-center">Repositories *<InfoTip text="At least one repository is required." /></label>
               <button
                 @click="addRepo"
                 class="text-[10px] text-[var(--accent-teal)] hover:text-[var(--text-primary)] transition-colors"
@@ -44,7 +44,7 @@
             </div>
 
             <div v-if="repos.length === 0" class="text-[11px] text-[var(--text-faint)] py-2">
-              No repositories added yet.
+              At least one repository is required.
             </div>
 
             <div v-for="(repo, i) in repos" :key="i" class="bg-[var(--bg-raised)] border border-[var(--border-subtle)] rounded-[var(--radius-md)] p-3 mb-2 space-y-2">
@@ -56,7 +56,8 @@
                 />
                 <button
                   @click="repos.splice(i, 1)"
-                  class="text-[var(--text-faint)] hover:text-red-400 transition-colors text-xs"
+                  :disabled="repos.length <= 1"
+                  class="text-[var(--text-faint)] hover:text-red-400 transition-colors text-xs disabled:opacity-20 disabled:cursor-not-allowed disabled:hover:text-[var(--text-faint)]"
                 >
                   ✕
                 </button>
@@ -105,7 +106,7 @@
           </button>
           <button
             @click="onCreate"
-            :disabled="!name.trim()"
+            :disabled="!canCreate"
             class="px-4 py-1.5 text-xs bg-[var(--accent-mauve)] text-white rounded hover:brightness-110 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
           >
             Create Project
@@ -117,7 +118,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue';
+import { ref, reactive, computed, onMounted } from 'vue';
 import { open } from '@tauri-apps/plugin-dialog';
 import { useProjectsStore } from '@/stores/projects';
 import InfoTip from '@/components/common/InfoTip.vue';
@@ -140,9 +141,14 @@ interface RepoEntry {
 
 const repos = reactive<RepoEntry[]>([]);
 
+const hasValidRepo = computed(() => repos.some(r => r.path.trim() !== ''));
+const canCreate = computed(() => name.value.trim() !== '' && hasValidRepo.value);
+
 function addRepo() {
   repos.push({ name: '', path: '', defaultBranch: 'main', primary: repos.length === 0 });
 }
+
+onMounted(() => { addRepo(); });
 
 async function browseRepoPath(repo: RepoEntry) {
   const selected = await open({
@@ -159,7 +165,7 @@ async function browseRepoPath(repo: RepoEntry) {
 }
 
 async function onCreate() {
-  if (!name.value.trim()) return;
+  if (!name.value.trim() || !hasValidRepo.value) return;
 
   const project = await projectsStore.createProject(name.value.trim(), description.value.trim() || undefined);
 

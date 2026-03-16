@@ -32,7 +32,7 @@
           <!-- Repositories -->
           <div>
             <div class="flex items-center justify-between mb-2">
-              <label class="text-xs text-[var(--text-secondary)]">Repositories</label>
+              <label class="text-xs text-[var(--text-secondary)] flex items-center">Repositories *<InfoTip text="At least one repository is required." /></label>
               <button
                 @click="addRepo"
                 class="text-[10px] text-[var(--accent-teal)] hover:text-[var(--text-primary)] transition-colors"
@@ -42,7 +42,7 @@
             </div>
 
             <div v-if="existingRepos.length === 0 && newRepos.length === 0" class="text-[11px] text-[var(--text-faint)] py-2">
-              No repositories.
+              At least one repository is required.
             </div>
 
             <!-- Existing repos -->
@@ -51,7 +51,8 @@
                 <div class="text-xs text-[var(--text-primary)]">{{ repo.name }}</div>
                 <button
                   @click="removeExistingRepo(repo.id)"
-                  class="text-[var(--text-faint)] hover:text-red-400 transition-colors text-xs"
+                  :disabled="totalReposAfterSave <= 1"
+                  class="text-[var(--text-faint)] hover:text-red-400 transition-colors text-xs disabled:opacity-20 disabled:cursor-not-allowed disabled:hover:text-[var(--text-faint)]"
                 >
                   ✕
                 </button>
@@ -134,7 +135,8 @@
           </button>
           <button
             @click="onSave"
-            class="px-4 py-1.5 text-xs bg-[var(--accent-mauve)] text-white rounded hover:brightness-110 transition-all"
+            :disabled="!canSave"
+            class="px-4 py-1.5 text-xs bg-[var(--accent-mauve)] text-white rounded hover:brightness-110 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
           >
             Save
           </button>
@@ -150,6 +152,7 @@ import { open } from '@tauri-apps/plugin-dialog';
 import type { Project } from '@/engine/KosTypes';
 import { useProjectsStore } from '@/stores/projects';
 import { useUiStore } from '@/stores/ui';
+import InfoTip from '@/components/common/InfoTip.vue';
 
 const props = defineProps<{
   project: Project;
@@ -178,6 +181,10 @@ const newRepos = reactive<NewRepoEntry[]>([]);
 const existingRepos = computed(() =>
   projectsStore.reposByProjectId(props.project.id).filter(r => !reposToRemove.value.includes(r.id))
 );
+
+const validNewRepoCount = computed(() => newRepos.filter(r => r.path.trim()).length);
+const totalReposAfterSave = computed(() => existingRepos.value.length + validNewRepoCount.value);
+const canSave = computed(() => editName.value.trim() !== '' && totalReposAfterSave.value > 0);
 
 function addRepo() {
   newRepos.push({ name: '', path: '', defaultBranch: 'main' });
