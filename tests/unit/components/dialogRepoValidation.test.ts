@@ -33,15 +33,6 @@ function getCreateButton(wrapper: ReturnType<typeof mount>) {
   return buttons.find(b => b.text().includes('Create Project'))!;
 }
 
-function getRemoveButtons(wrapper: ReturnType<typeof mount>) {
-  // Remove buttons contain ✕ and are inside repo rows
-  return wrapper.findAll('button').filter(b => b.text().trim() === '✕' && !b.classes().toString().includes('hover:text-[var(--text-secondary)]'));
-}
-
-function getRepoRows(wrapper: ReturnType<typeof mount>) {
-  // Repo rows have the bg-raised + rounded pattern with space-y-2
-  return wrapper.findAll('.bg-\\[var\\(--bg-raised\\)\\].border');
-}
 
 // ─── NewProjectDialog ─────────────────────────────────────────────
 
@@ -316,7 +307,6 @@ describe('ProjectSettingsDialog repo validation', () => {
 
   it('Save button is disabled when project name is cleared', async () => {
     const wrapper = mountSettingsDialog();
-    const nameInput = wrapper.find('input[type="text"]');
     // Find the name input (first text input)
     const inputs = wrapper.findAll('input');
     const nameField = inputs[0]; // editName is the first input
