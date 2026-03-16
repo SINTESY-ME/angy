@@ -39,7 +39,7 @@
         :placeholder="'Send a message...'"
         rows="1"
         class="w-full bg-transparent text-[13px] text-txt-primary placeholder:text-txt-faint resize-none outline-none ring-0 border-0"
-        :style="{ height: textareaHeight + 'px', maxHeight: '200px' }"
+        :style="{ maxHeight: MAX_HEIGHT + 'px' }"
         :class="isDragging ? 'opacity-50' : ''"
         :disabled="processing"
       />
@@ -222,7 +222,6 @@ const emit = defineEmits<{
 
 const draft = ref('');
 const inputEl = ref<HTMLTextAreaElement | null>(null);
-const textareaHeight = ref(28);
 const isDragging = ref(false);
 const images = ref<AttachedImage[]>([]);
 
@@ -254,6 +253,7 @@ const profiles = ref<PersonalityProfile[]>([]);
 const profileManager = new ProfileManager();
 
 const MIN_HEIGHT = 28;
+const MAX_HEIGHT = 300; // ~15 lines at 13px / 1.5 line-height
 
 // ── Computed ──────────────────────────────────────────────────────────
 
@@ -266,12 +266,12 @@ const modelShortName = computed(() =>
 // ── Auto-height textarea ─────────────────────────────────────────────
 
 function autoGrow() {
-  nextTick(() => {
-    const el = inputEl.value;
-    if (!el) return;
-    el.style.height = 'auto';
-    textareaHeight.value = Math.min(Math.max(el.scrollHeight, MIN_HEIGHT), 200);
-  });
+  const el = inputEl.value;
+  if (!el) return;
+  el.style.height = 'auto';
+  const h = Math.min(Math.max(el.scrollHeight, MIN_HEIGHT), MAX_HEIGHT);
+  el.style.height = h + 'px';
+  el.style.overflowY = h >= MAX_HEIGHT ? 'auto' : 'hidden';
 }
 
 watch(draft, () => autoGrow());
@@ -284,8 +284,10 @@ function sendMessage() {
   emit('send', text, [...images.value]);
   draft.value = '';
   images.value = [];
-  textareaHeight.value = MIN_HEIGHT;
-  nextTick(() => autoGrow());
+  nextTick(() => {
+    const el = inputEl.value;
+    if (el) { el.style.height = MIN_HEIGHT + 'px'; el.style.overflowY = 'hidden'; }
+  });
 }
 
 // ── Keydown ───────────────────────────────────────────────────────────
@@ -401,6 +403,7 @@ let unlistenDrop: (() => void) | null = null;
 
 onMounted(async () => {
   inputEl.value?.focus();
+  autoGrow();
   document.addEventListener('click', onClickOutside);
 
   await profileManager.init();

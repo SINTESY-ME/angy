@@ -224,6 +224,12 @@ The pipeline's key innovation is **incremental building with verification gates*
 - **Git not installed** — git is required for branch management. Install it via Xcode Command Line Tools (`xcode-select --install`) or [git-scm.com](https://git-scm.com).
 - **Platform support** — Angy is currently macOS-focused. Linux and Windows support is not yet available.
 
+## Next Steps
+
+The immediate next milestone is replacing the current dependency on the `claude` CLI with **our own agentic loop** — a first-party implementation that communicates directly with AI provider APIs, allowing us to have an alternative to Claude Code.
+
+The custom agentic loop will support both the **Gemini** and **Anthropics** APIs, enabling Angy to run agents against either provider (or both simultaneously within the same pipeline). This opens the door to model diversity across specialist roles, cost optimization, and provider redundancy — without any changes to how epics or pipelines are defined.
+
 ## Status
 
 **v0.2.8** — active development. macOS and Linux for now. Expect breaking changes.
