@@ -59,7 +59,7 @@ import { useUiStore } from '../../stores/ui';
 import { useEpicStore } from '../../stores/epics';
 import { useProjectsStore } from '../../stores/projects';
 import { useFilterStore } from '../../stores/filter';
-import { sendMessageToEngine, cancelProcess } from '../../composables/useEngine';
+import { sendMessageToEngine, cancelProcess, isAngyCodeModel, sendAngyCodeMessage, cancelAngyCodeProcess } from '../../composables/useEngine';
 import { engineBus } from '../../engine/EventBus';
 import type { AgentHandle, MessageRecord, AttachedImage } from '../../engine/types';
 import AgentsHeader from './AgentsHeader.vue';
@@ -323,19 +323,39 @@ async function onSend(message: string, images: AttachedImage[] = []) {
     }
   }
 
-  sendMessageToEngine(sid, effectiveMessage, storeHandle, {
-    workingDir,
-    mode: info?.mode || 'agent',
-    model: ui.currentModel,
-    resumeSessionId,
-    images: engineImages,
-  });
+  if (isAngyCodeModel(ui.currentModel)) {
+    try {
+      await sendAngyCodeMessage({
+        sessionId: sid,
+        workingDir,
+        goal: effectiveMessage,
+        provider: 'gemini',
+        apiKey: ui.geminiApiKey,
+        model: ui.currentModel,
+      }, storeHandle);
+    } catch (err) {
+      storeHandle.showError(sid, err instanceof Error ? err.message : String(err));
+      storeHandle.markDone(sid);
+    }
+  } else {
+    sendMessageToEngine(sid, effectiveMessage, storeHandle, {
+      workingDir,
+      mode: info?.mode || 'agent',
+      model: ui.currentModel,
+      resumeSessionId,
+      images: engineImages,
+    });
+  }
 }
 
 function onStop() {
   const sid = selectedAgentId.value;
   if (sid) {
-    cancelProcess(sid);
+    if (isAngyCodeModel(ui.currentModel)) {
+      cancelAngyCodeProcess(sid);
+    } else {
+      cancelProcess(sid);
+    }
     fleetStore.updateAgent({ sessionId: sid, status: 'idle', activity: '' });
   }
 }

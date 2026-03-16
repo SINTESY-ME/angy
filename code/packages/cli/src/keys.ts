@@ -5,15 +5,16 @@ import type { ProviderName } from '@angycode/core';
 
 const KEY_FILE = path.join(os.homedir(), '.angy', '.llm');
 
-const ENV_VARS: Record<ProviderName, string> = {
+const ENV_VARS: Partial<Record<ProviderName, string>> = {
   anthropic: 'ANTHROPIC_API_KEY',
   gemini: 'GEMINI_API_KEY',
-  mock: 'MOCK_API_KEY',
 };
 
 export function resolveApiKey(provider: ProviderName): string {
-  // 1. Environment variable
   const envVar = ENV_VARS[provider];
+  if (!envVar) return 'mock';
+
+  // 1. Environment variable
   const envValue = process.env[envVar];
   if (envValue) return envValue;
 

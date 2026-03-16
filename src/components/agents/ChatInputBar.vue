@@ -90,7 +90,7 @@
         <!-- Model dropdown -->
         <div class="relative" ref="modelRoot">
           <button
-            @click="modelOpen = !modelOpen"
+            @click="toggleModelOpen"
             class="flex items-center gap-1 text-[10px] px-2 py-1 rounded-md text-txt-muted hover:text-txt-secondary hover:bg-raised transition-colors"
           >
             <svg class="w-3 h-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3">
@@ -99,23 +99,30 @@
             <span>{{ modelShortName }}</span>
             <svg class="w-2 h-2 opacity-50" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2.5 4L5 6.5L7.5 4"/></svg>
           </button>
-          <div
-            v-if="modelOpen"
-            class="absolute bottom-full left-0 mb-1 bg-raised border border-border-standard rounded-lg shadow-lg overflow-hidden z-20 min-w-[160px]"
-          >
+          <Teleport to="body">
             <div
-              v-for="model in models"
-              :key="model.id"
-              @click="selectModel(model.id)"
-              class="flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-white/[0.05] transition-colors"
-              :class="model.id === selectedModel ? 'text-ember' : ''"
+              v-if="modelOpen"
+              :style="modelDropdownStyle"
+              class="fixed bg-raised border border-border-standard rounded-lg shadow-lg overflow-hidden z-[200] min-w-[160px]"
             >
-              <div>
-                <div class="text-[11px] text-txt-primary">{{ model.name }}</div>
-                <div class="text-[9px] text-txt-faint">{{ model.desc }}</div>
+              <div
+                v-for="model in models"
+                :key="model.id"
+                :title="isGeminiDisabled(model) ? 'Add your Gemini API key in Settings to enable' : undefined"
+                @click="!isGeminiDisabled(model) && selectModel(model.id)"
+                class="flex items-center gap-2 px-3 py-1.5 whitespace-nowrap"
+                :class="[
+                  isGeminiDisabled(model) ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer hover:bg-white/[0.05] transition-colors',
+                  model.id === selectedModel ? 'text-ember' : ''
+                ]"
+              >
+                <div>
+                  <div class="text-[11px] text-txt-primary">{{ model.name }}</div>
+                  <div class="text-[9px] text-txt-faint">{{ model.desc }}</div>
+                </div>
               </div>
             </div>
-          </div>
+          </Teleport>
         </div>
 
         <!-- Profile multi-select -->
@@ -208,6 +215,7 @@ import { readFile } from '@tauri-apps/plugin-fs';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { ProfileManager, type PersonalityProfile } from '../../engine/ProfileManager';
 import type { AttachedImage } from '../../engine/types';
+import { useUiStore } from '@/stores/ui';
 
 defineProps<{
   processing: boolean;
@@ -219,6 +227,7 @@ const emit = defineEmits<{
 }>();
 
 // ── State ─────────────────────────────────────────────────────────────
+const ui = useUiStore();
 
 const draft = ref('');
 const inputEl = ref<HTMLTextAreaElement | null>(null);
@@ -240,11 +249,29 @@ const modes = [
 const selectedModel = ref('claude-sonnet-4-6');
 const modelOpen = ref(false);
 const modelRoot = ref<HTMLElement | null>(null);
+const modelDropdownStyle = ref<Record<string, string>>({});
 const models = [
-  { id: 'claude-sonnet-4-6', name: 'Sonnet 4.6', desc: 'Fast & capable' },
-  { id: 'claude-opus-4-6', name: 'Opus 4.6', desc: 'Most powerful' },
-  { id: 'claude-haiku-4-5-20251001', name: 'Haiku 4.5', desc: 'Fastest' },
+  { id: 'claude-sonnet-4-6', name: 'Sonnet 4.6', desc: 'Fast & capable', provider: 'claude' },
+  { id: 'claude-opus-4-6', name: 'Opus 4.6', desc: 'Most powerful', provider: 'claude' },
+  { id: 'claude-haiku-4-5-20251001', name: 'Haiku 4.5', desc: 'Fastest', provider: 'claude' },
+  { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash', desc: 'Google · Fast', provider: 'gemini' },
+  { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro', desc: 'Google · Powerful', provider: 'gemini' },
 ];
+
+function isGeminiDisabled(model: { provider?: string }): boolean {
+  return model.provider === 'gemini' && !ui.geminiApiKey;
+}
+
+function toggleModelOpen() {
+  if (!modelOpen.value && modelRoot.value) {
+    const rect = modelRoot.value.getBoundingClientRect();
+    modelDropdownStyle.value = {
+      left: rect.left + 'px',
+      bottom: (window.innerHeight - rect.top + 4) + 'px',
+    };
+  }
+  modelOpen.value = !modelOpen.value;
+}
 
 // Profiles
 const selectedProfiles = ref<string[]>([]);
@@ -306,6 +333,7 @@ function selectMode(id: string) {
 
 function selectModel(id: string) {
   selectedModel.value = id;
+  ui.currentModel = id;
   modelOpen.value = false;
 }
 
