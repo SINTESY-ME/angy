@@ -62,9 +62,9 @@ export function formatEvent(event: AgentEvent, options: FormatterOptions = {}): 
       const glyph = event.is_error ? GLYPH.err : GLYPH.done;
       const duration = c(GRAY, `(${event.duration_ms}ms)`);
       if (options.verbose) {
-        return `${c(color, `  ${glyph}`)} ${duration}\n${c(DIM, indent(event.output, '  '))}`;
+        return `${c(color, `  ${glyph}`)} ${duration}\n${c(DIM, indent(event.output, '  '))}\n`;
       }
-      return `${c(color, `  ${glyph}`)} ${duration}`;
+      return `${c(color, `  ${glyph}`)} ${duration}\n`;
     }
 
     case 'usage': {
