@@ -99,6 +99,7 @@
             <option value="">Default (CLI default)</option>
             <option value="claude-sonnet-4-6">Sonnet 4.6</option>
             <option value="claude-opus-4-6">Opus 4.6</option>
+            <option value="claude-opus-4-5">Opus 4.5</option>
             <option value="claude-haiku-4-5-20251001">Haiku 4.5</option>
           </select>
         </div>
@@ -176,8 +177,8 @@
             </span>
           </div>
 
-          <!-- BranchPicker (only when worktree) -->
-          <div v-if="gitMode === 'worktree'" class="space-y-1.5">
+          <!-- BranchPicker (branch or worktree) -->
+          <div v-if="gitMode === 'branch' || gitMode === 'worktree'" class="space-y-1.5">
             <div class="text-[11px] text-txt-muted">Base Branch</div>
             <BranchPicker
               v-model="draft.baseBranch"

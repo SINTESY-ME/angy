@@ -256,6 +256,7 @@ const modelRoot = ref<HTMLElement | null>(null);
 const models = [
   { id: 'claude-sonnet-4-6', name: 'Sonnet 4.6', desc: 'Fast & capable' },
   { id: 'claude-opus-4-6', name: 'Opus 4.6', desc: 'Most powerful' },
+  { id: 'claude-opus-4-5', name: 'Opus 4.5', desc: 'Powerful' },
   { id: 'claude-haiku-4-5-20251001', name: 'Haiku 4.5', desc: 'Fastest' },
 ];
 

@@ -161,8 +161,9 @@ export class OrchestratorPool {
             }
           } else if (epic.useGitBranch) {
             // Case 2: Checkout-based branch
+            const base = epic.baseBranch || repo.defaultBranch
             const ok = await this.branchManager.createAndCheckoutEpicBranch(
-              repo.path, branchName, repo.defaultBranch,
+              repo.path, branchName, base,
             )
             if (ok) {
               const branch: EpicBranch = {
@@ -170,7 +171,7 @@ export class OrchestratorPool {
                 epicId,
                 repoId: repo.id,
                 branchName,
-                baseBranch: repo.defaultBranch,
+                baseBranch: base,
                 status: 'active',
                 worktreePath: null,
               }
