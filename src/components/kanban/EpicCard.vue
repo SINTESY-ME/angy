@@ -76,6 +76,10 @@
           <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 16 16"><path d="M4 2.5v11l9-5.5z" /></svg>
         </button>
       </span>
+      <span v-else-if="epic.column === 'review' && epic.rejectionFeedback" class="flex items-center gap-0.5 text-[var(--text-xs)] text-[var(--accent-red)]" :title="epic.rejectionFeedback">
+        <svg class="w-3 h-3" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 100 14A7 7 0 008 1zm0 1a6 6 0 110 12A6 6 0 018 2zm-.5 3v4h1V5h-1zm0 5v1h1v-1h-1z"/></svg>
+        failed
+      </span>
       <span v-else-if="epic.column === 'review'" class="flex items-center gap-0.5 text-[var(--text-xs)] text-[var(--accent-yellow)]">
         <svg class="w-3 h-3" viewBox="0 0 16 16" fill="currentColor"><path d="M8 2c3.3 0 6 2.7 6 6s-2.7 6-6 6-6-2.7-6-6 2.7-6 6-6zm0 1C5.2 3 3 5.2 3 8s2.2 5 5 5 5-2.2 5-5-2.2-5-5-5zm0 2a3 3 0 110 6 3 3 0 010-6z"/></svg>
         review

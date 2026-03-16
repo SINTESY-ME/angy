@@ -660,6 +660,40 @@ export class Scheduler {
     }
   }
 
+  async moveToReviewFailed(epicId: string, reason: string): Promise<void> {
+    try {
+      await this.refreshCache();
+      this.releaseRepos(epicId);
+      await this.doIncrementRejection(epicId);
+      await this.doUpdateEpic(epicId, { rejectionFeedback: reason });
+      await this.doMoveEpic(epicId, 'review');
+
+      await this.logAction({
+        type: 'reject',
+        epicId,
+        timestamp: new Date().toISOString(),
+        details: `Failed (moved to review): ${reason}`,
+      });
+
+      if (this.pool) {
+        await this.pool.removeEpic(epicId);
+      }
+
+      engineBus.emit('scheduler:error', {
+        epicId,
+        title: 'Epic failed',
+        message: reason,
+      });
+    } catch (err) {
+      console.error(`[Scheduler] Failed to move epic ${epicId} to review-failed:`, err);
+      engineBus.emit('scheduler:error', {
+        epicId,
+        title: 'Failed to move epic to review',
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
   async approveEpic(epicId: string): Promise<void> {
     try {
       await this.doMoveEpic(epicId, 'done');

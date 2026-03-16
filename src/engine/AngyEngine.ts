@@ -688,8 +688,8 @@ export class AngyEngine {
       engineBus.emit('epic:storeSyncNeeded');
     });
 
-    // When an epic fails, commit work then move back to todo.
-    // Keep worktrees alive so the next attempt can reuse them.
+    // When an epic fails, move it to review (as failed) so the user can inspect it.
+    // rejectionFeedback is set so fix-mode kicks in if the user manually retries.
     engineBus.on('epic:failed', async ({ epicId, reason }) => {
       try {
         await this.restoreReposForEpic(epicId);
@@ -697,9 +697,9 @@ export class AngyEngine {
         console.error(`[AngyEngine] restoreReposForEpic failed for ${epicId}:`, err);
       }
       try {
-        await this.scheduler.rejectEpic(epicId, `Agent failed: ${reason}`);
+        await this.scheduler.moveToReviewFailed(epicId, `Agent failed: ${reason}`);
       } catch (err) {
-        console.error(`[AngyEngine] rejectEpic failed for ${epicId}, forcing pool cleanup:`, err);
+        console.error(`[AngyEngine] moveToReviewFailed failed for ${epicId}, forcing pool cleanup:`, err);
         await this.pool.removeEpic(epicId).catch(() => {});
       }
       engineBus.emit('epic:storeSyncNeeded');
