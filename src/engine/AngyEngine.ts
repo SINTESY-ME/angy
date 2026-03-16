@@ -401,7 +401,7 @@ export class AngyEngine {
     const rootInfo = this.sessions.getSession(rootSid);
     if (rootInfo) {
       rootInfo.epicId = epicId;
-      rootInfo.title = `Hybrid: ${epic.title}`;
+      rootInfo.title = epic.title;
     }
     await this.sessions.persistSession(rootSid);
     runner.setRootSessionId(rootSid);
@@ -520,7 +520,7 @@ export class AngyEngine {
     const rootInfo = this.sessions.getSession(rootSid);
     if (rootInfo) {
       rootInfo.epicId = epicId;
-      rootInfo.title = `Hybrid (resumed): ${epic.title}`;
+      rootInfo.title = epic.title;
     }
     await this.sessions.persistSession(rootSid);
     runner.setRootSessionId(rootSid);
