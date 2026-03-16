@@ -26,3 +26,4 @@ src-tauri/target/
 npm-debug.log*
 
 article/
+coverage/
