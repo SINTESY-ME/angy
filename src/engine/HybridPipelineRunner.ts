@@ -259,8 +259,7 @@ export class HybridPipelineRunner {
     this.finalizeCycle = 0;
     this.replansRemaining = 3;
 
-    // Route to fix mode if rejectionContext is provided (even for hybrid type)
-    const effectiveType = this.rejectionContext ? 'fix' : this.pipelineType;
+    const effectiveType = this.pipelineType;
 
     try {
       switch (effectiveType) {
@@ -597,6 +596,9 @@ export class HybridPipelineRunner {
       const findings = await this.healthCheckedDelegate('architect',
         `Investigate the following questions in the codebase. This is a READ-ONLY investigation — do NOT modify any code.\n\n` +
         `# Goal\n${goal}\n\n` +
+        (this.rejectionContext
+          ? `# Previous Attempt Feedback\nThis investigation was previously rejected with the following feedback:\n${this.rejectionContext.feedback}\n\nPlease address this feedback in your investigation.\n\n`
+          : '') +
         `# Required Output\n` +
         `## FINDINGS\nKey discoveries and answers to the investigation questions.\n\n` +
         `## EVIDENCE\nSpecific file paths, code snippets, and data points that support the findings.\n\n` +
@@ -636,6 +638,9 @@ export class HybridPipelineRunner {
         `Analyze the codebase and produce a detailed architectural plan for the following. This is a READ-ONLY planning session — do NOT modify any code.\n\n` +
         `# Goal\n${goal}\n\n` +
         `# Acceptance Criteria\n${acceptanceCriteria}\n\n` +
+        (this.rejectionContext
+          ? `# Previous Attempt Feedback\nThis plan was previously rejected with the following feedback:\n${this.rejectionContext.feedback}\n\nPlease address this feedback and improve upon the previous plan.\n\n`
+          : '') +
         `# Required Output\n` +
         `## ANALYSIS\nSummary of the current codebase state relevant to the planned changes.\n\n` +
         `## FILES TO MODIFY\nList each file path with a description of what changes are needed.\n\n` +

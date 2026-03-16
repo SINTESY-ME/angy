@@ -371,7 +371,9 @@ export class AngyEngine {
 
     // Determine pipeline type and rejection context
     const hasRejection = epic.rejectionCount > 0 && !!epic.rejectionFeedback;
-    const pipelineType = hasRejection ? 'fix' as const : epic.pipelineType;
+    const pipelineType = (hasRejection && (epic.pipelineType === 'hybrid' || epic.pipelineType === 'fix'))
+      ? 'fix' as const
+      : epic.pipelineType;
     const rejectionContext = hasRejection ? {
       feedback: epic.rejectionFeedback!,
       lastAttemptFiles: epic.lastAttemptFiles,
