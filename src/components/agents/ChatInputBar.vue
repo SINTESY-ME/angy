@@ -38,6 +38,10 @@
         @dragover.prevent
         :placeholder="'Send a message...'"
         rows="1"
+        autocapitalize="none"
+        autocomplete="off"
+        autocorrect="off"
+        spellcheck="false"
         class="w-full bg-transparent text-[13px] text-txt-primary placeholder:text-txt-faint resize-none outline-none ring-0 border-0"
         :style="{ maxHeight: MAX_HEIGHT + 'px' }"
         :class="isDragging ? 'opacity-50' : ''"

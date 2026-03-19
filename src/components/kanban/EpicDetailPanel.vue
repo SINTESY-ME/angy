@@ -137,7 +137,7 @@
             <div class="space-y-1">
               <label
                 class="flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-colors"
-                :class="{ 'bg-[rgba(203,166,247,0.06)]': gitMode === 'none', 'opacity-40 cursor-not-allowed': draft.parallelAgentCount > 1 }"
+                :class="{ 'bg-[rgba(245,158,11,0.06)]': gitMode === 'none', 'opacity-40 cursor-not-allowed': draft.parallelAgentCount > 1 }"
               >
                 <input type="radio" value="none" :checked="gitMode === 'none'"
                        :disabled="draft.parallelAgentCount > 1"
@@ -147,7 +147,7 @@
               </label>
               <label
                 class="flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-colors"
-                :class="{ 'bg-[rgba(203,166,247,0.06)]': gitMode === 'branch', 'opacity-40 cursor-not-allowed': draft.parallelAgentCount > 1 }"
+                :class="{ 'bg-[rgba(245,158,11,0.06)]': gitMode === 'branch', 'opacity-40 cursor-not-allowed': draft.parallelAgentCount > 1 }"
               >
                 <input type="radio" value="branch" :checked="gitMode === 'branch'"
                        :disabled="draft.parallelAgentCount > 1"
@@ -157,7 +157,7 @@
               </label>
               <label
                 class="flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-colors"
-                :class="{ 'bg-[rgba(203,166,247,0.06)]': gitMode === 'worktree' }"
+                :class="{ 'bg-[rgba(245,158,11,0.06)]': gitMode === 'worktree' }"
               >
                 <input type="radio" value="worktree" :checked="gitMode === 'worktree'"
                        @change="setGitMode('worktree')" class="sr-only" />
