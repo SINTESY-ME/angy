@@ -1,6 +1,6 @@
 <template>
   <div
-    class="w-10 flex flex-col items-center justify-start pt-3 bg-base border-l border-border-subtle hover:bg-surface cursor-pointer transition-colors flex-shrink-0"
+    class="w-10 flex flex-col items-center justify-start pt-3 bg-base border-l border-border-subtle hover:bg-surface cursor-pointer transition-colors"
     @click="fleetStore.effectsExpanded = true"
   >
     <svg class="w-4 h-4 text-txt-faint" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3">

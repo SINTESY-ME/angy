@@ -1,5 +1,5 @@
 <template>
-  <div class="flex flex-col h-full bg-base border-r border-border-subtle w-72 flex-shrink-0">
+  <div class="flex flex-col h-full bg-base border-r border-border-subtle w-full">
     <!-- Fleet header -->
     <div class="px-3 py-2.5 border-b border-border-subtle flex items-center justify-between">
       <div class="flex items-center gap-2">

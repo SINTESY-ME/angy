@@ -4,51 +4,67 @@
       @new-agent="onNewAgent"
       @enter-mission-control="emit('enter-mission-control')"
     />
-    <div class="flex flex-1 min-h-0">
-      <FleetSidebar @agent-selected="onAgentSelected" />
+    <Splitpanes class="flex-1 min-h-0">
+      <Pane size="20" min-size="15">
+        <FleetSidebar @agent-selected="onAgentSelected" />
+      </Pane>
 
-      <!-- Center: inline file preview OR chat -->
-      <div v-if="ui.inlinePreviewFile" class="flex flex-col flex-1 min-w-0">
-        <div
-          class="flex items-center h-8 px-3 border-b border-border-subtle bg-window cursor-pointer"
-          @click="dismissPreview"
-        >
-          <span class="text-[11px] text-teal">← Back to Chat</span>
-          <span class="text-[11px] text-txt-faint mx-2">·</span>
-          <span class="text-[11px] text-txt-primary font-medium">{{ previewFileName }}</span>
+      <Pane size="60" min-size="30">
+        <div class="flex flex-col h-full bg-window">
+          <!-- Center: inline file preview OR chat -->
+          <div v-if="ui.inlinePreviewFile" class="flex flex-col flex-1 min-w-0 h-full">
+            <div
+              class="flex items-center h-8 px-3 border-b border-border-subtle bg-window cursor-pointer flex-shrink-0"
+              @click="dismissPreview"
+            >
+              <span class="text-[11px] text-teal">← Back to Chat</span>
+              <span class="text-[11px] text-txt-faint mx-2">·</span>
+              <span class="text-[11px] text-txt-primary font-medium">{{ previewFileName }}</span>
+            </div>
+            <CodeViewer ref="inlineViewerRef" class="flex-1 min-h-0" />
+          </div>
+
+          <OrchestratorChat
+            v-else-if="selectedAgentId"
+            :key="selectedAgentId"
+            :sessionId="selectedAgentId"
+            @file-clicked="onLocalFileClicked"
+            @send="onSend"
+            @stop="onStop"
+            @question-answered="onQuestionAnswered"
+          />
+          <div
+            v-else
+            class="flex-1 flex flex-col items-center justify-center text-center px-6 h-full"
+          >
+            <svg class="w-6 h-6 mb-2 opacity-30 text-txt-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3">
+              <circle cx="12" cy="8" r="4" />
+              <path d="M4 20c0-4.4 3.6-8 8-8s8 3.6 8 8" />
+            </svg>
+            <span class="text-[11px] text-txt-muted">Select an agent to view conversation</span>
+            <span class="text-[10px] text-txt-faint mt-1">Or press +New Agent to get started</span>
+          </div>
         </div>
-        <CodeViewer ref="inlineViewerRef" class="flex-1 min-h-0" />
-      </div>
+      </Pane>
 
-      <OrchestratorChat
-        v-else-if="selectedAgentId"
-        :key="selectedAgentId"
-        :sessionId="selectedAgentId"
-        @file-clicked="onLocalFileClicked"
-        @send="onSend"
-        @stop="onStop"
-        @question-answered="onQuestionAnswered"
-      />
-      <div
-        v-else
-        class="flex-1 flex flex-col items-center justify-center text-center px-6"
-      >
-        <svg class="w-6 h-6 mb-2 opacity-30 text-txt-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3">
-          <circle cx="12" cy="8" r="4" />
-          <path d="M4 20c0-4.4 3.6-8 8-8s8 3.6 8 8" />
-        </svg>
-        <span class="text-[11px] text-txt-muted">Select an agent to view conversation</span>
-        <span class="text-[10px] text-txt-faint mt-1">Or press +New Agent to get started</span>
-      </div>
-      <AgentsEffectsPanel
+      <Pane
         v-if="selectedAgentId && fleetStore.effectsExpanded"
-        :sessionId="selectedAgentId"
-        @file-clicked="onLocalFileClicked"
-        @approve="onApprove"
-        @reject="onReject"
-      />
-      <AgentsEffectsCollapsed v-else-if="selectedAgentId" />
-    </div>
+        size="20" min-size="15"
+      >
+        <AgentsEffectsPanel
+          :sessionId="selectedAgentId"
+          @file-clicked="onLocalFileClicked"
+          @approve="onApprove"
+          @reject="onReject"
+        />
+      </Pane>
+      <Pane
+        v-else-if="selectedAgentId"
+        size="3" min-size="3" max-size="3"
+      >
+        <AgentsEffectsCollapsed />
+      </Pane>
+    </Splitpanes>
   </div>
 </template>
 
@@ -69,6 +85,7 @@ import OrchestratorChat from './OrchestratorChat.vue';
 import AgentsEffectsPanel from './AgentsEffectsPanel.vue';
 import AgentsEffectsCollapsed from './AgentsEffectsCollapsed.vue';
 import CodeViewer from '../editor/CodeViewer.vue';
+import { Splitpanes, Pane } from 'splitpanes';
 
 const fleetStore = useFleetStore();
 const sessionsStore = useSessionsStore();

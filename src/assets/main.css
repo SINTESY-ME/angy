@@ -138,7 +138,7 @@ body,
   border: none !important;
 }
 .splitpanes__splitter:hover {
-  background-color: var(--accent-mauve) !important;
+  background-color: var(--accent-ember) !important;
 }
 .splitpanes--horizontal > .splitpanes__splitter {
   height: 1px !important;

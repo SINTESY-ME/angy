@@ -1,5 +1,5 @@
 <template>
-  <div class="flex flex-col h-full bg-base w-64 flex-shrink-0 border-l border-border-subtle">
+  <div class="flex flex-col h-full bg-base w-full border-l border-border-subtle">
     <!-- Header -->
     <div class="px-3 py-2.5 border-b border-border-subtle flex items-center justify-between">
       <span class="text-[11px] font-semibold uppercase tracking-wider text-txt-muted">Effects</span>
