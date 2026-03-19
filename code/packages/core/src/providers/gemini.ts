@@ -60,7 +60,8 @@ interface GeminiContent {
 type GeminiPart =
   | { text: string; thoughtSignature?: string }
   | { functionCall: { name: string; args: Record<string, unknown> }; thoughtSignature?: string }
-  | { functionResponse: { name: string; response: Record<string, unknown> } };
+  | { functionResponse: { name: string; response: Record<string, unknown> } }
+  | { inlineData: { mimeType: string; data: string } };
 
 // Map our tool_use_id → tool name for building function responses
 export function toGeminiContents(messages: Message[]): GeminiContent[] {
@@ -80,6 +81,13 @@ export function toGeminiContents(messages: Message[]): GeminiContent[] {
       switch (part.type) {
         case 'text':
           return { text: part.text };
+        case 'image':
+          return {
+            inlineData: {
+              mimeType: part.mimeType,
+              data: part.data,
+            },
+          };
         case 'tool_use':
           return {
             functionCall: { name: part.name, args: part.input },

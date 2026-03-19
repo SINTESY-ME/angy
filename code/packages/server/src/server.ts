@@ -57,7 +57,9 @@ export function createApp(db: Database): Hono {
     });
 
     registerSession(sessionId, loop);
-    loop.run(body.goal).catch((err) => console.error('loop error:', err));
+    // images: array of { data: string (base64), mimeType: string }
+    const images = body.images as { data: string; mimeType: string }[] | undefined;
+    loop.run(body.goal, images).catch((err) => console.error('loop error:', err));
 
     return c.json({ sessionId }, 201);
   });
@@ -88,7 +90,9 @@ export function createApp(db: Database): Hono {
     if (!body.message) return c.json({ error: 'message is required' }, 400);
 
     setSessionStatus(id, 'running');
-    session.loop.continueSession(id, body.message).catch((err) => console.error('loop error:', err));
+    // images: array of { data: string (base64), mimeType: string }
+    const images = body.images as { data: string; mimeType: string }[] | undefined;
+    session.loop.continueSession(id, body.message, images).catch((err) => console.error('loop error:', err));
 
     return c.json({ ok: true }, 200);
   });

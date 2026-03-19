@@ -280,6 +280,7 @@ export interface AngyCodeProcessOptions {
   systemPrompt?: string;
   maxTokens?: number;
   maxTurns?: number;
+  images?: { data: string; mimeType: string }[];
 }
 
 // ── Attached Context / Images ─────────────────────────────────────────────

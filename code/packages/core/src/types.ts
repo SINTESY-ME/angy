@@ -35,7 +35,13 @@ export interface ToolResultPart {
   is_error: boolean;
 }
 
-export type ContentPart = TextPart | ToolUsePart | ToolResultPart;
+export interface ImagePart {
+  type: 'image';
+  data: string; // base64
+  mimeType: string; // e.g. 'image/png', 'image/jpeg'
+}
+
+export type ContentPart = TextPart | ToolUsePart | ToolResultPart | ImagePart;
 
 // ── Message ──────────────────────────────────────────────────────────
 
@@ -158,6 +164,11 @@ export interface AgentLoopOptions {
   systemPromptExtra?: string;
   disabledTools?: string[];
   sessionId?: string;
+}
+
+export interface ImageInput {
+  data: string; // base64
+  mimeType: string; // e.g. 'image/png', 'image/jpeg'
 }
 
 // ── Forward-declared interfaces (implemented in their own modules) ───

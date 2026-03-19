@@ -504,6 +504,10 @@ async function onSend(text: string, _contexts?: AttachedContext[], _images?: Att
   }
 
   if (isAngyCodeModel(ui.currentModel)) {
+    // Convert images to the format expected by AngyCode server
+    const angyImages = imagePayload
+      ? imagePayload.map(img => ({ data: img.data, mimeType: img.mediaType }))
+      : undefined;
     try {
       await sendAngyCodeMessage({
         sessionId: sid,
@@ -513,6 +517,7 @@ async function onSend(text: string, _contexts?: AttachedContext[], _images?: Att
         apiKey: ui.geminiApiKey,
         model: ui.currentModel,
         systemPrompt,
+        images: angyImages,
       }, chatPanelHandle);
     } catch (err) {
       chatPanelHandle.showError(sid, err instanceof Error ? err.message : String(err));

@@ -14,6 +14,7 @@ import type {
   ToolDefinition,
   ToolContext,
   ProviderStreamEvent,
+  ImageInput,
 } from '../types.js';
 import type { SessionStore } from '../db/sessionStore.js';
 import type { MessageStore } from '../db/messageStore.js';
@@ -58,7 +59,7 @@ export class AgentLoop {
     this.aborted = true;
   }
 
-  async run(goal: string): Promise<Session> {
+  async run(goal: string, images?: ImageInput[]): Promise<Session> {
     this.aborted = false;
     this.totalCostUsd = 0;
 
@@ -93,9 +94,17 @@ export class AgentLoop {
       workingDir: this.options.workingDir,
     });
 
+    // Build user message content with text and optional images
+    const content: ContentPart[] = [{ type: 'text', text: goal }];
+    if (images && images.length > 0) {
+      for (const img of images) {
+        content.push({ type: 'image', data: img.data, mimeType: img.mimeType });
+      }
+    }
+
     const userMessage: Message = {
       role: 'user',
-      content: [{ type: 'text', text: goal }],
+      content,
     };
     this.messageStore.addMessage(session.id, userMessage);
 
@@ -138,7 +147,7 @@ export class AgentLoop {
     return this._loop(session, messages, system, tools, toolDefs);
   }
 
-  async continueSession(sessionId: string, message: string): Promise<Session> {
+  async continueSession(sessionId: string, message: string, images?: ImageInput[]): Promise<Session> {
     this.aborted = false;
 
     const session = this.sessionStore.getSession(sessionId);
@@ -146,9 +155,17 @@ export class AgentLoop {
 
     this.sessionStore.updateSession(session.id, { status: 'running' });
 
+    // Build user message content with text and optional images
+    const content: ContentPart[] = [{ type: 'text', text: message }];
+    if (images && images.length > 0) {
+      for (const img of images) {
+        content.push({ type: 'image', data: img.data, mimeType: img.mimeType });
+      }
+    }
+
     const userMessage: Message = {
       role: 'user',
-      content: [{ type: 'text', text: message }],
+      content,
     };
     this.messageStore.addMessage(session.id, userMessage);
 

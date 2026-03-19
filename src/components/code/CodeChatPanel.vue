@@ -414,6 +414,10 @@ async function doSend(text: string) {
     : undefined;
 
   if (isAngyCodeModel(ui.currentModel)) {
+    // Convert images to the format expected by AngyCode server
+    const angyImages = engineImages
+      ? engineImages.map(img => ({ data: img.data, mimeType: img.mediaType }))
+      : undefined;
     try {
       await sendAngyCodeMessage({
         sessionId: sid,
@@ -422,6 +426,7 @@ async function doSend(text: string) {
         provider: 'gemini',
         apiKey: ui.geminiApiKey,
         model: ui.currentModel,
+        images: angyImages,
       }, handle);
     } catch (err) {
       handle.showError(sid, err instanceof Error ? err.message : String(err));

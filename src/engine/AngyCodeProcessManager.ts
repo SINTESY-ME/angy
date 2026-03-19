@@ -78,6 +78,7 @@ export class AngyCodeProcessManager {
     if (options.systemPrompt) body.systemPromptExtra = options.systemPrompt;
     if (options.maxTokens) body.maxTokens = options.maxTokens;
     if (options.maxTurns) body.maxTurns = options.maxTurns;
+    if (options.images && options.images.length > 0) body.images = options.images;
 
     const res = await fetch(`${this.baseUrl}/sessions`, {
       method: 'POST',

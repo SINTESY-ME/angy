@@ -326,6 +326,10 @@ async function onSend(message: string, images: AttachedImage[] = [], model?: str
 
 const effectiveModel = model ?? ui.currentModel;
   if (isAngyCodeModel(effectiveModel)) {
+    // Convert images to the format expected by AngyCode server
+    const angyImages = engineImages
+      ? engineImages.map(img => ({ data: img.data, mimeType: img.mediaType }))
+      : undefined;
     try {
       await sendAngyCodeMessage({
         sessionId: sid,
@@ -334,6 +338,7 @@ const effectiveModel = model ?? ui.currentModel;
         provider: 'gemini',
         apiKey: ui.geminiApiKey,
         model: effectiveModel,
+        images: angyImages,
       }, storeHandle);
     } catch (err) {
       storeHandle.showError(sid, err instanceof Error ? err.message : String(err));

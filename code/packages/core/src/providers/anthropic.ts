@@ -13,10 +13,13 @@ interface AnthropicMessage {
   content: AnthropicContentBlock[];
 }
 
+type ImageMediaType = 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
+
 type AnthropicContentBlock =
   | { type: 'text'; text: string }
   | { type: 'tool_use'; id: string; name: string; input: unknown }
-  | { type: 'tool_result'; tool_use_id: string; content: string; is_error?: boolean };
+  | { type: 'tool_result'; tool_use_id: string; content: string; is_error?: boolean }
+  | { type: 'image'; source: { type: 'base64'; media_type: ImageMediaType; data: string } };
 
 export function toAnthropicMessages(messages: Message[]): AnthropicMessage[] {
   return messages.map((msg) => ({
@@ -25,6 +28,15 @@ export function toAnthropicMessages(messages: Message[]): AnthropicMessage[] {
       switch (part.type) {
         case 'text':
           return { type: 'text', text: part.text };
+        case 'image':
+          return {
+            type: 'image',
+            source: {
+              type: 'base64',
+              media_type: part.mimeType as ImageMediaType,
+              data: part.data,
+            },
+          };
         case 'tool_use':
           return { type: 'tool_use', id: part.id, name: part.name, input: part.input };
         case 'tool_result':
