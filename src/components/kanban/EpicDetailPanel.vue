@@ -97,10 +97,11 @@
           <div class="text-[11px] text-txt-muted mb-1.5">Model</div>
           <select v-model="draft.model" class="field-input w-full">
             <option value="">Default (CLI default)</option>
-            <option value="claude-sonnet-4-6">Sonnet 4.6</option>
-            <option value="claude-opus-4-6">Opus 4.6</option>
-            <option value="claude-opus-4-5">Opus 4.5</option>
-            <option value="claude-haiku-4-5-20251001">Haiku 4.5</option>
+            <template v-for="group in MODEL_GROUPS" :key="group.category">
+              <optgroup :label="group.category">
+                <option v-for="m in group.items" :key="m.id" :value="m.id">{{ m.name }}</option>
+              </optgroup>
+            </template>
           </select>
         </div>
       </div>
@@ -433,6 +434,7 @@ import RepoScopeSelector from './RepoScopeSelector.vue';
 import BranchPicker from './BranchPicker.vue';
 import DotPicker from './DotPicker.vue';
 import type { BlockingReason } from '@/engine/KosTypes';
+import { MODEL_GROUPS } from '@/constants/models';
 
 const props = defineProps<{ epicId: string; isNew?: boolean }>();
 const emit = defineEmits<{ close: []; created: [] }>();

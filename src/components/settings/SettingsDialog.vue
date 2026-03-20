@@ -119,21 +119,8 @@
                   v-model="settings.defaultModel"
                   class="w-full text-xs bg-[var(--bg-raised)] text-[var(--text-primary)] border border-[var(--border-standard)] rounded px-3 py-2 outline-none"
                 >
-                  <optgroup label="Claude Code">
-                    <option value="claude-sonnet-4-6">CC Sonnet 4.6</option>
-                    <option value="claude-opus-4-5">CC Opus 4.5</option>
-                    <option value="claude-opus-4-6">CC Opus 4.6</option>
-                    <option value="claude-haiku-4-5-20251001">CC Haiku 4.5</option>
-                  </optgroup>
-                  <optgroup label="Anthropic API">
-                    <option value="angy-claude-sonnet-4-6">Sonnet 4.6</option>
-                    <option value="angy-claude-opus-4-6">Opus 4.6</option>
-                    <option value="angy-claude-haiku-4-5-20251001">Haiku 4.5</option>
-                  </optgroup>
-                  <optgroup label="Gemini API">
-                    <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
-                    <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
-                    <option value="gemini-3-flash-preview">Gemini 3 Flash</option>
+                  <optgroup v-for="group in MODEL_GROUPS" :key="group.category" :label="group.category">
+                    <option v-for="m in group.items" :key="m.id" :value="m.id">{{ m.name }}</option>
                   </optgroup>
                 </select>
               </div>
@@ -316,6 +303,7 @@ import InfoTip from '@/components/common/InfoTip.vue';
 import { localVersion, remoteVersion, updateAvailable } from '@/composables/useVersionCheck';
 import { AngyEngine } from '@/engine/AngyEngine';
 import { useUiStore } from '@/stores/ui';
+import { MODEL_GROUPS, DEFAULT_MODEL_ID } from '@/constants/models';
 
 
 const props = defineProps<{ visible: boolean }>();
@@ -337,7 +325,7 @@ const editing = ref<PersonalityProfile | null>(null);
 
 const settings = reactive({
   claudePath: '',
-  defaultModel: 'claude-sonnet-4-6',
+  defaultModel: DEFAULT_MODEL_ID,
   defaultWorkspace: '',
 });
 

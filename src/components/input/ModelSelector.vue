@@ -42,6 +42,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useUiStore } from '@/stores/ui';
+import { MODEL_GROUPS, ALL_MODELS, type ModelEntry } from '@/constants/models';
 
 const props = defineProps<{ modelValue: string }>();
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>();
@@ -60,51 +61,16 @@ function updateDropdownPosition() {
   };
 }
 
-interface Model {
-  id: string;
-  name: string;
-  desc: string;
-  provider?: string;
-}
+const modelGroups = MODEL_GROUPS;
 
-const modelGroups = [
-  {
-    category: 'Claude Code',
-    items: [
-      { id: 'claude-sonnet-4-6', name: 'CC Sonnet 4.6', desc: 'Claude CLI', provider: 'claude-cli' },
-      { id: 'claude-opus-4-5', name: 'CC Opus 4.5', desc: 'Claude CLI', provider: 'claude-cli' },
-      { id: 'claude-opus-4-6', name: 'CC Opus 4.6', desc: 'Claude CLI', provider: 'claude-cli' },
-      { id: 'claude-haiku-4-5-20251001', name: 'CC Haiku 4.5', desc: 'Claude CLI', provider: 'claude-cli' },
-    ],
-  },
-  {
-    category: 'Anthropic API',
-    items: [
-      { id: 'angy-claude-sonnet-4-6', name: 'Sonnet 4.6', desc: 'Anthropic API', provider: 'claude' },
-      { id: 'angy-claude-opus-4-6', name: 'Opus 4.6', desc: 'Anthropic API', provider: 'claude' },
-      { id: 'angy-claude-haiku-4-5-20251001', name: 'Haiku 4.5', desc: 'Anthropic API', provider: 'claude' },
-    ],
-  },
-  {
-    category: 'Gemini API',
-    items: [
-      { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', desc: 'Google · Fast', provider: 'gemini' },
-      { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', desc: 'Google · Powerful', provider: 'gemini' },
-      { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash', desc: 'Google · Preview', provider: 'gemini' },
-    ],
-  },
-];
-
-const models = computed(() => modelGroups.flatMap(g => g.items));
-
-const shortName = computed(() => models.value.find((m: Model) => m.id === props.modelValue)?.name || props.modelValue);
+const shortName = computed(() => ALL_MODELS.find((m) => m.id === props.modelValue)?.name || props.modelValue);
 
 function toggleOpen() {
   if (!open.value) updateDropdownPosition();
   open.value = !open.value;
 }
 
-function isDisabled(model: Model): boolean {
+function isDisabled(model: ModelEntry): boolean {
   if (model.provider === 'gemini') return !ui.geminiApiKey;
   if (model.provider === 'claude') return !ui.anthropicApiKey;
   return false;

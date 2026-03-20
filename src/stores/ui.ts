@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import { useFilterStore } from '@/stores/filter';
+import { DEFAULT_MODEL_ID } from '@/constants/models';
 
 export type ViewMode = 'home' | 'kanban' | 'agents' | 'code' | 'mission-control' | 'analytics' | 'git-graph';
 
@@ -23,7 +24,7 @@ export const useUiStore = defineStore('ui', () => {
   const workspacePath = ref('');
   const currentFile = ref('');
   const currentBranch = ref('');
-  const currentModel = ref('claude-sonnet-4-6');
+  const currentModel = ref(DEFAULT_MODEL_ID);
   const isProcessing = ref(false);
   const inlinePreviewFile = ref<string | null>(null);
   const effectsPanelVisible = ref(true);

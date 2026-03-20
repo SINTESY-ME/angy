@@ -230,6 +230,7 @@ import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { ProfileManager, type PersonalityProfile } from '../../engine/ProfileManager';
 import type { AttachedImage } from '../../engine/types';
 import { useUiStore } from '@/stores/ui';
+import { MODEL_GROUPS, ALL_MODELS, DEFAULT_MODEL_ID, type ModelEntry } from '@/constants/models';
 
 const props = defineProps<{
   processing: boolean;
@@ -266,43 +267,17 @@ function loadModel(sessionId?: string): string {
     const perChat = localStorage.getItem(`angy:model:${sessionId}`);
     if (perChat) return perChat;
   }
-  return localStorage.getItem(MODEL_DEFAULT_KEY) ?? 'claude-sonnet-4-6';
+  return localStorage.getItem(MODEL_DEFAULT_KEY) ?? DEFAULT_MODEL_ID;
 }
 const selectedModel = ref(loadModel(props.sessionId));
 const modelOpen = ref(false);
 const modelRoot = ref<HTMLElement | null>(null);
 const modelDropdownStyle = ref<Record<string, string>>({});
-const modelGroups = [
-  {
-    category: 'Claude Code',
-    items: [
-      { id: 'claude-sonnet-4-6', name: 'CC Sonnet 4.6', desc: 'Claude CLI', provider: 'claude-cli' },
-      { id: 'claude-opus-4-5', name: 'CC Opus 4.5', desc: 'Claude CLI', provider: 'claude-cli' },
-      { id: 'claude-opus-4-6', name: 'CC Opus 4.6', desc: 'Claude CLI', provider: 'claude-cli' },
-      { id: 'claude-haiku-4-5-20251001', name: 'CC Haiku 4.5', desc: 'Claude CLI', provider: 'claude-cli' },
-    ],
-  },
-  {
-    category: 'Anthropic API',
-    items: [
-      { id: 'angy-claude-sonnet-4-6', name: 'Sonnet 4.6', desc: 'Anthropic API', provider: 'claude' },
-      { id: 'angy-claude-opus-4-6', name: 'Opus 4.6', desc: 'Anthropic API', provider: 'claude' },
-      { id: 'angy-claude-haiku-4-5-20251001', name: 'Haiku 4.5', desc: 'Anthropic API', provider: 'claude' },
-    ],
-  },
-  {
-    category: 'Gemini API',
-    items: [
-      { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', desc: 'Google · Fast', provider: 'gemini' },
-      { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', desc: 'Google · Powerful', provider: 'gemini' },
-      { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash', desc: 'Google · Preview', provider: 'gemini' },
-    ],
-  },
-];
+const modelGroups = MODEL_GROUPS;
 
-const models = computed(() => modelGroups.flatMap(g => g.items));
+const models = computed(() => ALL_MODELS);
 
-function isDisabled(model: { provider?: string }): boolean {
+function isDisabled(model: ModelEntry): boolean {
   if (model.provider === 'gemini') return !ui.geminiApiKey;
   if (model.provider === 'claude') return !ui.anthropicApiKey;
   return false;
@@ -334,7 +309,7 @@ const MAX_HEIGHT = 300; // ~15 lines at 13px / 1.5 line-height
 const canSend = computed(() => draft.value.trim().length > 0 || images.value.length > 0);
 
 const modelShortName = computed(() =>
-  models.value.find((m: any) => m.id === selectedModel.value)?.name || selectedModel.value,
+  models.value.find((m) => m.id === selectedModel.value)?.name || selectedModel.value,
 );
 
 // ── Auto-height textarea ─────────────────────────────────────────────

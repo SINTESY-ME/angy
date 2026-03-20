@@ -57,55 +57,173 @@
       </div>
 
       <!-- Footer: selectors + actions -->
-      <div class="compact-selectors flex items-center gap-1 px-3 pb-2 pt-1 flex-wrap">
-        <ModeSelector v-model="currentMode" />
-        <ModelSelector v-model="ui.currentModel" />
-        <ProfileSelector v-model="selectedProfiles" />
-        <button
-          @click="openImagePicker"
-          :disabled="isProcessing"
-          class="p-0.5 rounded text-txt-faint hover:text-txt-secondary hover:bg-[var(--bg-surface)] transition-colors"
-          title="Attach images"
-        >
-          <svg class="w-3 h-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="2" y="2" width="12" height="12" rx="2" />
-            <circle cx="5.5" cy="5.5" r="1" />
-            <path d="M14 10l-3.5-3.5L4 13" />
-          </svg>
-        </button>
-        <span class="flex-1" />
-        <button
-          v-if="isProcessing"
-          @click="onStop"
-          class="flex-shrink-0 px-2 py-0.5 rounded text-[9px] bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors"
-        >Stop</button>
-        <button
-          v-else
-          @click="onSendClick"
-          :disabled="!canSend"
-          class="flex-shrink-0 px-2 py-0.5 rounded text-[9px] font-medium transition-colors"
-          :class="canSend ? 'bg-[var(--accent-mauve)] text-white hover:brightness-110' : 'bg-[var(--bg-raised)] text-txt-faint'"
-        >Send</button>
+      <div class="flex items-center justify-between px-3 pb-2 pt-1">
+        <div class="flex items-center gap-1">
+          <!-- Mode dropdown -->
+          <div class="relative" ref="modeRoot">
+            <button
+              @click="modeOpen = !modeOpen"
+              class="flex items-center gap-1 text-[10px] px-2 py-1 rounded-md text-txt-muted hover:text-txt-secondary hover:bg-raised transition-colors"
+            >
+              <svg class="w-3 h-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3">
+                <template v-if="currentMode === 'agent'">
+                  <circle cx="8" cy="5" r="3" /><path d="M2 14c0-3.3 2.7-6 6-6s6 2.7 6 6" />
+                </template>
+                <template v-else-if="currentMode === 'plan'">
+                  <path d="M4 3h8M4 6.5h8M4 10h5" /><circle cx="12" cy="12" r="2.5" />
+                </template>
+                <template v-else>
+                  <circle cx="8" cy="8" r="6" /><path d="M6.5 6.5a1.8 1.8 0 013 1.3c0 1.2-1.5 1.2-1.5 2.2M8 12.5v.01" />
+                </template>
+              </svg>
+              <span class="capitalize">{{ currentMode }}</span>
+              <svg class="w-2 h-2 opacity-50" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2.5 4L5 6.5L7.5 4"/></svg>
+            </button>
+            <div
+              v-if="modeOpen"
+              class="absolute bottom-full left-0 mb-1 bg-raised border border-border-standard rounded-lg shadow-lg overflow-hidden z-20 min-w-[140px]"
+            >
+              <div
+                v-for="mode in modes"
+                :key="mode.id"
+                @click="selectMode(mode.id)"
+                class="flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-white/[0.05] transition-colors"
+                :class="mode.id === currentMode ? 'text-ember' : ''"
+              >
+                <div>
+                  <div class="text-[11px] text-txt-primary">{{ mode.label }}</div>
+                  <div class="text-[9px] text-txt-faint">{{ mode.desc }}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Model dropdown -->
+          <div class="relative" ref="modelRoot">
+            <button
+              @click="toggleModelOpen"
+              class="flex items-center gap-1 text-[10px] px-2 py-1 rounded-md text-txt-muted hover:text-txt-secondary hover:bg-raised transition-colors"
+            >
+              <svg class="w-3 h-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3">
+                <rect x="2" y="3" width="12" height="10" rx="2" /><path d="M5 7h6M5 9.5h4" />
+              </svg>
+              <span>{{ modelShortName }}</span>
+              <svg class="w-2 h-2 opacity-50" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2.5 4L5 6.5L7.5 4"/></svg>
+            </button>
+            <Teleport to="body">
+              <div
+                v-if="modelOpen"
+                :style="modelDropdownStyle"
+                class="fixed bg-raised border border-border-standard rounded-lg shadow-lg overflow-hidden z-[200] min-w-[160px] max-h-96 overflow-y-auto"
+              >
+                <template v-for="(group, gIdx) in modelGroups" :key="gIdx">
+                  <div class="px-3 pt-2 pb-1 text-[10px] font-bold text-txt-muted uppercase tracking-wider bg-raised sticky top-0 z-10 border-b border-border-subtle shadow-sm">
+                    {{ group.category }}
+                  </div>
+                  <div
+                    v-for="model in group.items"
+                    :key="model.id"
+                    :title="isModelDisabled(model) ? `Add your ${model.provider === 'gemini' ? 'Gemini' : 'Anthropic'} API key in Settings to enable` : undefined"
+                    @click="!isModelDisabled(model) && selectModel(model.id)"
+                    class="flex items-center gap-2 px-3 py-1.5 whitespace-nowrap"
+                    :class="[
+                      isModelDisabled(model) ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer hover:bg-white/[0.05] transition-colors',
+                      model.id === ui.currentModel ? 'text-ember' : ''
+                    ]"
+                  >
+                    <div>
+                      <div class="text-[11px] text-txt-primary">{{ model.name }}</div>
+                      <div class="text-[9px] text-txt-faint">{{ model.desc }}</div>
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </Teleport>
+          </div>
+
+          <!-- Profile multi-select -->
+          <div class="relative" ref="profileRoot">
+            <button
+              @click="profileOpen = !profileOpen"
+              class="flex items-center gap-1 text-[10px] px-2 py-1 rounded-md text-txt-muted hover:text-txt-secondary hover:bg-raised transition-colors"
+            >
+              <svg class="w-3 h-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3">
+                <path d="M2 3h12M2 8h12M2 13h12" />
+              </svg>
+              <span>{{ selectedProfiles.length > 0 ? `${selectedProfiles.length} profile${selectedProfiles.length > 1 ? 's' : ''}` : 'Profiles' }}</span>
+              <svg class="w-2 h-2 opacity-50" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2.5 4L5 6.5L7.5 4"/></svg>
+            </button>
+            <div
+              v-if="profileOpen"
+              class="absolute bottom-full left-0 mb-1 w-52 bg-raised border border-border-standard rounded-lg shadow-lg overflow-hidden z-20 max-h-48 overflow-y-auto"
+            >
+              <div v-if="profiles.length === 0" class="px-3 py-2 text-[10px] text-txt-faint">
+                No profiles available
+              </div>
+              <label
+                v-for="profile in profiles"
+                :key="profile.id"
+                class="flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-white/[0.05] transition-colors"
+              >
+                <input
+                  type="checkbox"
+                  :value="profile.id"
+                  v-model="selectedProfiles"
+                  class="w-3 h-3 rounded border-border-standard accent-ember"
+                />
+                <span class="text-[11px] text-txt-primary truncate">{{ profile.name }}</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Image upload button -->
+          <button
+            @click="openImagePicker"
+            :disabled="isProcessing"
+            class="flex items-center gap-1 text-[10px] px-2 py-1 rounded-md text-txt-muted hover:text-txt-secondary hover:bg-raised transition-colors"
+            title="Attach images"
+          >
+            <svg class="w-3 h-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="2" width="12" height="12" rx="2" />
+              <circle cx="5.5" cy="5.5" r="1" />
+              <path d="M14 10l-3-3-5 5" />
+            </svg>
+          </button>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <button
+            v-if="isProcessing"
+            @click="onStop"
+            class="flex-shrink-0 px-2 py-0.5 rounded text-[9px] bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors"
+          >Stop</button>
+          <button
+            v-else
+            @click="onSendClick"
+            :disabled="!canSend"
+            class="flex-shrink-0 px-2 py-0.5 rounded text-[9px] font-medium transition-colors"
+            :class="canSend ? 'bg-[var(--accent-mauve)] text-white hover:brightness-110' : 'bg-[var(--bg-raised)] text-txt-faint'"
+          >Send</button>
+        </div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, onUnmounted } from 'vue';
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
 import MarkdownIt from 'markdown-it';
 import { open } from '@tauri-apps/plugin-dialog';
 import { readFile } from '@tauri-apps/plugin-fs';
 import ToolCallGroup from '@/components/chat/ToolCallGroup.vue';
 import type { ToolCallInfo } from '@/components/chat/ToolCallGroup.vue';
-import ModeSelector from '@/components/input/ModeSelector.vue';
-import ModelSelector from '@/components/input/ModelSelector.vue';
-import ProfileSelector from '@/components/input/ProfileSelector.vue';
 import { useUiStore } from '@/stores/ui';
 import { useSessionsStore, getDatabase } from '@/stores/sessions';
 import { useFleetStore } from '@/stores/fleet';
 import { sendMessageToEngine, cancelProcess, isAngyCodeModel, sendAngyCodeMessage, cancelAngyCodeProcess, isAngyCodeRunning } from '@/composables/useEngine';
 import type { AgentHandle, MessageRecord, AttachedImage } from '@/engine/types';
+import { MODEL_GROUPS, ALL_MODELS, type ModelEntry } from '@/constants/models';
+import { ProfileManager, type PersonalityProfile } from '@/engine/ProfileManager';
 
 const emit = defineEmits<{
   'file-clicked': [filePath: string];
@@ -134,8 +252,60 @@ const inputEl = ref<HTMLTextAreaElement | null>(null);
 const scrollEl = ref<HTMLElement | null>(null);
 const textareaHeight = ref(28);
 const images = ref<AttachedImage[]>([]);
+
+// Mode
 const currentMode = ref('agent');
+const modeOpen = ref(false);
+const modeRoot = ref<HTMLElement | null>(null);
+const modes = [
+  { id: 'agent', label: 'Agent', desc: 'Full capabilities' },
+  { id: 'plan', label: 'Plan', desc: 'Plan before acting' },
+  { id: 'ask', label: 'Ask', desc: 'Read-only questions' },
+];
+
+// Model
+const modelOpen = ref(false);
+const modelRoot = ref<HTMLElement | null>(null);
+const modelDropdownStyle = ref<Record<string, string>>({});
+const modelGroups = MODEL_GROUPS;
+
+const modelShortName = computed(() =>
+  ALL_MODELS.find((m) => m.id === ui.currentModel)?.name || ui.currentModel,
+);
+
+function isModelDisabled(model: ModelEntry): boolean {
+  if (model.provider === 'gemini') return !ui.geminiApiKey;
+  if (model.provider === 'claude') return !ui.anthropicApiKey;
+  return false;
+}
+
+function toggleModelOpen() {
+  if (!modelOpen.value && modelRoot.value) {
+    const rect = modelRoot.value.getBoundingClientRect();
+    modelDropdownStyle.value = {
+      left: rect.left + 'px',
+      bottom: (window.innerHeight - rect.top + 4) + 'px',
+    };
+  }
+  modelOpen.value = !modelOpen.value;
+}
+
+function selectModel(id: string) {
+  ui.currentModel = id;
+  modelOpen.value = false;
+}
+
+function selectMode(id: string) {
+  currentMode.value = id;
+  modeOpen.value = false;
+}
+
+// Profiles
 const selectedProfiles = ref<string[]>([]);
+const profileOpen = ref(false);
+const profileRoot = ref<HTMLElement | null>(null);
+const profiles = ref<PersonalityProfile[]>([]);
+const profileManager = new ProfileManager();
 
 const canSend = computed(() => inputText.value.trim().length > 0 || images.value.length > 0);
 
@@ -476,7 +646,23 @@ function onKeydown(e: KeyboardEvent) {
   }
 }
 
+// ── Click outside to close dropdowns ─────────────────────────────────────
+
+function onClickOutside(e: MouseEvent) {
+  const target = e.target as Node;
+  if (modeRoot.value && !modeRoot.value.contains(target)) modeOpen.value = false;
+  if (modelRoot.value && !modelRoot.value.contains(target)) modelOpen.value = false;
+  if (profileRoot.value && !profileRoot.value.contains(target)) profileOpen.value = false;
+}
+
+onMounted(async () => {
+  document.addEventListener('click', onClickOutside);
+  await profileManager.init();
+  profiles.value = profileManager.userProfiles();
+});
+
 onUnmounted(() => {
+  document.removeEventListener('click', onClickOutside);
   if (sessionId.value && isProcessing.value) {
     cancelProcess(sessionId.value);
   }
@@ -484,29 +670,6 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.compact-selectors :deep(button) {
-  font-size: 9px !important;
-  padding: 2px 6px !important;
-  gap: 2px !important;
-  line-height: 1.2 !important;
-}
-.compact-selectors :deep(svg) {
-  width: 8px !important;
-  height: 8px !important;
-}
-.compact-selectors :deep(.absolute) {
-  font-size: 10px !important;
-}
-.compact-selectors :deep(.absolute div),
-.compact-selectors :deep(.absolute label) {
-  padding: 3px 8px !important;
-  font-size: 10px !important;
-}
-.compact-selectors :deep(.absolute .text-xs),
-.compact-selectors :deep(.absolute .text-\[var\(--text-xs\)\]) {
-  font-size: 10px !important;
-}
-
 .compact-markdown :deep(p) {
   margin: 0.25em 0;
 }

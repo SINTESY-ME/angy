@@ -8,10 +8,9 @@
       <div class="flex gap-2">
         <select v-model="modelId"
                 class="text-xs bg-[var(--bg-raised)] text-[var(--text-secondary)] border border-[var(--border-standard)] rounded px-2 py-1">
-          <option value="claude-sonnet-4-6">Sonnet</option>
-          <option value="claude-opus-4-6">Opus 4.6</option>
-          <option value="claude-opus-4-5">Opus 4.5</option>
-          <option value="claude-haiku-4-5-20251001">Haiku</option>
+          <optgroup v-for="group in MODEL_GROUPS" :key="group.category" :label="group.category">
+            <option v-for="m in group.items" :key="m.id" :value="m.id">{{ m.name }}</option>
+          </optgroup>
         </select>
         <input v-model="instruction" ref="instructionInput"
                @keydown.enter="submit" @keydown.escape="$emit('cancelled')"
@@ -54,6 +53,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onUnmounted, nextTick } from 'vue';
+import { MODEL_GROUPS, DEFAULT_MODEL_ID } from '@/constants/models';
 
 // ── Props & Emits ─────────────────────────────────────────────────────────
 
@@ -78,7 +78,7 @@ type EditBarState = 'input' | 'processing' | 'review';
 
 const state = ref<EditBarState>('input');
 const instruction = ref('');
-const modelId = ref('claude-sonnet-4-6');
+const modelId = ref(DEFAULT_MODEL_ID);
 const instructionInput = ref<HTMLInputElement | null>(null);
 let dotsTimer: ReturnType<typeof setInterval> | null = null;
 const dotCount = ref(0);
