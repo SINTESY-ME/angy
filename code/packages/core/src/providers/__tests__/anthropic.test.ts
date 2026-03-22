@@ -13,7 +13,7 @@ vi.mock('@anthropic-ai/sdk', () => {
 });
 
 // Import after mock
-import { AnthropicAdapter, toAnthropicMessages } from '../anthropic.js';
+import { AnthropicAdapter, toAnthropicMessages, sanitizeAnthropicMessages } from '../anthropic.js';
 
 // Helper: create an async iterable from an array of events
 function asyncIter<T>(items: T[]): AsyncIterable<T> {
@@ -49,26 +49,38 @@ describe('toAnthropicMessages', () => {
 
   it('translates tool_use parts', () => {
     const messages: Message[] = [
+      { role: 'user', content: [{ type: 'text', text: 'read file' }] },
       {
         role: 'assistant',
         content: [
           { type: 'tool_use', id: 'tc1', name: 'Read', input: { file_path: '/test' } },
+        ],
+      },
+      {
+        role: 'user',
+        content: [
+          { type: 'tool_result', tool_use_id: 'tc1', content: 'file content', is_error: false },
         ],
       },
     ];
     const result = toAnthropicMessages(messages);
-    expect(result).toEqual([
-      {
-        role: 'assistant',
-        content: [
-          { type: 'tool_use', id: 'tc1', name: 'Read', input: { file_path: '/test' } },
-        ],
-      },
-    ]);
+    expect(result[1]).toEqual({
+      role: 'assistant',
+      content: [
+        { type: 'tool_use', id: 'tc1', name: 'Read', input: { file_path: '/test' } },
+      ],
+    });
   });
 
   it('translates tool_result parts', () => {
     const messages: Message[] = [
+      { role: 'user', content: [{ type: 'text', text: 'go' }] },
+      {
+        role: 'assistant',
+        content: [
+          { type: 'tool_use', id: 'tc1', name: 'Read', input: {} },
+        ],
+      },
       {
         role: 'user',
         content: [
@@ -77,18 +89,17 @@ describe('toAnthropicMessages', () => {
       },
     ];
     const result = toAnthropicMessages(messages);
-    expect(result).toEqual([
-      {
-        role: 'user',
-        content: [
-          { type: 'tool_result', tool_use_id: 'tc1', content: 'file content', is_error: false },
-        ],
-      },
-    ]);
+    expect(result[2]).toEqual({
+      role: 'user',
+      content: [
+        { type: 'tool_result', tool_use_id: 'tc1', content: 'file content', is_error: false },
+      ],
+    });
   });
 
   it('handles mixed content parts in a single message', () => {
     const messages: Message[] = [
+      { role: 'user', content: [{ type: 'text', text: 'go' }] },
       {
         role: 'assistant',
         content: [
@@ -96,11 +107,17 @@ describe('toAnthropicMessages', () => {
           { type: 'tool_use', id: 'tc1', name: 'Read', input: { path: '/a' } },
         ],
       },
+      {
+        role: 'user',
+        content: [
+          { type: 'tool_result', tool_use_id: 'tc1', content: 'ok', is_error: false },
+        ],
+      },
     ];
     const result = toAnthropicMessages(messages);
-    expect(result[0].content).toHaveLength(2);
-    expect(result[0].content[0]).toEqual({ type: 'text', text: 'Let me read that file' });
-    expect(result[0].content[1]).toEqual({ type: 'tool_use', id: 'tc1', name: 'Read', input: { path: '/a' } });
+    expect(result[1].content).toHaveLength(2);
+    expect(result[1].content[0]).toEqual({ type: 'text', text: 'Let me read that file' });
+    expect(result[1].content[1]).toEqual({ type: 'tool_use', id: 'tc1', name: 'Read', input: { path: '/a' } });
   });
 
   it('merges consecutive messages of the same role', () => {
@@ -111,11 +128,161 @@ describe('toAnthropicMessages', () => {
       { role: 'assistant', content: [{ type: 'text', text: 'world' }] },
     ];
     const result = toAnthropicMessages(messages);
-    expect(result).toHaveLength(2);
+    // 3 messages: merged user, merged assistant, trailing user placeholder from sanitize
+    expect(result).toHaveLength(3);
     expect(result[0].role).toBe('user');
     expect(result[0].content).toHaveLength(2);
     expect(result[1].role).toBe('assistant');
     expect(result[1].content).toHaveLength(2);
+    expect(result[2].role).toBe('user');
+  });
+});
+
+describe('sanitizeAnthropicMessages', () => {
+  it('removes orphaned tool_results with no matching tool_use in previous assistant', () => {
+    const messages = [
+      { role: 'user' as const, content: [{ type: 'text' as const, text: 'hello' }] },
+      { role: 'assistant' as const, content: [{ type: 'text' as const, text: 'hi' }] },
+      {
+        role: 'user' as const,
+        content: [
+          { type: 'tool_result' as const, tool_use_id: 'orphan-id', content: 'result', is_error: false },
+          { type: 'text' as const, text: 'continue' },
+        ],
+      },
+    ];
+
+    const sanitized = sanitizeAnthropicMessages(messages);
+    // The orphaned tool_result should be removed
+    expect(sanitized[2].content).toEqual([{ type: 'text', text: 'continue' }]);
+  });
+
+  it('keeps valid tool_results that match tool_use in previous assistant', () => {
+    const messages = [
+      { role: 'user' as const, content: [{ type: 'text' as const, text: 'go' }] },
+      {
+        role: 'assistant' as const,
+        content: [{ type: 'tool_use' as const, id: 'tc1', name: 'Read', input: {} }],
+      },
+      {
+        role: 'user' as const,
+        content: [{ type: 'tool_result' as const, tool_use_id: 'tc1', content: 'ok', is_error: false }],
+      },
+    ];
+
+    const sanitized = sanitizeAnthropicMessages(messages);
+    expect(sanitized[2].content).toEqual([
+      { type: 'tool_result', tool_use_id: 'tc1', content: 'ok', is_error: false },
+    ]);
+  });
+
+  it('inserts placeholder tool_results for tool_uses with no matching result', () => {
+    const messages = [
+      { role: 'user' as const, content: [{ type: 'text' as const, text: 'go' }] },
+      {
+        role: 'assistant' as const,
+        content: [
+          { type: 'tool_use' as const, id: 'tc1', name: 'Read', input: {} },
+          { type: 'tool_use' as const, id: 'tc2', name: 'Write', input: {} },
+        ],
+      },
+      {
+        role: 'user' as const,
+        content: [{ type: 'text' as const, text: 'continue' }],
+      },
+    ];
+
+    const sanitized = sanitizeAnthropicMessages(messages);
+    // The user message should now have placeholder tool_results prepended
+    const userContent = sanitized[2].content;
+    expect(userContent).toHaveLength(3); // 2 placeholders + 1 text
+    expect(userContent[0]).toEqual({
+      type: 'tool_result',
+      tool_use_id: 'tc1',
+      content: 'Error: tool execution was interrupted',
+      is_error: true,
+    });
+    expect(userContent[1]).toEqual({
+      type: 'tool_result',
+      tool_use_id: 'tc2',
+      content: 'Error: tool execution was interrupted',
+      is_error: true,
+    });
+    expect(userContent[2]).toEqual({ type: 'text', text: 'continue' });
+  });
+
+  it('inserts a user message with tool_results when assistant tool_use has no following user', () => {
+    const messages = [
+      { role: 'user' as const, content: [{ type: 'text' as const, text: 'go' }] },
+      {
+        role: 'assistant' as const,
+        content: [{ type: 'tool_use' as const, id: 'tc1', name: 'Bash', input: {} }],
+      },
+    ];
+
+    const sanitized = sanitizeAnthropicMessages(messages);
+    // Should insert a user message with placeholder tool_result, then end with user
+    expect(sanitized).toHaveLength(3);
+    expect(sanitized[2].role).toBe('user');
+    expect(sanitized[2].content[0]).toEqual({
+      type: 'tool_result',
+      tool_use_id: 'tc1',
+      content: 'Error: tool execution was interrupted',
+      is_error: true,
+    });
+  });
+
+  it('ensures conversation ends with a user message', () => {
+    const messages = [
+      { role: 'user' as const, content: [{ type: 'text' as const, text: 'hi' }] },
+      { role: 'assistant' as const, content: [{ type: 'text' as const, text: 'hello' }] },
+    ];
+
+    const sanitized = sanitizeAnthropicMessages(messages);
+    expect(sanitized[sanitized.length - 1].role).toBe('user');
+    expect(sanitized[sanitized.length - 1].content).toEqual([{ type: 'text', text: '(continued)' }]);
+  });
+
+  it('adds placeholder text when all user content is filtered out', () => {
+    const messages = [
+      { role: 'user' as const, content: [{ type: 'text' as const, text: 'go' }] },
+      { role: 'assistant' as const, content: [{ type: 'text' as const, text: 'ok' }] },
+      {
+        role: 'user' as const,
+        content: [
+          { type: 'tool_result' as const, tool_use_id: 'orphan', content: 'data', is_error: false },
+        ],
+      },
+    ];
+
+    const sanitized = sanitizeAnthropicMessages(messages);
+    // The orphan is removed; placeholder text should be added
+    expect(sanitized[2].content).toEqual([{ type: 'text', text: '(continued)' }]);
+  });
+
+  it('does not modify already-valid messages', () => {
+    const messages = [
+      { role: 'user' as const, content: [{ type: 'text' as const, text: 'read file' }] },
+      {
+        role: 'assistant' as const,
+        content: [{ type: 'tool_use' as const, id: 'tc1', name: 'Read', input: { path: '/a' } }],
+      },
+      {
+        role: 'user' as const,
+        content: [{ type: 'tool_result' as const, tool_use_id: 'tc1', content: 'file data', is_error: false }],
+      },
+      {
+        role: 'assistant' as const,
+        content: [{ type: 'text' as const, text: 'here it is' }],
+      },
+      { role: 'user' as const, content: [{ type: 'text' as const, text: 'thanks' }] },
+    ];
+
+    const sanitized = sanitizeAnthropicMessages(messages);
+    expect(sanitized).toHaveLength(5);
+    expect(sanitized[2].content).toEqual([
+      { type: 'tool_result', tool_use_id: 'tc1', content: 'file data', is_error: false },
+    ]);
   });
 });
 

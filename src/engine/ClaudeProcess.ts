@@ -290,8 +290,16 @@ export class ClaudeProcess {
     this.streamParser.events.on('resultReady', (payload) => {
       if (payload.result?.type === 'result' && this.child) {
         this._completedNormally = true;
-        diagLog(`[Claude #${this._instanceId}] resultReady → killing PID ${this.childPid}`);
-        this.child.kill().catch(() => {});
+        // Give the CLI a grace period to flush its session JSONL to disk
+        // before killing. Immediate kill can truncate the session file,
+        // causing tool_use/tool_result mismatches on subsequent --resume.
+        diagLog(`[Claude #${this._instanceId}] resultReady → scheduling graceful kill for PID ${this.childPid}`);
+        setTimeout(() => {
+          if (this.child) {
+            diagLog(`[Claude #${this._instanceId}] grace period elapsed → killing PID ${this.childPid}`);
+            this.child.kill().catch(() => {});
+          }
+        }, 2000);
       }
     });
 
@@ -392,8 +400,13 @@ export class ClaudeProcess {
     this.streamParser.events.on('resultReady', (payload) => {
       if (payload.result?.type === 'result' && this.child) {
         this._completedNormally = true;
-        diagLog(`[Claude #${this._instanceId}] resultReady → killing PID ${this.childPid}`);
-        this.child.kill().catch(() => {});
+        diagLog(`[Claude #${this._instanceId}] resultReady → scheduling graceful kill for PID ${this.childPid}`);
+        setTimeout(() => {
+          if (this.child) {
+            diagLog(`[Claude #${this._instanceId}] grace period elapsed → killing PID ${this.childPid}`);
+            this.child.kill().catch(() => {});
+          }
+        }, 2000);
       }
     });
 

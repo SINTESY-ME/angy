@@ -324,7 +324,12 @@ export class AgentLoop {
         let result = { content: `Error: Unknown tool: ${call.name}`, is_error: true };
 
         if (tool) {
-          result = await tool.execute(input, ctx);
+          try {
+            result = await tool.execute(input, ctx);
+          } catch (toolErr: unknown) {
+            const errMsg = toolErr instanceof Error ? toolErr.message : String(toolErr);
+            result = { content: `Error: Tool execution failed: ${errMsg}`, is_error: true };
+          }
         }
 
         const durationMs = Date.now() - start;

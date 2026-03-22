@@ -134,7 +134,6 @@ export class SessionMessageBuffer {
     // and the deferred .then() start a fresh assistant message.
     const pendingAssistantDbId = state.currentAssistantDbId;
     const pendingAssistantText = state.currentAssistantText;
-    const pendingIsDirty = state.isDirty;
     const pendingInsertPromise = state.insertPromise;
     const pendingTurnCounter = state.turnCounter;
 
@@ -152,14 +151,47 @@ export class SessionMessageBuffer {
     // If an INSERT is still in flight, chain the tool message after it resolves
     if (pendingAssistantDbId === undefined && pendingInsertPromise) {
       pendingInsertPromise.then(() => {
-        // Flush the captured assistant text (the INSERT completed, so the row exists)
-        this._flushCapturedAssistant(pendingAssistantDbId, pendingAssistantText, pendingIsDirty, pendingTurnCounter, sessionId);
+        // The INSERT completed — the row exists in DB but may have stale content
+        // (only the first text delta was captured by the INSERT).
+        // We need to UPDATE it with the full accumulated text.
+        // Use state.currentAssistantDbId which was set by the INSERT's .then()
+        // callback, OR fall back to a full-content INSERT if the id was lost
+        // due to the state being reset by addToolMessage.
+        const resolvedDbId = state.currentAssistantDbId ?? pendingAssistantDbId;
+        if (resolvedDbId !== undefined && pendingAssistantText) {
+          // UPDATE the existing row with the full text
+          this.db
+            .upsertMessage({
+              id: resolvedDbId,
+              sessionId,
+              role: 'assistant',
+              content: pendingAssistantText,
+              turnId: pendingTurnCounter,
+              timestamp: Math.floor(Date.now() / 1000),
+            })
+            .catch((err) => {
+              console.error('[SessionMessageBuffer] Failed to flush assistant before tool (in-flight):', err);
+            });
+        } else if (pendingAssistantText) {
+          // The INSERT resolved but we lost the id — do a fresh INSERT with full text
+          this.db
+            .upsertMessage({
+              sessionId,
+              role: 'assistant',
+              content: pendingAssistantText,
+              turnId: pendingTurnCounter,
+              timestamp: Math.floor(Date.now() / 1000),
+            })
+            .catch((err) => {
+              console.error('[SessionMessageBuffer] Failed to insert assistant before tool (in-flight):', err);
+            });
+        }
         this._insertToolMessageDb(sessionId, msg, newTurnId);
       });
       return;
     }
 
-    this._flushCapturedAssistant(pendingAssistantDbId, pendingAssistantText, pendingIsDirty, pendingTurnCounter, sessionId);
+    this._flushCapturedAssistant(pendingAssistantDbId, pendingAssistantText, pendingTurnCounter, sessionId);
     this._insertToolMessageDb(sessionId, msg, newTurnId);
   }
 
@@ -167,11 +199,13 @@ export class SessionMessageBuffer {
   private _flushCapturedAssistant(
     dbId: number | undefined,
     text: string,
-    isDirty: boolean,
     turnId: number,
     sessionId: string,
   ): void {
-    if (isDirty && dbId !== undefined) {
+    // Always update if we have a dbId and accumulated text, even if isDirty
+    // is false — text can accumulate via appendAssistantDelta while an INSERT
+    // is in flight without isDirty ever being set to true.
+    if (dbId !== undefined && text) {
       this.db
         .upsertMessage({
           id: dbId,

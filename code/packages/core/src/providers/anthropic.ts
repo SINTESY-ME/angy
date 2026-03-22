@@ -55,7 +55,110 @@ export function toAnthropicMessages(messages: Message[]): AnthropicMessage[] {
       anthropicMessages.push({ role: msg.role, content: mappedContent });
     }
   }
-  return anthropicMessages;
+  return sanitizeAnthropicMessages(anthropicMessages);
+}
+
+/**
+ * Sanitize the Anthropic message array to ensure tool_use / tool_result
+ * pairing invariants required by the API:
+ *
+ * 1. Every tool_result in a user message must reference a tool_use id that
+ *    exists in the immediately preceding assistant message.
+ * 2. Every tool_use in an assistant message must have a matching tool_result
+ *    in the immediately following user message (if one exists with
+ *    tool_results).
+ * 3. The conversation must end with a user message.
+ *
+ * Orphaned tool_results are removed. Missing tool_results for orphaned
+ * tool_uses are synthesised so the API never rejects the request.
+ */
+export function sanitizeAnthropicMessages(messages: AnthropicMessage[]): AnthropicMessage[] {
+  const result: AnthropicMessage[] = [...messages.map(m => ({ ...m, content: [...m.content] }))];
+
+  for (let i = 0; i < result.length; i++) {
+    const msg = result[i];
+
+    // ── Fix user messages: drop tool_results that don't match preceding assistant ──
+    if (msg.role === 'user') {
+      const prevAssistant = i > 0 && result[i - 1].role === 'assistant' ? result[i - 1] : null;
+      const validToolUseIds = new Set<string>();
+      if (prevAssistant) {
+        for (const block of prevAssistant.content) {
+          if (block.type === 'tool_use') {
+            validToolUseIds.add(block.id);
+          }
+        }
+      }
+
+      msg.content = msg.content.filter((block) => {
+        if (block.type !== 'tool_result') return true;
+        return validToolUseIds.has(block.tool_use_id);
+      });
+
+      // If all content was filtered out, add a placeholder text so the
+      // message is never empty (Anthropic requires non-empty content).
+      if (msg.content.length === 0) {
+        msg.content.push({ type: 'text', text: '(continued)' });
+      }
+    }
+
+    // ── Fix assistant messages: ensure every tool_use has a matching tool_result ──
+    if (msg.role === 'assistant') {
+      const toolUseIds: string[] = [];
+      for (const block of msg.content) {
+        if (block.type === 'tool_use') {
+          toolUseIds.push(block.id);
+        }
+      }
+
+      if (toolUseIds.length > 0) {
+        // Find the next user message (it might not exist yet if the
+        // conversation was interrupted before tool results were saved).
+        const nextMsg = i + 1 < result.length ? result[i + 1] : null;
+
+        if (nextMsg && nextMsg.role === 'user') {
+          const existingResultIds = new Set<string>();
+          for (const block of nextMsg.content) {
+            if (block.type === 'tool_result') {
+              existingResultIds.add(block.tool_use_id);
+            }
+          }
+
+          // Prepend missing tool_results
+          const missingResults: AnthropicContentBlock[] = [];
+          for (const id of toolUseIds) {
+            if (!existingResultIds.has(id)) {
+              missingResults.push({
+                type: 'tool_result',
+                tool_use_id: id,
+                content: 'Error: tool execution was interrupted',
+                is_error: true,
+              });
+            }
+          }
+          if (missingResults.length > 0) {
+            nextMsg.content = [...missingResults, ...nextMsg.content];
+          }
+        } else {
+          // No following user message — insert one with placeholder tool_results
+          const placeholderContent: AnthropicContentBlock[] = toolUseIds.map((id) => ({
+            type: 'tool_result' as const,
+            tool_use_id: id,
+            content: 'Error: tool execution was interrupted',
+            is_error: true,
+          }));
+          result.splice(i + 1, 0, { role: 'user', content: placeholderContent });
+        }
+      }
+    }
+  }
+
+  // Ensure the conversation ends with a user message
+  if (result.length > 0 && result[result.length - 1].role !== 'user') {
+    result.push({ role: 'user', content: [{ type: 'text', text: '(continued)' }] });
+  }
+
+  return result;
 }
 
 function toAnthropicTools(tools: ToolDefinition[]) {
