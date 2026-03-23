@@ -329,17 +329,25 @@ const groupedItems = computed((): GroupedItem[] => {
   const result: GroupedItem[] = [];
   let pendingGroup: ToolCallInfo[] = [];
   let pendingGroupId = '';
+  let pendingHasEdit = false;
+  let pendingAssistantMsg: ChatMsg | null = null;
 
   const flushGroup = () => {
     if (pendingGroup.length > 0) {
       result.push({
         type: 'tool-group',
         calls: [...pendingGroup],
-        expandedByDefault: false,
+        expandedByDefault: pendingHasEdit,
         id: `tg-${pendingGroupId}`,
       });
       pendingGroup = [];
       pendingGroupId = '';
+      pendingHasEdit = false;
+    }
+    // Output any pending assistant message after the tool group
+    if (pendingAssistantMsg) {
+      result.push({ type: 'message', msg: pendingAssistantMsg, id: pendingAssistantMsg.id });
+      pendingAssistantMsg = null;
     }
   };
 
@@ -366,22 +374,28 @@ const groupedItems = computed((): GroupedItem[] => {
         oldString: isEdit ? String(input.old_string ?? '') || undefined : undefined,
         newString,
       };
-      if (isEdit) {
-        flushGroup();
-        result.push({ type: 'tool-group', calls: [call], expandedByDefault: true, id: `tg-${msg.id}` });
-      } else {
-        if (pendingGroup.length === 0) pendingGroupId = msg.id;
-        pendingGroup.push(call);
-      }
-    } else {
-      if (msg.role === 'assistant' && pendingGroup.length > 0) {
-        const stripped = (msg.content || '').replace(/<thinking>[\s\S]*?<\/thinking>/g, '').trim();
-        if (stripped.length < 200) {
-          continue;
-        }
-      }
+
+      // Group all consecutive tool calls together (regardless of turn)
+      if (pendingGroup.length === 0) pendingGroupId = msg.id;
+      if (isEdit) pendingHasEdit = true;
+      pendingGroup.push(call);
+    } else if (msg.role === 'user') {
+      // User message: flush tools and any pending assistant, then add user msg
       flushGroup();
       result.push({ type: 'message', msg, id: msg.id });
+    } else if (msg.role === 'assistant') {
+      const stripped = (msg.content || '').replace(/<thinking>[\s\S]*?<\/thinking>/g, '').trim();
+      if (stripped.length === 0) {
+        // Skip empty assistant messages
+        continue;
+      }
+      if (pendingGroup.length > 0) {
+        // Store assistant message to show after tools are flushed
+        pendingAssistantMsg = msg;
+      } else {
+        // No pending tools, show assistant message immediately
+        result.push({ type: 'message', msg, id: msg.id });
+      }
     }
   }
   flushGroup();

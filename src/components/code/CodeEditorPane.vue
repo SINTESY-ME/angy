@@ -80,7 +80,8 @@ watch(activeFile, (val) => {
 
 function loadFile(filePath: string) { codeViewerRef.value?.loadFile(filePath); }
 function closeFile(filePath: string) { codeViewerRef.value?.closeFile(filePath); }
+function closeAllFiles() { codeViewerRef.value?.closeAllFiles(); }
 function openFiles(): string[] { return codeViewerRef.value?.openFiles() ?? []; }
 
-defineExpose({ loadFile, closeFile, openFiles });
+defineExpose({ loadFile, closeFile, closeAllFiles, openFiles });
 </script>

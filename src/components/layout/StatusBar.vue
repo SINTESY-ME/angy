@@ -9,6 +9,14 @@
 
       <template v-else-if="ui.viewMode === 'kanban'">
         <span class="text-[var(--text-muted)]">{{ projectLabel }}</span>
+        <template v-if="epicMetrics">
+          <span class="text-[var(--border-subtle)]">·</span>
+          <span class="text-[var(--text-muted)]">{{ epicMetrics.pending }} pending</span>
+          <span class="text-[var(--border-subtle)]">·</span>
+          <span class="text-[var(--text-muted)]">{{ epicMetrics.review }} review</span>
+          <span class="text-[var(--border-subtle)]">·</span>
+          <span class="text-[var(--text-muted)]">{{ epicMetrics.done }} done</span>
+        </template>
       </template>
 
       <template v-else>
@@ -82,9 +90,11 @@ import { computed } from 'vue';
 import { open } from '@tauri-apps/plugin-dialog';
 import { useUiStore } from '../../stores/ui';
 import { useProjectsStore } from '../../stores/projects';
+import { useEpicStore } from '../../stores/epics';
 
 const ui = useUiStore();
 const projectsStore = useProjectsStore();
+const epicStore = useEpicStore();
 
 const workspaceLabel = computed(() => {
   if (!ui.workspacePath) return 'Open folder\u2026';
@@ -102,6 +112,16 @@ const projectLabel = computed(() => {
     if (project) return project.name;
   }
   return '';
+});
+
+const epicMetrics = computed(() => {
+  if (!ui.activeProjectId) return null;
+  const epics = epicStore.epicsByProject(ui.activeProjectId);
+  return {
+    pending: epics.filter(e => e.column === 'todo' || e.column === 'in-progress').length,
+    review: epics.filter(e => e.column === 'review').length,
+    done: epics.filter(e => e.column === 'done').length,
+  };
 });
 
 const currentFileName = computed(() => {

@@ -156,9 +156,10 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import type { FileChange, MessageRecord } from '../../engine/types';
 import { engineBus } from '../../engine/EventBus';
-import { getDatabase } from '../../stores/sessions';
+import { getDatabase, useSessionsStore } from '../../stores/sessions';
 import { useFleetStore } from '../../stores/fleet';
 import { useGraphStore } from '../../stores/graph';
+import { useUiStore } from '../../stores/ui';
 import { useGraphBuilder } from '../../composables/useGraphBuilder';
 import { DiffEngine } from '../../engine/DiffEngine';
 import AgentGraph from '../graph/AgentGraph.vue';
@@ -189,6 +190,7 @@ defineEmits<{
 const fleetStore = useFleetStore();
 const graphStore = useGraphStore();
 const graphBuilder = useGraphBuilder();
+const ui = useUiStore();
 
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'StrReplace', 'MultiEdit', 'NotebookEdit']);
 const diffEngine = new DiffEngine();
@@ -324,13 +326,29 @@ function onFileEdited(evt: { sessionId: string; filePath: string; toolName: stri
   }
 }
 
+function resolveFilePath(filePath: string, workspace: string | undefined): string {
+  if (!filePath) return '';
+  if (filePath.startsWith('/')) return filePath; // Already absolute
+  // Try workspace first, then fall back to ui.workspacePath for absolute path
+  const absoluteBase = (workspace && workspace.startsWith('/'))
+    ? workspace
+    : ui.workspacePath; // ui.workspacePath should be absolute
+  if (!absoluteBase || !absoluteBase.startsWith('/')) return filePath; // Can't resolve
+  return `${absoluteBase}/${filePath}`;
+}
+
 function extractEffects(messages: MessageRecord[], agentSessionId: string, agentTitle: string, results: TaggedFileChange[]) {
+  const sessionsStore = useSessionsStore();
+  const sessionInfo = sessionsStore.sessions.get(agentSessionId);
+  const workspace = sessionInfo?.workspace;
+
   const byPath = new Map<string, TaggedFileChange>();
   for (const msg of messages) {
     if (msg.toolName && EDIT_TOOLS.has(msg.toolName) && (msg.role === 'tool' || msg.role === 'assistant')) {
       let input: Record<string, any> = {};
       try { input = JSON.parse(msg.toolInput || '{}'); } catch { /* skip */ }
-      const filePath = input.file_path || input.path || '';
+      const rawPath = input.file_path || input.path || '';
+      const filePath = resolveFilePath(rawPath, workspace);
       if (filePath) {
         const { linesAdded, linesRemoved } = computeLineCounts(filePath, msg.toolName, input);
         byPath.set(filePath, {

@@ -5,11 +5,11 @@
       @enter-mission-control="emit('enter-mission-control')"
     />
     <Splitpanes class="flex-1 min-h-0">
-      <Pane size="20" min-size="15">
+      <Pane :size="paneSizes.fleet" :min-size="15" :max-size="20">
         <FleetSidebar @agent-selected="onAgentSelected" />
       </Pane>
 
-      <Pane size="60" min-size="30">
+      <Pane :size="paneSizes.center" :min-size="30">
         <div class="flex flex-col h-full bg-window">
           <!-- Center: inline file preview OR chat -->
           <div v-if="ui.inlinePreviewFile" class="flex flex-col flex-1 min-w-0 h-full">
@@ -47,29 +47,22 @@
         </div>
       </Pane>
 
-      <Pane
-        v-if="selectedAgentId && fleetStore.effectsExpanded"
-        size="20" min-size="15"
-      >
+      <Pane :size="paneSizes.effects" :min-size="effectsPaneMin" :max-size="effectsPaneMax">
         <AgentsEffectsPanel
+          v-if="selectedAgentId && fleetStore.effectsExpanded"
           :sessionId="selectedAgentId"
           @file-clicked="onLocalFileClicked"
           @approve="onApprove"
           @reject="onReject"
         />
-      </Pane>
-      <Pane
-        v-else-if="selectedAgentId"
-        size="3" min-size="3" max-size="3"
-      >
-        <AgentsEffectsCollapsed />
+        <AgentsEffectsCollapsed v-else-if="selectedAgentId" />
       </Pane>
     </Splitpanes>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick } from 'vue';
+import { ref, computed, watch, nextTick } from 'vue';
 import { useFleetStore } from '../../stores/fleet';
 import { useSessionsStore, getDatabase, getSessionManager } from '../../stores/sessions';
 import { useUiStore } from '../../stores/ui';
@@ -100,6 +93,39 @@ const emit = defineEmits<{
 }>();
 
 const selectedAgentId = computed(() => fleetStore.selectedAgentId);
+
+// ── Stable pane sizes (always 3 panes to avoid Splitpanes redistribution) ──
+
+const effectsPaneMin = computed(() => {
+  if (!selectedAgentId.value) return 0;
+  return fleetStore.effectsExpanded ? 15 : 3;
+});
+const effectsPaneMax = computed(() => {
+  if (!selectedAgentId.value) return 0;
+  return fleetStore.effectsExpanded ? 30 : 3;
+});
+const paneSizes = computed(() => {
+  if (!selectedAgentId.value) {
+    // No agent selected: effects pane collapses to 0, fleet + center fill space
+    return { fleet: 20, center: 80, effects: 0 };
+  }
+  if (fleetStore.effectsExpanded) {
+    return { fleet: 20, center: 60, effects: 20 };
+  }
+  // Effects collapsed to thin strip
+  return { fleet: 20, center: 77, effects: 3 };
+});
+
+// Force Splitpanes to re-read size props when the layout changes.
+// Without this, the library can drift from intended sizes after
+// the effects pane toggles between 0 and 20%.
+watch(
+  [() => paneSizes.value, () => effectsPaneMin.value, () => effectsPaneMax.value],
+  async () => {
+    await nextTick();
+    window.dispatchEvent(new Event('resize'));
+  },
+);
 
 const inlineViewerRef = ref<InstanceType<typeof CodeViewer> | null>(null);
 

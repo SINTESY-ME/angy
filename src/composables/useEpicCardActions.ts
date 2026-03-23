@@ -4,6 +4,7 @@ import { useUiStore } from '@/stores/ui';
 import { useEpicStore } from '@/stores/epics';
 import { useSessionsStore } from '@/stores/sessions';
 import { engineBus } from '@/engine/EventBus';
+import { startDrag } from './useKanbanDnd';
 
 export interface UseEpicCardActionsOptions {
   epic: Ref<Epic> | ComputedRef<Epic>;
@@ -17,8 +18,7 @@ export interface UseEpicCardActionsOptions {
 
 export interface UseEpicCardActionsReturn {
   isDragging: Ref<boolean>;
-  onDragStart(e: DragEvent): void;
-  onDragEnd(e: DragEvent): void;
+  onPointerDown(e: PointerEvent): void;
   onSingleClick(): void;
   onDoubleClick(): void;
   moveLeft(): Promise<void>;
@@ -78,18 +78,11 @@ export function useEpicCardActions(opts: UseEpicCardActionsOptions): UseEpicCard
     }
   }
 
-  // ── Drag ────────────────────────────────────────────────────────────
+  // ── Drag (pointer-event based) ─────────────────────────────────────
 
-  function onDragStart(e: DragEvent) {
-    e.dataTransfer!.effectAllowed = 'move';
-    e.dataTransfer!.setData('text/plain', epic.value.id);
-    (e.target as HTMLElement).classList.add('opacity-40');
-    isDragging.value = true;
-  }
-
-  function onDragEnd(e: DragEvent) {
-    (e.target as HTMLElement).classList.remove('opacity-40');
-    isDragging.value = false;
+  function onPointerDown(e: PointerEvent) {
+    if (selectable.value) return; // merge-mode → no drag
+    startDrag(epic.value.id, e, e.currentTarget as HTMLElement);
   }
 
   // ── Click / double-click ────────────────────────────────────────────
@@ -162,8 +155,7 @@ export function useEpicCardActions(opts: UseEpicCardActionsOptions): UseEpicCard
 
   return {
     isDragging,
-    onDragStart,
-    onDragEnd,
+    onPointerDown,
     onSingleClick,
     onDoubleClick,
     moveLeft,

@@ -36,7 +36,7 @@
         <span class="hero-title-accent">multi-agent pipelines</span>
       </h1>
       <p class="hero-tagline">
-        Angy is a fleet manager, scheduler and IDE for <strong>Claude Code</strong> agents. It spawns each specialist as a separate <code>claude</code> CLI process, orchestrates them through a multi-phase pipeline, and ships verified code — with dependency graphs, adversarial counterparts, and git worktree isolation.
+        Angy is a fleet manager, scheduler and IDE for AI coding agents. It supports <strong>Anthropic</strong>, <strong>Gemini</strong>, and <strong>Claude Code</strong> as provider backends, orchestrates specialist agents through a multi-phase pipeline, and ships verified code — with dependency graphs, adversarial counterparts, and git worktree isolation.
       </p>
       <div class="hero-actions">
         <a href="https://github.com/alice-viola/angy/releases/latest" target="_blank" rel="noopener noreferrer" class="btn-primary">
@@ -67,7 +67,7 @@
   <section id="features" class="section">
     <div class="container">
       <h2 class="section-title">Designed around orchestration, not conversation</h2>
-      <p class="section-subtitle">Most AI coding tools give you one agent and one chat. Angy wraps the <strong>Claude Code CLI</strong> — each agent is a separate <code>claude</code> process with streaming JSON I/O, managed by a coded state machine that dispatches multi-phase pipelines with adversarial verification at every stage.</p>
+      <p class="section-subtitle">Most AI coding tools give you one agent and one chat. Angy runs each agent against the <strong>Anthropic API</strong>, <strong>Gemini API</strong>, or the <strong>Claude Code CLI</strong> — managed by a coded state machine that dispatches multi-phase pipelines with adversarial verification at every stage.</p>
       <div class="features-grid">
         <div class="feature-card card-lift">
           <span class="feature-icon" aria-hidden="true">⚙️</span>
@@ -157,7 +157,7 @@
         </div>
         <div style="padding:1.25rem;background:var(--surface-secondary);border:1px solid var(--border-primary);border-radius:12px;">
           <h4 style="color:var(--text-primary);font-size:0.9375rem;margin:0 0 0.5rem;">No LLM routing</h4>
-          <p style="color:var(--text-secondary);font-size:0.875rem;line-height:1.6;margin:0;">The pipeline is a coded TypeScript state machine — no LLM decides what step comes next. Each agent is a <code>claude</code> CLI process spawned via Tauri's shell plugin with <code>--input-format stream-json</code> / <code>--output-format stream-json</code>. Structured JSON schema extraction drives verdicts, increment plans, and test results.</p>
+          <p style="color:var(--text-secondary);font-size:0.875rem;line-height:1.6;margin:0;">The pipeline is a coded TypeScript state machine — no LLM decides what step comes next. Each agent runs against the Anthropic API, Gemini API, or Claude Code CLI through a unified provider interface. Structured JSON schema extraction drives verdicts, increment plans, and test results.</p>
         </div>
         <div style="padding:1.25rem;background:var(--surface-secondary);border:1px solid var(--border-primary);border-radius:12px;">
           <h4 style="color:var(--text-primary);font-size:0.9375rem;margin:0 0 0.5rem;">Complexity-driven depth</h4>
@@ -197,7 +197,7 @@
   <section id="roles" class="section">
     <div class="container">
       <h2 class="section-title">Specialist roles in the pipeline</h2>
-      <p class="section-subtitle">Each agent is a Claude subprocess with a defined role, scoped tool access, and clear deliverables. They collaborate on a shared epic branch without stepping on each other.</p>
+      <p class="section-subtitle">Each agent runs against your chosen provider (Anthropic, Gemini, or Claude Code) with a defined role, scoped tool access, and clear deliverables. They collaborate on a shared epic branch without stepping on each other.</p>
       <div class="features-grid">
         <div class="feature-card card-lift">
           <span class="feature-icon" aria-hidden="true">📐</span>
@@ -334,6 +334,42 @@
 
   <hr class="divider">
 
+  <!-- ── Multi-Provider Support ──────────────────────────────────────────── -->
+  <section id="providers" class="section">
+    <div class="container">
+      <h2 class="section-title">Three provider backends, one unified interface</h2>
+      <p class="section-subtitle">Angy supports direct API access to <strong>Anthropic</strong> and <strong>Gemini</strong>, plus the <strong>Claude Code CLI</strong>. Switch providers per agent, per pipeline, or across your entire fleet — the pipeline doesn't care which backend drives the agents.</p>
+
+      <div class="features-grid">
+        <div class="feature-card card-lift">
+          <span class="feature-icon" aria-hidden="true">🟣</span>
+          <h3 class="feature-title">Anthropic (Direct API)</h3>
+          <p class="feature-desc">Calls the Anthropic Messages API directly via the official SDK. Full streaming, tool use, and cost tracking — no CLI dependency required. Supports Claude Sonnet, Opus, and Haiku models.</p>
+        </div>
+        <div class="feature-card card-lift">
+          <span class="feature-icon" aria-hidden="true">🔵</span>
+          <h3 class="feature-title">Gemini (Direct API)</h3>
+          <p class="feature-desc">Calls the Google Gemini API directly via the official SDK. Same agentic loop, same tool interface — provider-specific translation handled by the adapter. Supports Gemini 2.5 Pro and Flash models.</p>
+        </div>
+        <div class="feature-card card-lift">
+          <span class="feature-icon" aria-hidden="true">⬛</span>
+          <h3 class="feature-title">Claude Code (CLI)</h3>
+          <p class="feature-desc">Spawns a <code>claude</code> CLI process per agent with streaming JSON I/O via Tauri's shell plugin. Leverages Claude Code's built-in tool execution and session management.</p>
+        </div>
+      </div>
+
+      <div style="margin-top:2rem;padding:1.5rem;background:var(--surface-secondary);border:1px solid var(--border-primary);border-radius:12px;">
+        <h4 style="color:var(--text-primary);font-size:0.9375rem;margin:0 0 0.5rem;">Powered by <code>@angycode/core</code></h4>
+        <p style="color:var(--text-secondary);font-size:0.875rem;line-height:1.6;margin:0 0 0.75rem;">
+          The Anthropic and Gemini backends are powered by <a href="https://www.npmjs.com/package/@angycode/core" target="_blank" rel="noopener noreferrer" style="color:var(--accent-blue);"><code>@angycode/core</code></a> — our open-source npm library that implements a complete agentic coding loop: system prompt construction, streaming provider communication, tool execution (Bash, Read, Write, Edit, Glob, Grep, Think, WebFetch), SQLite-backed session persistence, and cost tracking. The library is provider-agnostic and can be embedded in CLIs, servers, or desktop apps.
+        </p>
+        <code style="display:block;padding:8px 12px;background:var(--surface-primary);border:1px solid var(--border-subtle);border-radius:6px;font-size:0.8125rem;color:var(--accent-ember);">npm install @angycode/core</code>
+      </div>
+    </div>
+  </section>
+
+  <hr class="divider">
+
   <!-- ── Kanban + Projects ──────────────────────────────────────────────────── -->
   <section id="kanban" class="section">
     <div class="container">
@@ -390,7 +426,7 @@
     <div class="container">
       <div class="cta-box">
         <h2 class="cta-title">Start orchestrating today</h2>
-        <p class="cta-subtitle">Angy is open source and free to self-host. Clone the repo, configure your Claude Code CLI key, and run your first epic in minutes.</p>
+        <p class="cta-subtitle">Angy is open source and free to self-host. Clone the repo, add your Anthropic or Gemini API key in Settings, and run your first epic in minutes.</p>
         <a href="https://github.com/alice-viola/angy" target="_blank" rel="noopener noreferrer" class="btn-primary">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>

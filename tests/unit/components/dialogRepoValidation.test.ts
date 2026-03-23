@@ -20,12 +20,14 @@ import { useProjectsStore } from '@/stores/projects';
 
 // ─── Helpers ──────────────────────────────────────────────────────
 
-function mountNewProjectDialog() {
-  return mount(NewProjectDialog, {
+async function mountNewProjectDialog() {
+  const wrapper = mount(NewProjectDialog, {
     global: {
       stubs: { Teleport: true },
     },
   });
+  await nextTick(); // Wait for onMounted to add initial repo row
+  return wrapper;
 }
 
 function getCreateButton(wrapper: ReturnType<typeof mount>) {
@@ -41,29 +43,29 @@ describe('NewProjectDialog repo validation', () => {
     setActivePinia(createPinia());
   });
 
-  it('opens with one empty repo row pre-populated (onMounted auto-add)', () => {
-    const wrapper = mountNewProjectDialog();
+  it('opens with one empty repo row pre-populated (onMounted auto-add)', async () => {
+    const wrapper = await mountNewProjectDialog();
     const repoNameInputs = wrapper.findAll('input[placeholder="Repo name (e.g. backend)"]');
     expect(repoNameInputs.length).toBe(1);
     const repoPathInputs = wrapper.findAll('input[placeholder="/path/to/repo"]');
     expect(repoPathInputs.length).toBe(1);
   });
 
-  it('shows "Repositories *" label', () => {
-    const wrapper = mountNewProjectDialog();
+  it('shows "Repositories *" label', async () => {
+    const wrapper = await mountNewProjectDialog();
     const labels = wrapper.findAll('label');
     const repoLabel = labels.find(l => l.text().includes('Repositories *'));
     expect(repoLabel).toBeTruthy();
   });
 
-  it('Create button is disabled when name is empty and repo path is empty', () => {
-    const wrapper = mountNewProjectDialog();
+  it('Create button is disabled when name is empty and repo path is empty', async () => {
+    const wrapper = await mountNewProjectDialog();
     const btn = getCreateButton(wrapper);
     expect(btn.attributes('disabled')).toBeDefined();
   });
 
   it('Create button stays disabled when name is filled but repo path is empty', async () => {
-    const wrapper = mountNewProjectDialog();
+    const wrapper = await mountNewProjectDialog();
     const nameInput = wrapper.find('input[placeholder="My Project"]');
     await nameInput.setValue('Test Project');
     await nextTick();
@@ -72,7 +74,7 @@ describe('NewProjectDialog repo validation', () => {
   });
 
   it('Create button stays disabled when repo path is filled but name is empty', async () => {
-    const wrapper = mountNewProjectDialog();
+    const wrapper = await mountNewProjectDialog();
     const pathInput = wrapper.find('input[placeholder="/path/to/repo"]');
     await pathInput.setValue('/some/path');
     await nextTick();
@@ -81,7 +83,7 @@ describe('NewProjectDialog repo validation', () => {
   });
 
   it('Create button becomes enabled when both name and repo path are filled', async () => {
-    const wrapper = mountNewProjectDialog();
+    const wrapper = await mountNewProjectDialog();
     const nameInput = wrapper.find('input[placeholder="My Project"]');
     const pathInput = wrapper.find('input[placeholder="/path/to/repo"]');
     await nameInput.setValue('Test Project');
@@ -91,8 +93,8 @@ describe('NewProjectDialog repo validation', () => {
     expect(btn.attributes('disabled')).toBeUndefined();
   });
 
-  it('Remove button is disabled when only one repo row exists', () => {
-    const wrapper = mountNewProjectDialog();
+  it('Remove button is disabled when only one repo row exists', async () => {
+    const wrapper = await mountNewProjectDialog();
     // Find the ✕ button inside the repo row (not the dialog close button)
     const repoRemoveButtons = wrapper.findAll('button').filter(
       b => b.text().trim() === '✕' && b.attributes('disabled') !== undefined
@@ -101,8 +103,8 @@ describe('NewProjectDialog repo validation', () => {
     expect(repoRemoveButtons.length).toBeGreaterThanOrEqual(1);
   });
 
-  it('Remove button has disabled styling (opacity-20, cursor-not-allowed)', () => {
-    const wrapper = mountNewProjectDialog();
+  it('Remove button has disabled styling (opacity-20, cursor-not-allowed)', async () => {
+    const wrapper = await mountNewProjectDialog();
     const repoRemoveBtn = wrapper.findAll('button').find(
       b => b.text().trim() === '✕' && b.classes().join(' ').includes('disabled:opacity-20')
     );
@@ -111,7 +113,7 @@ describe('NewProjectDialog repo validation', () => {
   });
 
   it('adding a second repo row enables both Remove buttons', async () => {
-    const wrapper = mountNewProjectDialog();
+    const wrapper = await mountNewProjectDialog();
     // Click "+ Add Repository"
     const addBtn = wrapper.findAll('button').find(b => b.text().includes('+ Add Repository'))!;
     await addBtn.trigger('click');
@@ -131,7 +133,7 @@ describe('NewProjectDialog repo validation', () => {
   });
 
   it('removing a row back to one disables the Remove button again', async () => {
-    const wrapper = mountNewProjectDialog();
+    const wrapper = await mountNewProjectDialog();
     // Add second repo
     const addBtn = wrapper.findAll('button').find(b => b.text().includes('+ Add Repository'))!;
     await addBtn.trigger('click');
@@ -155,7 +157,7 @@ describe('NewProjectDialog repo validation', () => {
   });
 
   it('clearing the repo path disables Create button again', async () => {
-    const wrapper = mountNewProjectDialog();
+    const wrapper = await mountNewProjectDialog();
     const nameInput = wrapper.find('input[placeholder="My Project"]');
     const pathInput = wrapper.find('input[placeholder="/path/to/repo"]');
 

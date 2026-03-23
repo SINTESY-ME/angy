@@ -174,6 +174,36 @@ function toAnthropicTools(tools: ToolDefinition[]) {
   }));
 }
 
+const MAX_RETRIES = 3;
+const INITIAL_RETRY_DELAY_MS = 1000;
+
+function isTransientError(err: unknown): boolean {
+  if (err instanceof Anthropic.APIError) {
+    // 500, 502, 503, 529 (overloaded) are transient
+    return err.status >= 500 || err.status === 429;
+  }
+  if (err instanceof Error) {
+    const msg = err.message.toLowerCase();
+    return (
+      msg.includes('internal server error') ||
+      msg.includes('overloaded') ||
+      msg.includes('rate limit') ||
+      msg.includes('econnreset') ||
+      msg.includes('socket hang up') ||
+      msg.includes('timeout')
+    );
+  }
+  return false;
+}
+
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) { reject(signal.reason); return; }
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener('abort', () => { clearTimeout(timer); reject(signal.reason); }, { once: true });
+  });
+}
+
 export class AnthropicAdapter implements ProviderAdapter {
   private client: Anthropic;
 
@@ -182,85 +212,122 @@ export class AnthropicAdapter implements ProviderAdapter {
   }
 
   async *streamMessage(params: StreamParams): AsyncIterable<ProviderStreamEvent> {
-    let inputTokens = 0;
-    let outputTokens = 0;
+    let lastError: unknown;
 
-    // Track which content block indices are tool_use blocks
-    const toolBlocks = new Map<number, { id: string; name: string }>();
-
-    try {
-      const stream = await this.client.messages.create({
-        model: params.model,
-        max_tokens: params.maxTokens,
-        system: params.system,
-        messages: toAnthropicMessages(params.messages),
-        tools: params.tools.length > 0 ? toAnthropicTools(params.tools) : undefined,
-        stream: true,
-      });
-
-      for await (const event of stream) {
-        switch (event.type) {
-          case 'message_start': {
-            const usage = event.message?.usage;
-            if (usage) {
-              inputTokens = usage.input_tokens ?? 0;
-              outputTokens = usage.output_tokens ?? 0;
-            }
-            break;
-          }
-
-          case 'content_block_start': {
-            const block = event.content_block;
-            if (block.type === 'tool_use') {
-              toolBlocks.set(event.index, { id: block.id, name: block.name });
-              yield { type: 'tool_call_start', id: block.id, name: block.name };
-            }
-            break;
-          }
-
-          case 'content_block_delta': {
-            const delta = event.delta;
-            if (delta.type === 'text_delta') {
-              yield { type: 'text_delta', text: delta.text };
-            } else if (delta.type === 'input_json_delta') {
-              const tool = toolBlocks.get(event.index);
-              if (tool) {
-                yield { type: 'tool_call_delta', id: tool.id, input: delta.partial_json };
-              }
-            }
-            break;
-          }
-
-          case 'content_block_stop': {
-            const tool = toolBlocks.get(event.index);
-            if (tool) {
-              yield { type: 'tool_call_end', id: tool.id };
-              toolBlocks.delete(event.index);
-            }
-            break;
-          }
-
-          case 'message_delta': {
-            if (event.usage) {
-              outputTokens = event.usage.output_tokens ?? outputTokens;
-            }
-            const stopReason = event.delta?.stop_reason ?? 'end_turn';
-            yield {
-              type: 'message_end',
-              stop_reason: stopReason,
-              usage: { input: inputTokens, output: outputTokens },
-            };
-            break;
-          }
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      if (attempt > 0) {
+        const delayMs = INITIAL_RETRY_DELAY_MS * Math.pow(2, attempt - 1);
+        try {
+          await sleep(delayMs, params.signal);
+        } catch {
+          // Aborted during backoff
+          yield {
+            type: 'message_end',
+            stop_reason: 'error',
+            usage: { input: 0, output: 0 },
+            error: lastError instanceof Error ? lastError.message : String(lastError),
+          };
+          return;
         }
       }
-    } catch (err: unknown) {
-      yield {
-        type: 'message_end',
-        stop_reason: 'error',
-        usage: { input: 0, output: 0 },
-        error: err instanceof Error ? err.message : String(err),
-      };
+
+      let inputTokens = 0;
+      let outputTokens = 0;
+      const toolBlocks = new Map<number, { id: string; name: string }>();
+      let succeeded = false;
+
+      try {
+        const stream = await this.client.messages.create({
+          model: params.model,
+          max_tokens: params.maxTokens,
+          system: params.system,
+          messages: toAnthropicMessages(params.messages),
+          tools: params.tools.length > 0 ? toAnthropicTools(params.tools) : undefined,
+          stream: true,
+        }, {
+          signal: params.signal,
+        });
+
+        for await (const event of stream) {
+          switch (event.type) {
+            case 'message_start': {
+              const usage = event.message?.usage;
+              if (usage) {
+                inputTokens = usage.input_tokens ?? 0;
+                outputTokens = usage.output_tokens ?? 0;
+              }
+              break;
+            }
+
+            case 'content_block_start': {
+              const block = event.content_block;
+              if (block.type === 'tool_use') {
+                toolBlocks.set(event.index, { id: block.id, name: block.name });
+                yield { type: 'tool_call_start', id: block.id, name: block.name };
+              }
+              break;
+            }
+
+            case 'content_block_delta': {
+              const delta = event.delta;
+              if (delta.type === 'text_delta') {
+                yield { type: 'text_delta', text: delta.text };
+              } else if (delta.type === 'input_json_delta') {
+                const tool = toolBlocks.get(event.index);
+                if (tool) {
+                  yield { type: 'tool_call_delta', id: tool.id, input: delta.partial_json };
+                }
+              }
+              break;
+            }
+
+            case 'content_block_stop': {
+              const tool = toolBlocks.get(event.index);
+              if (tool) {
+                yield { type: 'tool_call_end', id: tool.id };
+                toolBlocks.delete(event.index);
+              }
+              break;
+            }
+
+            case 'message_delta': {
+              if (event.usage) {
+                outputTokens = event.usage.output_tokens ?? outputTokens;
+              }
+              const stopReason = event.delta?.stop_reason ?? 'end_turn';
+              yield {
+                type: 'message_end',
+                stop_reason: stopReason,
+                usage: { input: inputTokens, output: outputTokens },
+              };
+              break;
+            }
+          }
+        }
+
+        // Stream completed successfully
+        succeeded = true;
+      } catch (err: unknown) {
+        lastError = err;
+
+        // Don't retry aborts or non-transient errors
+        if (params.signal?.aborted || (err instanceof Error && err.name === 'AbortError')) {
+          throw err;
+        }
+
+        if (!isTransientError(err) || attempt === MAX_RETRIES) {
+          yield {
+            type: 'message_end',
+            stop_reason: 'error',
+            usage: { input: 0, output: 0 },
+            error: err instanceof Error ? err.message : String(err),
+          };
+          return;
+        }
+        // Otherwise: loop will retry
+      }
+
+      if (succeeded) return;
     }
   }
 }

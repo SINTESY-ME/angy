@@ -317,6 +317,15 @@ watch(() => props.sessionId, async (sessionId) => {
     await loadChildMessagesFromDb(children.map(c => c.sessionId));
   } finally {
     loading.value = false;
+    // Scroll to bottom AFTER messages are loaded and rendered
+    await nextTick();
+    await nextTick();
+    if (scrollEl.value) {
+      scrollEl.value.scrollTo({
+        top: scrollEl.value.scrollHeight,
+        behavior: 'instant',
+      });
+    }
   }
 }, { immediate: true });
 

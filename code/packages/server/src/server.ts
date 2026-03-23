@@ -16,6 +16,13 @@ const DEFAULT_MODELS: Record<string, string> = {
   mock: 'mock',
 };
 
+const MODEL_MAX_TOKENS: Record<string, number> = {
+  'claude-opus-4-6': 8192,
+  'claude-sonnet-4-6': 8192,
+  'gemini-2.5-flash': 16384,
+  'gemini-2.5-pro': 32768,
+};
+
 export function createApp(db: Database): Hono {
   const app = new Hono();
   app.use('*', cors({ origin: '*' }));
@@ -47,7 +54,7 @@ export function createApp(db: Database): Hono {
       tools,
       db,
       workingDir: body.workingDir,
-      maxTokens: body.maxTokens ?? 8192,
+      maxTokens: body.maxTokens ?? MODEL_MAX_TOKENS[model] ?? 8192,
       maxTurns: body.maxTurns ?? 200,
       providerName: body.provider,
       model,

@@ -20,6 +20,7 @@ import { SPECIALIST_PROMPTS, SPECIALIST_TOOLS } from './SpecialistConstants';
 import type { OrchestratorEvents } from './SpecialistConstants';
 import type { HeadlessHandle } from './HeadlessHandle';
 import type { ProcessManager } from './ProcessManager';
+import type { AngyCodeProcessManager } from './AngyCodeProcessManager';
 import type { SessionService } from './SessionService';
 import type { ComplexityEstimate, EpicPipelineType } from './KosTypes';
 import type { TechProfile } from './TechDetector';
@@ -141,6 +142,7 @@ export interface RejectionContext {
 export interface HybridPipelineOptions {
   handle: HeadlessHandle;
   processes: ProcessManager;
+  acpm?: AngyCodeProcessManager;
   sessions: SessionService;
   workspace: string;
   model?: string;
@@ -162,6 +164,7 @@ export class HybridPipelineRunner {
 
   private handle: HeadlessHandle;
   private processes: ProcessManager;
+  private acpm: AngyCodeProcessManager | null;
   private sessions: SessionService;
   private workspace: string;
   private model: string | undefined;
@@ -199,6 +202,7 @@ export class HybridPipelineRunner {
   constructor(opts: HybridPipelineOptions) {
     this.handle = opts.handle;
     this.processes = opts.processes;
+    this.acpm = opts.acpm ?? null;
     this.sessions = opts.sessions;
     this.workspace = opts.workspace;
     this.model = opts.model;
@@ -234,7 +238,7 @@ export class HybridPipelineRunner {
       this.healthMonitor.cancel();
     }
     for (const sid of this.activeProcesses) {
-      this.processes.cancelProcess(sid);
+      this.cancelChild(sid);
     }
     this.activeProcesses.clear();
     for (const resolver of this.pendingResolvers.values()) {
@@ -1052,6 +1056,39 @@ export class HybridPipelineRunner {
     };
   }
 
+  // ── AngyCode (Gemini/Anthropic) helpers ─────────────────────────────
+
+  /** Whether the current model should be routed through AngyCodeProcessManager. */
+  private get useAngyCode(): boolean {
+    if (!this.acpm || !this.model) return false;
+    return this.model.startsWith('gemini') || this.model.startsWith('angy-');
+  }
+
+  /** Derive provider ('gemini' | 'anthropic') from the model string. */
+  private get angyProvider(): 'gemini' | 'anthropic' {
+    return this.model?.includes('gemini') ? 'gemini' : 'anthropic';
+  }
+
+  /** Fetch the API key for the current provider from the database. */
+  private async getApiKey(): Promise<string> {
+    const key = this.angyProvider === 'gemini' ? 'gemini_api_key' : 'anthropic_api_key';
+    return (await this.sessions.db.getAppSetting(key)) ?? '';
+  }
+
+  /** Strip the 'angy-' prefix from model IDs (the server expects raw model names). */
+  private get effectiveModel(): string | undefined {
+    return this.model?.replace(/^angy-/, '');
+  }
+
+  /** Cancel a child process regardless of which process manager owns it. */
+  private cancelChild(sessionId: string): void {
+    if (this.useAngyCode && this.acpm?.isRunning(sessionId)) {
+      this.acpm.cancel(sessionId);
+    } else {
+      this.processes.cancelProcess(sessionId);
+    }
+  }
+
   // ── Agent delegation ────────────────────────────────────────────────
 
   static readonly CRASH_THRESHOLD_MS = 10_000;
@@ -1135,7 +1172,7 @@ export class HybridPipelineRunner {
 
       const timeout = setTimeout(() => {
         if (this.pendingResolvers.has(childSid)) {
-          this.processes.cancelProcess(childSid);
+          this.cancelChild(childSid);
           this.pendingResolvers.delete(childSid);
           this.activeProcesses.delete(childSid);
           reject(new Error(`Agent ${agentName} timed out after ${HybridPipelineRunner.AGENT_TIMEOUT_MS / 1000}s`));
@@ -1148,14 +1185,28 @@ export class HybridPipelineRunner {
         resolve(r);
       });
 
-      this.processes.sendMessage(childSid, task, this.handle, {
-        workingDir: this.workspace,
-        mode,
-        model: this.model,
-        systemPrompt,
-        agentName,
-        specialistRole: role,
-      });
+      if (this.useAngyCode) {
+        this.getApiKey().then(apiKey => {
+          this.acpm!.sendMessage({
+            sessionId: childSid,
+            workingDir: this.workspace,
+            goal: task,
+            provider: this.angyProvider,
+            apiKey,
+            model: this.effectiveModel,
+            systemPrompt,
+          }, this.handle);
+        }).catch(reject);
+      } else {
+        this.processes.sendMessage(childSid, task, this.handle, {
+          workingDir: this.workspace,
+          mode,
+          model: this.model,
+          systemPrompt,
+          agentName,
+          specialistRole: role,
+        });
+      }
     });
 
     return { sessionId: childSid, result };
@@ -1200,7 +1251,7 @@ export class HybridPipelineRunner {
 
       const timeout = setTimeout(() => {
         if (this.pendingResolvers.has(sid)) {
-          this.processes.cancelProcess(sid);
+          this.cancelChild(sid);
           this.pendingResolvers.delete(sid);
           this.activeProcesses.delete(sid);
           reject(new Error(`${role} timed out after ${HybridPipelineRunner.AGENT_TIMEOUT_MS / 1000}s`));
@@ -1213,12 +1264,25 @@ export class HybridPipelineRunner {
         resolve(result);
       });
 
-      this.processes.sendMessage(sid, task, this.handle, {
-        workingDir: this.workspace,
-        mode: 'agent',
-        model: this.model,
-        resumeSessionId: this.handle.getRealSessionId(sid) || undefined,
-      });
+      if (this.useAngyCode) {
+        this.getApiKey().then(apiKey => {
+          this.acpm!.sendMessage({
+            sessionId: sid,
+            workingDir: this.workspace,
+            goal: task,
+            provider: this.angyProvider,
+            apiKey,
+            model: this.effectiveModel,
+          }, this.handle);
+        }).catch(reject);
+      } else {
+        this.processes.sendMessage(sid, task, this.handle, {
+          workingDir: this.workspace,
+          mode: 'agent',
+          model: this.model,
+          resumeSessionId: this.handle.getRealSessionId(sid) || undefined,
+        });
+      }
     });
   }
 
@@ -1256,7 +1320,7 @@ export class HybridPipelineRunner {
 
       const timeout = setTimeout(() => {
         if (this.pendingResolvers.has(sid)) {
-          this.processes.cancelProcess(sid);
+          this.cancelChild(sid);
           this.pendingResolvers.delete(sid);
           this.activeProcesses.delete(sid);
           reject(new Error(`${role} timed out after ${HybridPipelineRunner.AGENT_TIMEOUT_MS / 1000}s`));
@@ -1269,12 +1333,25 @@ export class HybridPipelineRunner {
         resolve(result);
       });
 
-      this.processes.sendMessage(sid, task, this.handle, {
-        workingDir: this.workspace,
-        mode: 'agent',
-        model: this.model,
-        resumeSessionId: this.handle.getRealSessionId(sid) || undefined,
-      });
+      if (this.useAngyCode) {
+        this.getApiKey().then(apiKey => {
+          this.acpm!.sendMessage({
+            sessionId: sid,
+            workingDir: this.workspace,
+            goal: task,
+            provider: this.angyProvider,
+            apiKey,
+            model: this.effectiveModel,
+          }, this.handle);
+        }).catch(reject);
+      } else {
+        this.processes.sendMessage(sid, task, this.handle, {
+          workingDir: this.workspace,
+          mode: 'agent',
+          model: this.model,
+          resumeSessionId: this.handle.getRealSessionId(sid) || undefined,
+        });
+      }
     });
   }
 
@@ -1326,7 +1403,7 @@ export class HybridPipelineRunner {
 
       const timeout = setTimeout(() => {
         if (this.pendingResolvers.has(sid)) {
-          this.processes.cancelProcess(sid);
+          this.cancelChild(sid);
           this.pendingResolvers.delete(sid);
           this.activeProcesses.delete(sid);
           reject(new Error(`${role} timed out after ${HybridPipelineRunner.AGENT_TIMEOUT_MS / 1000}s`));
@@ -1339,12 +1416,25 @@ export class HybridPipelineRunner {
         resolve(result);
       });
 
-      this.processes.sendMessage(sid, task, this.handle, {
-        workingDir: this.workspace,
-        mode: 'agent',
-        model: this.model,
-        resumeSessionId: this.handle.getRealSessionId(sid) || undefined,
-      });
+      if (this.useAngyCode) {
+        this.getApiKey().then(apiKey => {
+          this.acpm!.sendMessage({
+            sessionId: sid,
+            workingDir: this.workspace,
+            goal: task,
+            provider: this.angyProvider,
+            apiKey,
+            model: this.effectiveModel,
+          }, this.handle);
+        }).catch(reject);
+      } else {
+        this.processes.sendMessage(sid, task, this.handle, {
+          workingDir: this.workspace,
+          mode: 'agent',
+          model: this.model,
+          resumeSessionId: this.handle.getRealSessionId(sid) || undefined,
+        });
+      }
     });
   }
 

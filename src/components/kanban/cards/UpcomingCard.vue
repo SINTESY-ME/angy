@@ -1,12 +1,10 @@
 <template>
   <div
-    :draggable="actions.cardDraggable.value"
-    class="group relative rounded-xl border p-3 transition-colors"
+    class="group relative rounded-xl border p-3 transition-colors select-none"
     :class="cardClasses"
     @click="actions.onSingleClick"
     @dblclick="actions.onDoubleClick"
-    @dragstart="actions.onDragStart"
-    @dragend="actions.onDragEnd"
+    @pointerdown="actions.onPointerDown"
   >
     <div class="absolute left-0 top-2 bottom-2 w-[3px] rounded-r" :style="{ backgroundColor: projectColor + '66' }" />
 

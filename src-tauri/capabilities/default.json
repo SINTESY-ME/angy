@@ -40,6 +40,9 @@
     "fs:allow-write-text-file",
     "fs:allow-exists",
     "fs:allow-read-dir",
+    "fs:allow-remove",
+    "fs:allow-rename",
+    "fs:allow-mkdir",
     {
       "identifier": "fs:scope",
       "allow": [

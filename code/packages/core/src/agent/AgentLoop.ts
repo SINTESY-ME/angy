@@ -30,6 +30,7 @@ export class AgentLoop {
   private usageStore: UsageStore;
   private filesRead = new Set<string>();
   private aborted = false;
+  private abortController: AbortController | null = null;
   private totalCostUsd = 0;
 
   constructor(options: AgentLoopOptions) {
@@ -57,6 +58,7 @@ export class AgentLoop {
 
   abort(): void {
     this.aborted = true;
+    this.abortController?.abort();
   }
 
   async run(goal: string, images?: ImageInput[]): Promise<Session> {
@@ -219,15 +221,20 @@ export class AgentLoop {
       let outputTokens = 0;
 
       try {
+        this.abortController = new AbortController();
         const stream = this.options.provider.streamMessage({
           model: this.model,
           system,
           messages,
           tools: toolDefs,
           maxTokens: this.options.maxTokens,
+          signal: this.abortController.signal,
         });
 
         for await (const event of stream) {
+          if (this.aborted) {
+            break;
+          }
           this.processStreamEvent(
             event,
             assistantParts,
@@ -246,9 +253,22 @@ export class AgentLoop {
           }
         }
       } catch (err: unknown) {
+        // Check if error is due to abort (AbortError)
+        if (this.aborted || (err instanceof Error && err.name === 'AbortError')) {
+          this.sessionStore.updateSession(session.id, { status: 'paused' });
+          this.emit({ type: 'done', stop_reason: 'aborted' });
+          return this.sessionStore.getSession(session.id)!;
+        }
         const msg = err instanceof Error ? err.message : String(err);
         this.sessionStore.updateSession(session.id, { status: 'error' });
         this.emit({ type: 'error', message: msg });
+        return this.sessionStore.getSession(session.id)!;
+      }
+
+      // Check abort after streaming - don't execute tools if aborted
+      if (this.aborted) {
+        this.sessionStore.updateSession(session.id, { status: 'paused' });
+        this.emit({ type: 'done', stop_reason: 'aborted' });
         return this.sessionStore.getSession(session.id)!;
       }
 
@@ -305,6 +325,13 @@ export class AgentLoop {
       };
 
       for (const [id, call] of pendingToolCalls) {
+        // Check abort before each tool execution
+        if (this.aborted) {
+          this.sessionStore.updateSession(session.id, { status: 'paused' });
+          this.emit({ type: 'done', stop_reason: 'aborted' });
+          return this.sessionStore.getSession(session.id)!;
+        }
+
         let input: Record<string, unknown> = {};
         try {
           input = JSON.parse(call.inputJson || '{}') as Record<string, unknown>;

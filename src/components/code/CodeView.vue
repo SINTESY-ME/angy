@@ -50,6 +50,7 @@
 import { ref, watch, nextTick } from 'vue';
 import { useUiStore } from '@/stores/ui';
 import { useCodeStore } from '@/stores/code';
+import { useProjectsStore } from '@/stores/projects';
 import CodeViewHeader from './CodeViewHeader.vue';
 import CodeFileTree from './CodeFileTree.vue';
 import CodeEditorPane from './CodeEditorPane.vue';
@@ -58,8 +59,26 @@ import CodeChatPanel from './CodeChatPanel.vue';
 
 const ui = useUiStore();
 const codeStore = useCodeStore();
+const projectsStore = useProjectsStore();
 const editorPaneRef = ref<InstanceType<typeof CodeEditorPane> | null>(null);
 const chatPanelRef = ref<InstanceType<typeof CodeChatPanel> | null>(null);
+
+// Clear editor tabs when switching repo / project so stale code isn't shown
+watch(() => codeStore.activeRepoId, () => {
+  editorPaneRef.value?.closeAllFiles();
+  ui.currentFile = '';
+});
+
+// Also handle project switch to a project with no repos
+watch(() => ui.activeProjectId, (newId) => {
+  if (!newId) return;
+  const repos = projectsStore.reposByProjectId(newId);
+  if (repos.length === 0) {
+    codeStore.activeRepoId = null;
+    editorPaneRef.value?.closeAllFiles();
+    ui.currentFile = '';
+  }
+});
 
 // Auto-create a fresh chat when the panel is first expanded
 watch(() => codeStore.chatExpanded, async (expanded) => {

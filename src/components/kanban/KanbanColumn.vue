@@ -28,13 +28,10 @@
 
     <!-- Body: scrollable card list + drop zone -->
     <div
+      :data-drop-column="boardColumn.dropTarget"
       class="flex-1 flex flex-col gap-2 overflow-y-auto pr-1 rounded-lg border-2 border-transparent transition-colors p-1"
       :class="{ 'border-dashed border-[var(--accent-mauve)]/30': isDragOver }"
       :style="isDragOver ? { backgroundColor: 'color-mix(in srgb, var(--accent-mauve) 8%, transparent)' } : {}"
-      @dragover.prevent="onDragOver"
-      @dragenter.prevent="isDragOver = true"
-      @dragleave="onDragLeave"
-      @drop.prevent="onDrop"
     >
       <component
         v-for="epic in columnEpics"
@@ -71,10 +68,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, type Component } from 'vue';
+import { computed, type Component } from 'vue';
 import type { Epic, EpicColumn } from '@/engine/KosTypes';
 import { useEpicStore } from '@/stores/epics';
-import { engineBus } from '@/engine/EventBus';
+import { kanbanDnd } from '@/composables/useKanbanDnd';
 import IdeaCard from './cards/IdeaCard.vue';
 import UpcomingCard from './cards/UpcomingCard.vue';
 import ActiveCard from './cards/ActiveCard.vue';
@@ -112,7 +109,11 @@ const emit = defineEmits<{
 }>();
 
 const epicStore = useEpicStore();
-const isDragOver = ref(false);
+
+// Column is highlighted when a drag is active AND this column is the hover target
+const isDragOver = computed(() =>
+  kanbanDnd.draggingEpicId !== null && kanbanDnd.hoverColumn === props.boardColumn.dropTarget,
+);
 
 const columnEpics = computed(() => {
   let items = epicStore.epicsByColumns(props.projectIds, props.boardColumn.columns);
@@ -148,37 +149,6 @@ function cardComponent(epic: Epic): Component {
     case 'done':
     case 'discarded': return DoneCard;
     default: return IdeaCard;
-  }
-}
-
-// ── Drag-and-drop ─────────────────────────────────────────────────────
-
-function onDragOver(e: DragEvent) {
-  e.dataTransfer!.dropEffect = 'move';
-}
-
-function onDragLeave(e: DragEvent) {
-  const target = e.currentTarget as HTMLElement;
-  if (!target.contains(e.relatedTarget as Node)) {
-    isDragOver.value = false;
-  }
-}
-
-function onDrop(e: DragEvent) {
-  isDragOver.value = false;
-  const epicId = e.dataTransfer!.getData('text/plain');
-  if (!epicId) return;
-
-  const epic = epicStore.epicById(epicId);
-  const targetColumn = props.boardColumn.dropTarget;
-  if (!epic || epic.column === targetColumn) return;
-
-  if (targetColumn === 'in-progress') {
-    engineBus.emit('epic:requestStart', { epicId });
-  } else if (epic.column === 'in-progress') {
-    engineBus.emit('epic:requestStop', { epicId, targetColumn });
-  } else {
-    epicStore.moveEpic(epicId, targetColumn);
   }
 }
 

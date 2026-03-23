@@ -398,6 +398,28 @@ function closeFile(filePath?: string) {
   closeTab(filePath);
 }
 
+function closeAllFiles() {
+  // Detach the editor model first
+  if (editor) {
+    editor.setModel(null);
+  }
+
+  // Dispose all Monaco models
+  for (const tab of tabs.value) {
+    tab.model?.dispose();
+    tab.model = null;
+  }
+
+  tabs.value = [];
+  activeFile.value = '';
+
+  // Dispose the editor instance itself
+  if (editor) {
+    editor.dispose();
+    editor = null;
+  }
+}
+
 // ── Diff Decorations ──────────────────────────────────────────────────────
 
 function showDiff(diff: FileDiff) {
@@ -541,6 +563,7 @@ function setRootPath(path: string) {
 defineExpose({
   loadFile,
   closeFile,
+  closeAllFiles,
   refreshFile,
   showDiff,
   clearDiffMarkers,

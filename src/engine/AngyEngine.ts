@@ -206,7 +206,11 @@ export class AngyEngine {
     // 1. Kill all running processes for this epic (root + children)
     const sessionIds = this.pool.getSessionsForEpic(epicId);
     for (const sid of sessionIds) {
-      this.processes.cancelProcess(sid);
+      if (this.acpm?.isRunning(sid)) {
+        this.acpm.cancel(sid);
+      } else {
+        this.processes.cancelProcess(sid);
+      }
     }
 
     // 2. Cancel the hybrid runner state machine
@@ -234,7 +238,11 @@ export class AngyEngine {
     // 1. Kill all running processes for this epic (root + children)
     const sessionIds = this.pool.getSessionsForEpic(epicId);
     for (const sid of sessionIds) {
-      this.processes.cancelProcess(sid);
+      if (this.acpm?.isRunning(sid)) {
+        this.acpm.cancel(sid);
+      } else {
+        this.processes.cancelProcess(sid);
+      }
     }
 
     // 2. Cancel hybrid runner (forces a final checkpoint)
@@ -404,6 +412,7 @@ export class AngyEngine {
     const runner = new HybridPipelineRunner({
       handle,
       processes: this.processes,
+      acpm: this.acpm ?? undefined,
       sessions: this.sessions,
       workspace,
       model: epic.model || undefined,
@@ -526,6 +535,7 @@ export class AngyEngine {
     const runner = new HybridPipelineRunner({
       handle,
       processes: this.processes,
+      acpm: this.acpm ?? undefined,
       sessions: this.sessions,
       workspace,
       model: snapshot.model || epic.model || undefined,

@@ -1,13 +1,11 @@
 <template>
   <div
-    :draggable="actions.cardDraggable.value"
-    class="group relative rounded-xl p-4 cursor-pointer transition-all anim-shimmer"
+    class="group relative rounded-xl p-4 cursor-pointer transition-all anim-shimmer select-none"
     :class="cardClasses"
     style="box-shadow: 0 0 24px -6px rgba(16,185,129,0.10)"
     @click="actions.onSingleClick"
     @dblclick="actions.onDoubleClick"
-    @dragstart="actions.onDragStart"
-    @dragend="actions.onDragEnd"
+    @pointerdown="actions.onPointerDown"
   >
     <div class="absolute left-0 top-2 bottom-2 w-[3px] rounded-r" :style="{ backgroundColor: projectColor }" />
 

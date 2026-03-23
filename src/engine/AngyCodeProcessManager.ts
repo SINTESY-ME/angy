@@ -4,6 +4,17 @@ import type { Database } from './Database';
 import { SessionMessageBuffer } from './SessionMessageBuffer';
 import { summarizeTool } from './toolSummary';
 
+function resolveFilePath(filePath: string, workingDir: string): string {
+  if (!filePath) return '';
+  if (filePath.startsWith('/')) return filePath; // Already absolute
+  // Only resolve if workingDir is absolute
+  if (workingDir && workingDir.startsWith('/')) {
+    return `${workingDir}/${filePath}`;
+  }
+  // Can't resolve - return original path
+  return filePath;
+}
+
 interface SessionEntry {
   serverSessionId: string;
   eventSource: EventSource | null;
@@ -16,6 +27,7 @@ export class AngyCodeProcessManager {
   private buffer: SessionMessageBuffer;
   private handle: AgentHandle | null = null;
   private baseUrl = '';
+  private workingDir = '';
 
   constructor(db: Database) {
     this.buffer = new SessionMessageBuffer(db);
@@ -46,10 +58,16 @@ export class AngyCodeProcessManager {
     const handle = this.handle;
     if (!handle) return;
 
+    // Send abort request FIRST and wait for it
+    try {
+      await fetch(`${this.baseUrl}/sessions/${entry.serverSessionId}/abort`, { method: 'POST' });
+    } catch {
+      // Server might be down, continue with local cleanup
+    }
+
+    // Then close the EventSource
     entry.eventSource?.close();
     entry.eventSource = null;
-
-    fetch(`${this.baseUrl}/sessions/${entry.serverSessionId}/abort`, { method: 'POST' }).catch(() => {});
 
     await this.buffer.flush(sessionId);
     handle.markDone(sessionId);
@@ -68,6 +86,7 @@ export class AngyCodeProcessManager {
   // ── Private ─────────────────────────────────────────────────────────
 
   private async createSession(options: AngyCodeProcessOptions, handle: AgentHandle): Promise<void> {
+    this.workingDir = options.workingDir;
     const body: Record<string, unknown> = {
       goal: options.goal,
       provider: options.provider,
@@ -190,7 +209,8 @@ export class AngyCodeProcessManager {
         });
 
         if (['Edit', 'Write', 'StrReplace', 'MultiEdit'].includes(toolName)) {
-          const filePath = (input.file_path as string) || (input.path as string) || '';
+          const rawPath = (input.file_path as string) || (input.path as string) || '';
+          const filePath = resolveFilePath(rawPath, this.workingDir);
           if (filePath) {
             handle.onFileEdited?.(sessionId, filePath, toolName, input);
           }

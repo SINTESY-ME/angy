@@ -330,6 +330,7 @@ async function deleteNode() {
       { title: 'Confirm Delete', kind: 'warning' }
     );
     if (!confirmed) return;
+
     const { remove } = await import('@tauri-apps/plugin-fs');
     await remove(props.node.path, { recursive: props.node.isDir });
     editorStore.removeTabByPath(props.node.path);
@@ -337,8 +338,13 @@ async function deleteNode() {
       editorStore.removeExpandedDirsUnder(props.node.path);
     }
     emit('node-deleted', props.node.path);
-  } catch {
-    // silently fail
+  } catch (error) {
+    console.error('Delete failed:', error);
+    const { message } = await import('@tauri-apps/plugin-dialog');
+    await message(
+      `Failed to delete "${props.node.name}": ${error instanceof Error ? error.message : 'Unknown error'}`,
+      { title: 'Delete Error', kind: 'error' }
+    );
   }
 }
 

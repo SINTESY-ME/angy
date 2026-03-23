@@ -87,7 +87,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue';
+import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import { useCodeStore } from '@/stores/code';
 import { useUiStore } from '@/stores/ui';
 import { useProjectsStore } from '@/stores/projects';
@@ -158,6 +158,8 @@ function onProjectSelect(id: string) {
   const projectRepos = projectsStore.reposByProjectId(id);
   if (projectRepos.length > 0) {
     codeStore.selectRepo(projectRepos[0].id);
+  } else {
+    codeStore.activeRepoId = null;
   }
 }
 
@@ -184,12 +186,41 @@ function onDocumentMousedown(e: MouseEvent) {
   repoPickerOpen.value = false;
 }
 
+// Sync repo when activeProjectId changes externally (e.g. from kanban/fleet)
+watch(() => ui.activeProjectId, (projectId) => {
+  if (!projectId) return;
+  const projectRepos = projectsStore.reposByProjectId(projectId);
+  // If the current repo doesn't belong to this project, pick the first one
+  if (codeStore.activeRepoId && !projectRepos.some(r => r.id === codeStore.activeRepoId)) {
+    if (projectRepos.length > 0) {
+      codeStore.selectRepo(projectRepos[0].id);
+    } else {
+      codeStore.activeRepoId = null;
+    }
+  } else if (!codeStore.activeRepoId && projectRepos.length > 0) {
+    codeStore.selectRepo(projectRepos[0].id);
+  }
+});
+
 onMounted(() => {
   document.addEventListener('mousedown', onDocumentMousedown);
   // Auto-select first project if none is active (e.g. coming from kanban/fleet)
   if (!ui.activeProjectId && projectsStore.projects.length > 0) {
     const firstId = filterStore.selectedProjectIds[0] ?? projectsStore.projects[0].id;
     onProjectSelect(firstId);
+  }
+  // If project is already set but repo is stale, sync it now
+  if (ui.activeProjectId) {
+    const projectRepos = projectsStore.reposByProjectId(ui.activeProjectId);
+    if (codeStore.activeRepoId && !projectRepos.some(r => r.id === codeStore.activeRepoId)) {
+      if (projectRepos.length > 0) {
+        codeStore.selectRepo(projectRepos[0].id);
+      } else {
+        codeStore.activeRepoId = null;
+      }
+    } else if (!codeStore.activeRepoId && projectRepos.length > 0) {
+      codeStore.selectRepo(projectRepos[0].id);
+    }
   }
 });
 

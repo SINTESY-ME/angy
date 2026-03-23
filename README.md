@@ -4,7 +4,7 @@
 
 <h1 align="center">Angy</h1>
 
-<p align="center">A fleet manager for Claude agents. Goals in, working code out.</p>
+<p align="center">A fleet manager for AI coding agents. Goals in, working code out.</p>
 <p align="center">
   <a href="https://alice-viola.github.io/angy/">View the website</a>
 </p>
@@ -19,6 +19,8 @@
 Most AI coding tools give you one agent and one conversation. Angy gives you a **command center**.
 
 The scope of Angy is be able to build entire products from scratch, or to improve existing codebases. Angy is able to run for days continuously.
+
+Angy supports **three provider backends**: direct **Anthropic API**, direct **Gemini API**, and **Claude Code** (via the CLI). The Anthropic and Gemini backends are powered by [`@angycode/core`](https://www.npmjs.com/package/@angycode/core) — our open-source agentic loop library that handles tool execution, streaming, session management, and cost tracking natively, with no dependency on external CLI tools.
 
 You define high-level goals called **Epics**. An autonomous scheduler picks them up, spawns a pipeline per epic, and that pipeline breaks the work into specialist agents — architects, builders, testers, counterparts — each running inside a dedicated git branch. When they're done, you approve. Work merges. The scheduler picks the next thing.
 
@@ -126,7 +128,8 @@ Every agent session has its own chat panel, Monaco code editor, and Xterm.js ter
 - **Integrated terminal** — Xterm.js terminal panel per agent
 - **Git integration** — diff tracking and a Git panel in the sidebar
 - **Profiles** — configure custom system prompts and tool sets per-profile; stack multiple profiles on an agent
-- **Local-first** — everything stored in SQLite on disk; no cloud account required beyond your Claude subscription
+- **Multi-provider** — use Anthropic, Gemini, or Claude Code as the backend for any agent; mix providers across specialist roles
+- **Local-first** — everything stored in SQLite on disk; no cloud account required beyond your API keys
 
 ## How It Works
 
@@ -159,11 +162,15 @@ chmod +x ./angy_v010
 **Prerequisites:**
 
 - **Node.js** (LTS recommended)
-- **Rust toolchain** — install via [rustup.rs](https://rustup.rs)
-- **Claude Code CLI** — must be installed and authenticated (`claude` binary in your PATH)
+- **Rust toolchain** — install via [rustup.rs](https://rustup.rs) or use the setup script below
+- **API key** — an Anthropic or Google Gemini API key (configured in the Settings UI)
+- **Claude Code CLI** _(optional)_ — only required if you want to use the Claude Code backend (`claude` binary in your PATH)
 - **Git** — required for branch management and epic workflows
 
 ```bash
+# Install Rust toolchain (if not already installed)
+./scripts/setup-rust.sh
+
 # Install dependencies
 npm install
 
@@ -183,6 +190,7 @@ The production build type-checks, bundles the frontend, and packages a native de
 
 All settings are configurable via the **Settings UI** inside the app.
 
+- **Providers** — select Anthropic, Gemini, or Claude Code as the default backend; configure API keys per provider
 - **Scheduler** — concurrency limits (max parallel epics), daily API cost budgets, and priority scoring weights (priority hint, age, complexity, dependency depth, rejection penalty)
 - **Profiles** — custom system prompts and tool sets per agent profile
 
@@ -202,9 +210,17 @@ resources/mcp/    MCP server (Python) for LLM-driven orchestration fallback
 
 ## Architecture
 
-Angy wraps the `claude` CLI using Tauri's shell plugin. Each agent session spawns a new `claude` process with `--input-format stream-json` / `--output-format stream-json`, writes a JSON message envelope to stdin, and streams structured JSON events back on stdout.
+Angy supports three provider backends behind a unified `ProviderAdapter` interface:
 
-The **HybridPipelineRunner** is a coded TypeScript state machine that drives the multi-agent pipeline programmatically — no LLM decides what to do next. It uses Claude CLI's `--json-schema` for structured extraction of verdicts, increment plans, and test results. Specialist agents (architect, builder, counterpart, tester) run as normal agent sessions with full tool access.
+| Backend | How it works |
+|---------|-------------|
+| **Anthropic** (direct API) | Calls the Anthropic Messages API directly via `@anthropic-ai/sdk`. Streaming, tool use, and cost tracking are handled natively by the `@angycode/core` agentic loop. |
+| **Gemini** (direct API) | Calls the Google Gemini API directly via `@google/genai`. Same agentic loop, same tool interface — provider-specific translation is handled by the adapter. |
+| **Claude Code** (CLI) | Spawns a `claude` CLI process per agent via Tauri's shell plugin with `--input-format stream-json` / `--output-format stream-json`, writing JSON message envelopes to stdin and streaming structured events on stdout. |
+
+The Anthropic and Gemini backends are powered by [`@angycode/core`](https://www.npmjs.com/package/@angycode/core), an open-source TypeScript library (published on npm) that implements the full agentic loop: system prompt construction, streaming provider communication, tool execution, session/message persistence in SQLite, and cost tracking. The library ships the same tool set that Angy uses (Bash, Read, Write, Edit, Glob, Grep, Think, WebFetch) and is designed to be embedded in any Node.js application.
+
+The **HybridPipelineRunner** is a coded TypeScript state machine that drives the multi-agent pipeline programmatically — no LLM decides what to do next. It uses structured JSON schema extraction for verdicts, increment plans, and test results. Specialist agents (architect, builder, counterpart, tester) run as normal agent sessions with full tool access, regardless of which provider backend they use.
 
 The pipeline's key innovation is **incremental building with verification gates**: instead of building everything at once and testing at the end, it splits the architect's plan into sequential increments and verifies each one before starting the next. This dramatically reduces error compounding and makes fix loops small and focused.
 
@@ -220,18 +236,45 @@ The pipeline's key innovation is **incremental building with verification gates*
 | Terminal | [Xterm.js](https://xtermjs.org) |
 | Syntax highlighting | [Shiki](https://shiki.style) |
 | Persistence | SQLite via `@tauri-apps/plugin-sql` |
+| Agentic loop | [`@angycode/core`](https://www.npmjs.com/package/@angycode/core) — Anthropic & Gemini providers, tool execution, sessions |
+| AI providers | [Anthropic SDK](https://github.com/anthropics/anthropic-sdk-typescript), [Google GenAI SDK](https://github.com/googleapis/nodejs-genai) |
 
 ## Troubleshooting
 
-- **Claude CLI not found** — ensure the `claude` binary is installed and on your PATH. Run `claude --version` to verify.
+- **API key not configured** — open Settings and enter your Anthropic or Gemini API key. The app will not start agents without a valid key for the selected provider.
+- **Claude CLI not found** — only relevant if you're using the Claude Code backend. Ensure the `claude` binary is installed and on your PATH. Run `claude --version` to verify.
 - **Git not installed** — git is required for branch management. Install it via Xcode Command Line Tools (`xcode-select --install`) or [git-scm.com](https://git-scm.com).
 - **Platform support** — Angy is currently macOS-focused. Linux and Windows support is not yet available.
 
-## Next Steps
+## `@angycode/core` — The Agentic Loop Library
 
-The immediate next milestone is replacing the current dependency on the `claude` CLI with **our own agentic loop** — a first-party implementation that communicates directly with AI provider APIs, allowing us to have an alternative to Claude Code.
+The Anthropic and Gemini backends are powered by [`@angycode/core`](https://www.npmjs.com/package/@angycode/core), an open-source npm package that implements a complete agentic coding loop:
 
-The custom agentic loop will support both the **Gemini** and **Anthropics** APIs, enabling Angy to run agents against either provider (or both simultaneously within the same pipeline). This opens the door to model diversity across specialist roles, cost optimization, and provider redundancy — without any changes to how epics or pipelines are defined.
+```bash
+npm install @angycode/core
+```
+
+```typescript
+import { AgentLoop, createProvider, createToolRegistry, createDatabase } from '@angycode/core';
+
+const provider = createProvider({ name: 'anthropic', apiKey: 'sk-...', model: 'claude-opus-4-6' });
+const tools = createToolRegistry();       // Bash, Read, Write, Edit, Glob, Grep, Think, WebFetch
+const db = createDatabase('./agent.db');   // SQLite-backed session & message persistence
+
+const agent = new AgentLoop({
+  provider,
+  tools,
+  db,
+  workingDir: process.cwd(),
+  maxTokens: 16384,
+  maxTurns: 100,
+});
+
+agent.on('event', (e) => console.log(e));
+await agent.run('Refactor the auth module to use JWT tokens');
+```
+
+The library is provider-agnostic — swap `'anthropic'` for `'gemini'` and the same tools, session store, and event stream work identically. It can be embedded in CLIs, servers, desktop apps, or CI pipelines.
 
 ## Status
 

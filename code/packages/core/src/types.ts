@@ -183,6 +183,7 @@ export interface StreamParams {
   messages: Message[];
   tools: ToolDefinition[];
   maxTokens: number;
+  signal?: AbortSignal;
 }
 
 export interface ProviderStreamTextDelta {

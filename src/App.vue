@@ -220,6 +220,8 @@ async function onAgentSelected(sessionId: string) {
       } finally {
         // Clear loading flag AFTER load complete
         panel.setLoadingHistory(sessionId, false);
+        // Scroll to bottom after loading history
+        nextTick(() => panel.scrollToBottom());
       }
     }
 

@@ -135,6 +135,41 @@ function toGeminiTools(tools: ToolDefinition[]) {
   ];
 }
 
+// ── Retry helpers ───────────────────────────────────────────────────
+
+const MAX_RETRIES = 3;
+const INITIAL_RETRY_DELAY_MS = 1000;
+
+function isTransientError(err: unknown): boolean {
+  if (err instanceof Error) {
+    const msg = err.message.toLowerCase();
+    // Google API 500/503/429 errors, network issues
+    return (
+      msg.includes('internal server error') ||
+      msg.includes('500') ||
+      msg.includes('503') ||
+      msg.includes('service unavailable') ||
+      msg.includes('overloaded') ||
+      msg.includes('resource exhausted') ||
+      msg.includes('rate limit') ||
+      msg.includes('429') ||
+      msg.includes('econnreset') ||
+      msg.includes('socket hang up') ||
+      msg.includes('timeout') ||
+      msg.includes('fetch failed')
+    );
+  }
+  return false;
+}
+
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) { reject(signal.reason); return; }
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener('abort', () => { clearTimeout(timer); reject(signal.reason); }, { once: true });
+  });
+}
+
 // ── Adapter ──────────────────────────────────────────────────────────
 
 export class GeminiAdapter implements ProviderAdapter {
@@ -145,85 +180,138 @@ export class GeminiAdapter implements ProviderAdapter {
   }
 
   async *streamMessage(params: StreamParams): AsyncIterable<ProviderStreamEvent> {
-    let inputTokens = 0;
-    let outputTokens = 0;
-    let stopReason = 'end_turn';
+    let lastError: unknown;
 
-    try {
-      const stream = await this.client.models.generateContentStream({
-        model: params.model,
-        contents: toGeminiContents(params.messages),
-        config: {
-          systemInstruction: params.system,
-          maxOutputTokens: params.maxTokens,
-          tools: toGeminiTools(params.tools),
-        },
-      });
-
-      for await (const chunk of stream) {
-        // Update usage from metadata (typically in last chunk)
-        if (chunk.usageMetadata) {
-          inputTokens = chunk.usageMetadata.promptTokenCount ?? inputTokens;
-          outputTokens = chunk.usageMetadata.candidatesTokenCount ?? outputTokens;
-        }
-
-        const candidate = chunk.candidates?.[0];
-        if (!candidate?.content?.parts) continue;
-
-        // Check finish reason
-        if (candidate.finishReason) {
-          switch (candidate.finishReason) {
-            case 'STOP':
-              stopReason = 'end_turn';
-              break;
-            case 'MAX_TOKENS':
-              stopReason = 'max_tokens';
-              break;
-            case 'SAFETY':
-              stopReason = 'safety';
-              break;
-            default:
-              stopReason = candidate.finishReason.toLowerCase();
-          }
-        }
-
-        for (const part of candidate.content.parts) {
-          if (part.text !== undefined && part.text !== null) {
-            yield { type: 'text_delta', text: part.text };
-          }
-
-          if (part.functionCall) {
-            const id = nanoid();
-            const thoughtSignature = (part as Record<string, unknown>)['thoughtSignature'] as string | undefined;
-            yield {
-              type: 'tool_call_start',
-              id,
-              name: part.functionCall.name ?? 'unknown',
-              ...(thoughtSignature ? { thought_signature: thoughtSignature } : {}),
-            };
-            // Gemini delivers full args in one shot, emit as single delta
-            yield {
-              type: 'tool_call_delta',
-              id,
-              input: JSON.stringify(part.functionCall.args ?? {}),
-            };
-            yield { type: 'tool_call_end', id };
-          }
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      if (attempt > 0) {
+        const delayMs = INITIAL_RETRY_DELAY_MS * Math.pow(2, attempt - 1);
+        try {
+          await sleep(delayMs, params.signal);
+        } catch {
+          // Aborted during backoff
+          yield {
+            type: 'message_end',
+            stop_reason: 'error',
+            usage: { input: 0, output: 0 },
+            error: lastError instanceof Error ? lastError.message : String(lastError),
+          };
+          return;
         }
       }
 
-      yield {
-        type: 'message_end',
-        stop_reason: stopReason,
-        usage: { input: inputTokens, output: outputTokens },
-      };
-    } catch (err: unknown) {
-      yield {
-        type: 'message_end',
-        stop_reason: 'error',
-        usage: { input: 0, output: 0 },
-        error: err instanceof Error ? err.message : String(err),
-      };
+      let inputTokens = 0;
+      let outputTokens = 0;
+      let stopReason = 'end_turn';
+      let succeeded = false;
+
+      try {
+        // Check if already aborted before starting
+        if (params.signal?.aborted) {
+          yield {
+            type: 'message_end',
+            stop_reason: 'aborted',
+            usage: { input: 0, output: 0 },
+          };
+          return;
+        }
+
+        const stream = await this.client.models.generateContentStream({
+          model: params.model,
+          contents: toGeminiContents(params.messages),
+          config: {
+            systemInstruction: params.system,
+            maxOutputTokens: params.maxTokens,
+            tools: toGeminiTools(params.tools),
+            abortSignal: params.signal,
+          },
+        });
+
+        for await (const chunk of stream) {
+          // Update usage from metadata (typically in last chunk)
+          if (chunk.usageMetadata) {
+            inputTokens = chunk.usageMetadata.promptTokenCount ?? inputTokens;
+            outputTokens = chunk.usageMetadata.candidatesTokenCount ?? outputTokens;
+          }
+
+          const candidate = chunk.candidates?.[0];
+          if (!candidate?.content?.parts) continue;
+
+          // Check finish reason
+          if (candidate.finishReason) {
+            switch (candidate.finishReason) {
+              case 'STOP':
+                stopReason = 'end_turn';
+                break;
+              case 'MAX_TOKENS':
+                stopReason = 'max_tokens';
+                break;
+              case 'SAFETY':
+                stopReason = 'safety';
+                break;
+              default:
+                stopReason = candidate.finishReason.toLowerCase();
+            }
+          }
+
+          for (const part of candidate.content.parts) {
+            if (part.text !== undefined && part.text !== null) {
+              yield { type: 'text_delta', text: part.text };
+            }
+
+            if (part.functionCall) {
+              const id = nanoid();
+              const thoughtSignature = (part as Record<string, unknown>)['thoughtSignature'] as string | undefined;
+              yield {
+                type: 'tool_call_start',
+                id,
+                name: part.functionCall.name ?? 'unknown',
+                ...(thoughtSignature ? { thought_signature: thoughtSignature } : {}),
+              };
+              // Gemini delivers full args in one shot, emit as single delta
+              yield {
+                type: 'tool_call_delta',
+                id,
+                input: JSON.stringify(part.functionCall.args ?? {}),
+              };
+              yield { type: 'tool_call_end', id };
+            }
+          }
+        }
+
+        yield {
+          type: 'message_end',
+          stop_reason: stopReason,
+          usage: { input: inputTokens, output: outputTokens },
+        };
+
+        // Stream completed successfully
+        succeeded = true;
+      } catch (err: unknown) {
+        lastError = err;
+
+        // Don't retry aborts
+        if (params.signal?.aborted || (err instanceof Error && err.name === 'AbortError')) {
+          yield {
+            type: 'message_end',
+            stop_reason: 'aborted',
+            usage: { input: inputTokens, output: outputTokens },
+          };
+          return;
+        }
+
+        if (!isTransientError(err) || attempt === MAX_RETRIES) {
+          yield {
+            type: 'message_end',
+            stop_reason: 'error',
+            usage: { input: 0, output: 0 },
+            error: err instanceof Error ? err.message : String(err),
+          };
+          return;
+        }
+        // Otherwise: loop will retry
+      }
+
+      if (succeeded) return;
     }
   }
 }

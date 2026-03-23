@@ -1,12 +1,10 @@
 <template>
   <div
-    :draggable="actions.cardDraggable.value"
-    class="group rounded-lg px-3 py-2 flex items-center gap-2 transition-colors"
+    class="group rounded-lg px-3 py-2 flex items-center gap-2 transition-colors select-none"
     :class="cardClasses"
     @click="actions.onSingleClick"
     @dblclick="actions.onDoubleClick"
-    @dragstart="actions.onDragStart"
-    @dragend="actions.onDragEnd"
+    @pointerdown="actions.onPointerDown"
   >
     <!-- Green checkmark -->
     <svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="#10b981" stroke-width="2.5" viewBox="0 0 24 24">

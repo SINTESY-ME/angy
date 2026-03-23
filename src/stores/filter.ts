@@ -1,7 +1,8 @@
 import { defineStore } from 'pinia';
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 import { useEpicStore } from '@/stores/epics';
 import { useProjectsStore } from '@/stores/projects';
+import { useFleetStore } from '@/stores/fleet';
 
 export const useFilterStore = defineStore('filter', () => {
   const selectedProjectIds = ref<string[]>([]);
@@ -34,6 +35,14 @@ export const useFilterStore = defineStore('filter', () => {
       selectedProjectIds.value = [];
     }
   }
+
+  // Clear selected agent when project filter changes to avoid showing wrong chat
+  watch(selectedProjectIds, () => {
+    const fleetStore = useFleetStore();
+    if (fleetStore.selectedAgentId) {
+      fleetStore.selectedAgentId = null;
+    }
+  });
 
   return { selectedProjectIds, pinnedProjectIds, activePreset, toggleProject, applySelection, applyPreset };
 });

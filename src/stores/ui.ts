@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import { useFilterStore } from '@/stores/filter';
+import { useProjectsStore } from '@/stores/projects';
 import { DEFAULT_MODEL_ID } from '@/constants/models';
 
 export type ViewMode = 'home' | 'kanban' | 'agents' | 'code' | 'mission-control' | 'analytics' | 'git-graph';
@@ -153,9 +154,18 @@ export const useUiStore = defineStore('ui', () => {
     activeEpicId.value = null;
   }
 
+  function selectFirstRepo(projectId: string) {
+    const projectsStore = useProjectsStore();
+    const projectRepos = projectsStore.reposByProjectId(projectId);
+    if (projectRepos.length > 0) {
+      workspacePath.value = projectRepos[0].path;
+    }
+  }
+
   function navigateToProject(projectId: string) {
     window.dispatchEvent(new CustomEvent('angy:close-popovers'));
     activeProjectId.value = projectId;
+    selectFirstRepo(projectId);
     useFilterStore().applySelection([projectId]);
     viewMode.value = 'kanban';
   }
@@ -163,6 +173,7 @@ export const useUiStore = defineStore('ui', () => {
   function navigateToEpic(epicId: string, projectId: string) {
     window.dispatchEvent(new CustomEvent('angy:close-popovers'));
     activeProjectId.value = projectId;
+    selectFirstRepo(projectId);
     activeEpicId.value = epicId;
     viewMode.value = 'agents';
   }
@@ -194,6 +205,7 @@ export const useUiStore = defineStore('ui', () => {
   function navigateToKanban(projectId: string) {
     window.dispatchEvent(new CustomEvent('angy:close-popovers'));
     activeProjectId.value = projectId;
+    selectFirstRepo(projectId);
     const filterStore = useFilterStore();
     if (!filterStore.selectedProjectIds.includes(projectId)) {
       filterStore.applySelection([projectId]);
