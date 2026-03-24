@@ -1,5 +1,5 @@
 <template>
-  <div class="flex flex-col h-full">
+  <div class="flex flex-col h-full bg-base">
     <AgentsHeader
       @new-agent="onNewAgent"
       @enter-mission-control="emit('enter-mission-control')"
