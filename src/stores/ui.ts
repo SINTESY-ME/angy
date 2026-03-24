@@ -44,6 +44,7 @@ export const useUiStore = defineStore('ui', () => {
   const kanbanFilterText = ref('');
   const pipelineActivity = ref<string | null>(null);
   const pipelineTodoProgress = ref<{ current: number; total: number } | null>(null);
+  const navRailExpanded = ref(true);
 
   // Diff view state (git diff shown in Monaco DiffSplitView)
   const diffView = ref<{
@@ -226,13 +227,17 @@ export const useUiStore = defineStore('ui', () => {
     viewMode.value = 'kanban';
   }
 
+  function toggleNavRail() {
+    navRailExpanded.value = !navRailExpanded.value;
+  }
+
   return {
     viewMode, activeProjectId, activeEpicId, terminalVisible, activeLeftTab,
     workspacePath, currentFile, currentBranch, currentModel, isProcessing,
     inlinePreviewFile, effectsPanelVisible, editorChatVisible, rightPanelMode, diffView,
     missionControlFilter, autoCommitEnabled, openProjectIds, notifications, repoSwitchOnly,
     managerSizes, editorSizes, kanbanFilterText, pipelineActivity, pipelineTodoProgress,
-    epicActivities, activityLogVisible, geminiApiKey, anthropicApiKey,
+    epicActivities, activityLogVisible, geminiApiKey, anthropicApiKey, navRailExpanded,
     switchToMode, toggleViewMode, toggleTerminal, dismissInlinePreview,
     toggleEffectsPanel, toggleEditorChat, toggleRightPanelMode, setRightPanelMode,
     showDiffView, closeDiffView,
@@ -240,6 +245,6 @@ export const useUiStore = defineStore('ui', () => {
     addNotification, dismissNotification, clearNotifications,
     navigateHome, navigateToProject, navigateToEpic, navigateToKanban,
     openProjectTab, switchProjectTab, closeProjectTab,
-    openCommandPalette, toggleActivityLog, setEpicActivity,
+    openCommandPalette, toggleActivityLog, setEpicActivity, toggleNavRail,
   };
 });
