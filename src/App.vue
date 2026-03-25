@@ -447,16 +447,34 @@ watch(() => ui.activeEpicId, async (epicId) => {
   const epic = epicStore.epicById(epicId);
   if (!epic) return;
 
-  // Resolve workspace path from the epic's target repos (use first repo)
+  // Resolve workspace path from the epic's target repos
   const projectRepos = projectStore.reposByProjectId(ui.activeProjectId);
   let repoPath = '';
+  const targetPaths: string[] = [];
   if (epic.targetRepoIds.length > 0) {
-    const targetRepo = projectRepos.find((r) => r.id === epic.targetRepoIds[0]);
-    if (targetRepo) repoPath = targetRepo.path;
+    for (const repoId of epic.targetRepoIds) {
+      const repo = projectRepos.find((r) => r.id === repoId);
+      if (repo) targetPaths.push(repo.path);
+    }
   }
-  // Fallback: use first project repo
-  if (!repoPath && projectRepos.length > 0) {
-    repoPath = projectRepos[0].path;
+  // Fallback: use all project repos
+  if (targetPaths.length === 0) {
+    for (const repo of projectRepos) {
+      targetPaths.push(repo.path);
+    }
+  }
+  // Compute common ancestor for multi-repo
+  if (targetPaths.length === 1) {
+    repoPath = targetPaths[0];
+  } else if (targetPaths.length > 1) {
+    const segments = targetPaths.map(p => p.split('/'));
+    const commonParts: string[] = [];
+    for (let i = 0; i < segments[0].length; i++) {
+      const seg = segments[0][i];
+      if (segments.every(s => s[i] === seg)) commonParts.push(seg);
+      else break;
+    }
+    repoPath = commonParts.join('/') || '/';
   }
 
   if (repoPath && repoPath !== ui.workspacePath) {

@@ -158,9 +158,23 @@ export const useUiStore = defineStore('ui', () => {
   function selectFirstRepo(projectId: string) {
     const projectsStore = useProjectsStore();
     const projectRepos = projectsStore.reposByProjectId(projectId);
-    if (projectRepos.length > 0) {
-      workspacePath.value = projectRepos[0].path;
+    if (projectRepos.length === 0) {
+      return;
     }
+    if (projectRepos.length === 1) {
+      workspacePath.value = projectRepos[0].path;
+      return;
+    }
+    // Multi-repo: compute common ancestor path
+    const paths = projectRepos.map(r => r.path).filter(Boolean);
+    const segments = paths.map(p => p.split('/'));
+    const commonParts: string[] = [];
+    for (let i = 0; i < segments[0].length; i++) {
+      const seg = segments[0][i];
+      if (segments.every(s => s[i] === seg)) commonParts.push(seg);
+      else break;
+    }
+    workspacePath.value = commonParts.join('/') || '/';
   }
 
   function navigateToProject(projectId: string) {
