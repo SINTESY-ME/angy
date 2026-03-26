@@ -272,7 +272,7 @@ export const useUiStore = defineStore('ui', () => {
     enterMissionControl, exitMissionControl, setMissionControlFilter, toggleAutoCommit,
     addNotification, dismissNotification, clearNotifications,
     navigateHome, navigateToProject, navigateToEpic, navigateToKanban,
-    openProjectTab, switchProjectTab, closeProjectTab,
+    openProjectTab, switchProjectTab, closeProjectTab, selectFirstRepo,
     openCommandPalette, toggleActivityLog, setEpicActivity, toggleNavRail,
     openNewWindow,
   };

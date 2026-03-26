@@ -97,11 +97,8 @@ onMounted(async () => {
   // Auto-select workspace from first selected project's repo (same as fleet logic)
   const firstProjectId = filterStore.selectedProjectIds[0] ?? projectsStore.projects[0]?.id;
   if (firstProjectId) {
-    const firstRepo = projectsStore.reposByProjectId(firstProjectId)[0];
-    if (firstRepo?.path) {
-      ui.workspacePath = firstRepo.path;
-      return;
-    }
+    ui.selectFirstRepo(firstProjectId);
+    if (ui.workspacePath) return;
   }
 
   const db = getDatabase();

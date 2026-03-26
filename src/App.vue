@@ -591,7 +591,52 @@ function onGitFileDiffReady({ filePath, staged, diff }: { filePath: string; stag
   }
 }
 
+// ── Global safety net: prevent webview navigation on link clicks & file drops ──
+
+/** Prevent the browser from navigating when a file is dropped anywhere on the page. */
+function preventDragNavigation(e: DragEvent) {
+  e.preventDefault();
+}
+
+/**
+ * Safety-net click handler that catches <a> clicks not already handled by a
+ * component (e.g. links rendered via v-html in CodeViewer, OrchestratorChat,
+ * TreeBranch, CodeChatPanel, etc.).  Components that call e.preventDefault()
+ * themselves (like ChatMessage.handleContentClick) are left alone.
+ */
+function interceptGlobalClicks(e: MouseEvent) {
+  if (e.defaultPrevented) return;
+
+  const anchor = (e.target as HTMLElement)?.closest?.('a');
+  if (!anchor) return;
+
+  const href = anchor.getAttribute('href');
+  if (!href) return;
+
+  // Block the navigation *before* doing anything else
+  e.preventDefault();
+
+  try {
+    const url = new URL(href, window.location.href);
+
+    if (url.protocol === 'angy:' && url.hostname === 'open') {
+      const filePath = url.searchParams.get('file');
+      if (filePath) onFileClicked(filePath);
+    } else if (url.protocol === 'http:' || url.protocol === 'https:') {
+      window.open(href, '_blank');
+    }
+    // Everything else (file:, data:, blob:, …) is silently swallowed.
+  } catch {
+    // Malformed URL – nothing to do.
+  }
+}
+
 onMounted(async () => {
+  // Global webview-navigation guards
+  document.addEventListener('dragover', preventDragNavigation);
+  document.addEventListener('drop', preventDragNavigation);
+  document.addEventListener('click', interceptGlobalClicks);
+
   window.addEventListener('angy:new-chat', onGlobalNewChat);
   window.addEventListener('angy:open-settings', onGlobalOpenSettings);
   gitStore.manager.on('fileDiffReady', onGitFileDiffReady);
@@ -858,6 +903,10 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
+  document.removeEventListener('dragover', preventDragNavigation);
+  document.removeEventListener('drop', preventDragNavigation);
+  document.removeEventListener('click', interceptGlobalClicks);
+
   window.removeEventListener('angy:new-chat', onGlobalNewChat);
   window.removeEventListener('angy:open-settings', onGlobalOpenSettings);
   gitStore.manager.off('fileDiffReady', onGitFileDiffReady);
