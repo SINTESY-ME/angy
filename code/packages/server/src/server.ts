@@ -27,6 +27,8 @@ export function createApp(db: Database): Hono {
   const app = new Hono();
   app.use('*', cors({ origin: '*' }));
 
+  app.get('/health', (c) => c.json({ ok: true }));
+
   app.post('/sessions', async (c) => {
     let body: any;
     try {

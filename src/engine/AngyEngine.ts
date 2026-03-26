@@ -152,9 +152,30 @@ export class AngyEngine {
         this.acpm = new AngyCodeProcessManager(this.db);
         this.acpm.setBaseUrl(this.serverProcess.getBaseUrl());
         setAngyCodeProcessManager(this.acpm);
+        // Persist the server URL so secondary windows can connect
+        await this.db.setAppSetting('angycode_server_url', this.serverProcess.getBaseUrl());
         console.log('[AngyEngine] angycode-server started at', this.serverProcess.getBaseUrl());
       } catch (err) {
         console.error('[AngyEngine] Failed to start angycode-server — Gemini models will be unavailable:', err);
+      }
+    } else {
+      // Secondary window: connect to the existing angycode-server started by the primary window
+      try {
+        const serverUrl = await this.db.getAppSetting('angycode_server_url');
+        if (serverUrl) {
+          // Verify the server is reachable before wiring up
+          const healthRes = await fetch(`${serverUrl}/health`).catch(() => null);
+          if (healthRes && healthRes.ok) {
+            this.acpm = new AngyCodeProcessManager(this.db);
+            this.acpm.setBaseUrl(serverUrl);
+            setAngyCodeProcessManager(this.acpm);
+            console.log('[AngyEngine] Secondary window connected to angycode-server at', serverUrl);
+          } else {
+            console.warn('[AngyEngine] angycode-server not reachable at', serverUrl, '— Gemini models will be unavailable in this window');
+          }
+        }
+      } catch (err) {
+        console.warn('[AngyEngine] Secondary window failed to connect to angycode-server:', err);
       }
     }
 
@@ -169,6 +190,10 @@ export class AngyEngine {
       runner.cancel();
     }
     this.hybridRunners.clear();
+    // Clear persisted server URL before stopping, so secondary windows don't find a stale URL
+    if (this.serverProcess.isRunning()) {
+      await this.db.setAppSetting('angycode_server_url', '').catch(() => {});
+    }
     await this.serverProcess.stop();
     await this.db.close();
     this._initialized = false;
