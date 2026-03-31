@@ -56,6 +56,7 @@
           <EffectsPanel
             ref="effectsPanelRef"
             @file-clicked="onFileClicked"
+            @diff-requested="onEffectsDiffRequested"
             @turn-clicked="onTurnClicked"
           />
         </template>
@@ -64,6 +65,7 @@
           <TerminalPanel
             v-if="ui.terminalVisible"
             :workingDirectory="ui.workspacePath || '.'"
+            @close="ui.toggleTerminal()"
           />
         </template>
       </MainSplitter>
@@ -563,6 +565,31 @@ let onAgentFileEdited: (e: { sessionId: string; filePath: string; toolName: stri
 let onEpicPhaseChanged: (e: { epicId: string; phase: string }) => void;
 let onPipelineInternalCall: (e: { epicId: string; callType: string; status: string }) => void;
 let onPipelineTodoProgress: (e: { epicId: string; current: number; total: number; scope: string; title: string }) => void;
+let onSessionFinishedBell: (e: { sessionId: string; exitCode: number }) => void;
+
+// ── Bell notification ─────────────────────────────────────────────────────
+const bellOnTaskDone = ref(false);
+let bellAudioCtx: AudioContext | null = null;
+
+function playBell() {
+  try {
+    if (!bellAudioCtx || bellAudioCtx.state === 'closed') {
+      bellAudioCtx = new AudioContext();
+    }
+    const ctx = bellAudioCtx;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(880, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.4);
+    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.6);
+  } catch { /* AudioContext unavailable */ }
+}
 
 // ── Global keyboard event: Cmd+N new chat ───────────────────────────────
 
@@ -570,8 +597,8 @@ function onGlobalNewChat() {
   onNewChat();
 }
 
-function onSettingsSaved(_settings: Record<string, string>) {
-  // Apply saved settings as needed
+function onSettingsSaved(settings: Record<string, unknown>) {
+  bellOnTaskDone.value = !!settings.bellOnTaskDone;
 }
 
 function onGlobalOpenSettings() {
@@ -582,13 +609,15 @@ function onGitFileDiffReady({ filePath, staged, diff }: { filePath: string; stag
   if (diff.isBinary) return;
   const rightLabel = staged ? 'Staged' : 'Working Tree';
   ui.showDiffView(filePath, diff.oldContent, diff.newContent, 'HEAD', rightLabel);
-  // Ensure code pane is visible in editor mode
-  if (ui.viewMode === 'code') {
-    // TODO: handle diff view in CodeView — currently a no-op for code mode
-  } else {
-    // In agents mode, show as inline preview
-    ui.inlinePreviewFile = filePath;
-  }
+}
+
+function onEffectsDiffRequested(filePath: string) {
+  // Convert absolute path to relative for git
+  const workspace = ui.workspacePath;
+  const relativePath = workspace && filePath.startsWith(workspace + '/')
+    ? filePath.slice(workspace.length + 1)
+    : filePath;
+  gitStore.manager.requestFileDiff(relativePath, false);
 }
 
 // ── Global safety net: prevent webview navigation on link clicks & file drops ──
@@ -673,6 +702,15 @@ onMounted(async () => {
     throw err;
   }
 
+  try {
+    const { readTextFile } = await import('@tauri-apps/plugin-fs');
+    const { join } = await import('@tauri-apps/api/path');
+    const { getAngyConfigDir } = await import('@/engine/platform');
+    const content = await readTextFile(await join(await getAngyConfigDir(), 'settings.json'));
+    const parsed = JSON.parse(content);
+    bellOnTaskDone.value = !!parsed.bellOnTaskDone;
+  } catch { /* file may not exist yet */ }
+
   // Load API keys from DB into UI store
   const savedGeminiKey = await engine.db.getAppSetting('gemini_api_key');
   if (savedGeminiKey) ui.geminiApiKey = savedGeminiKey;
@@ -708,6 +746,11 @@ onMounted(async () => {
     fleetStore.updateAgent({ sessionId: agentId, status: status as any, activity });
   };
   engineBus.on('agent:statusChanged', onAgentStatusBus);
+
+  onSessionFinishedBell = ({ exitCode }) => {
+    if (bellOnTaskDone.value && exitCode === 0) playBell();
+  };
+  engineBus.on('session:finished', onSessionFinishedBell);
 
   // Primary window: wire orchestration control, process management, and lifecycle events.
   // Secondary windows are view-only — they read from the DB via sync intervals.
@@ -917,6 +960,7 @@ onUnmounted(() => {
   engineBus.off('scheduler:info', onSchedulerInfo);
   engineBus.off('session:created', onSessionCreatedBus);
   engineBus.off('agent:statusChanged', onAgentStatusBus);
+  engineBus.off('session:finished', onSessionFinishedBell);
   engineBus.off('epic:requestStart', onEpicRequestStart);
   engineBus.off('epic:requestStop', onEpicRequestStop);
   engineBus.off('epic:requestSuspend', onEpicRequestSuspend);

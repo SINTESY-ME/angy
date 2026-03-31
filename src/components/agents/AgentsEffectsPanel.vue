@@ -68,13 +68,22 @@
               v-for="change in group.changes"
               :key="change.filePath"
               class="flex items-center gap-2 px-2 py-1 rounded-md cursor-pointer hover:bg-white/[0.03] transition-colors ml-2"
-              @click="$emit('file-clicked', change.filePath)"
+              @click="$emit('diff-requested', change.filePath)"
             >
               <span
                 class="text-[10px] px-1 rounded flex-shrink-0"
                 :class="changeTypeBadge(change.changeType)"
               >{{ changeTypeLabel(change.changeType) }}</span>
-              <span class="text-[11px] text-txt-secondary truncate font-mono">{{ change.filePath }}</span>
+              <span class="text-[11px] text-txt-secondary truncate font-mono flex-1 min-w-0">{{ change.filePath }}</span>
+              <button
+                @click.stop="$emit('file-clicked', change.filePath)"
+                class="flex-shrink-0 p-0.5 rounded text-txt-faint hover:text-accent-mauve hover:bg-white/[0.05] transition-colors"
+                title="Open file"
+              >
+                <svg class="w-3 h-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <path d="M10 2H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V5l-3-3z"/><path d="M10 2v3h3"/>
+                </svg>
+              </button>
               <span class="flex-shrink-0 text-[9px] font-mono">
                 <span v-if="change.linesAdded" class="text-emerald-400">+{{ change.linesAdded }}</span>
                 <span v-if="change.linesRemoved" class="text-accent-red ml-0.5">-{{ change.linesRemoved }}</span>
@@ -183,6 +192,7 @@ const props = defineProps<{
 
 defineEmits<{
   'file-clicked': [filePath: string];
+  'diff-requested': [filePath: string];
   approve: [];
   reject: [];
 }>();

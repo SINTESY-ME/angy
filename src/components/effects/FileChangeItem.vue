@@ -1,7 +1,7 @@
 <template>
   <div
     class="flex items-center gap-2 px-3 py-1.5 cursor-pointer rounded hover:bg-white/[0.03] transition-colors"
-    @click="$emit('click', change.filePath)"
+    @click="$emit('diff-requested', change.filePath)"
   >
     <!-- File icon badge -->
     <div
@@ -25,6 +25,17 @@
       {{ badgeLetter }}
     </span>
 
+    <!-- Open file button -->
+    <button
+      @click.stop="$emit('click', change.filePath)"
+      class="shrink-0 p-0.5 rounded text-[var(--text-faint)] hover:text-[var(--accent-mauve)] hover:bg-white/[0.05] transition-colors"
+      title="Open file"
+    >
+      <svg class="w-3 h-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M10 2H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V5l-3-3z"/><path d="M10 2v3h3"/>
+      </svg>
+    </button>
+
     <!-- Line delta -->
     <div class="flex gap-1 text-[10px] shrink-0">
       <span v-if="change.linesAdded > 0" class="text-[var(--accent-green)]">+{{ change.linesAdded }}</span>
@@ -44,6 +55,7 @@ const props = defineProps<{
 
 defineEmits<{
   click: [filePath: string];
+  'diff-requested': [filePath: string];
 }>();
 
 const fileName = computed(() => {
